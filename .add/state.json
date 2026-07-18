@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "billing-owner-signup-population",
-  "active_milestone": "account-tiers-billing",
+  "active_task": "agents-console",
+  "active_milestone": "agent-gateway-v1",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,151 +1192,6 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "account-type-discriminator": {
-      "title": "Add account_type (personal|business) discriminator + seed individual plan",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "account-tiers-billing",
-      "depends_on": [],
-      "created": "2026-07-16T03:21:32+00:00",
-      "updated": "2026-07-16T04:00:03+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-16T03:25:22+00:00",
-        "approved_by": "auto (project-lead)",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "864d653d408db7aec96e8d6cf78184c1",
-        "tests": {
-          "apps/gateway/tests/account_type_discriminator/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/account_type_discriminator/test_account_type_discriminator.py": "49b0f2302d1c171276a1a224379db517"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py"
-        ],
-        "snapshot_md5": "22b705e64bafdb4dda5e6ecd60b813db"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "plan-tiers-and-base-fee": {
-      "title": "5-tier plan catalog + base_price_usd_monthly + invoice base line + /pricing no-drift",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "account-tiers-billing",
-      "depends_on": [],
-      "created": "2026-07-16T05:56:17+00:00",
-      "updated": "2026-07-16T06:46:28+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-16T06:13:00+00:00",
-        "approved_by": "auto (project-lead)",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e1639684c87ebb4a8f71d840fb916998",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/billing/application/invoice_generator.py"
-        ],
-        "snapshot_md5": "55f88c9aae08d7771b41c011512636ca"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "billing-owner-of-record": {
-      "title": "Designate one billing owner-of-record per tenant + never-zero-billing-owner guard on role-change/deactivation",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "account-tiers-billing",
-      "depends_on": [],
-      "created": "2026-07-16T07:02:28+00:00",
-      "updated": "2026-07-16T08:16:58+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-16T07:24:01+00:00",
-        "approved_by": "auto (project-lead) + Tin-locked design (hard-reject, billing-capable={owner,billing_admin})",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "7568ff6cb3b556ee7d64a9365c58bbaa",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "cec5dd9c655b57bfd2e4b867025ffc3c"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "billing-owner-signup-population": {
-      "title": "Populate billing_owner_user_id on signup so every new tenant has a billing owner day-one",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "account-tiers-billing",
-      "depends_on": [],
-      "created": "2026-07-16T08:26:40+00:00",
-      "updated": "2026-07-16T09:44:45+00:00",
-      "fast": true,
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "da4a3a3beebb5f62fe17a73bd50c37c1",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "244d9183896b76e786b088b2322bf672"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-07-16T09:43:42+00:00",
-            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-16T09:44:11+00:00",
-            "reason": "scope_violation: task 'billing-owner-signup-population' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (11 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -1426,23 +1281,6 @@
         "source": "git"
       }
     },
-    "account-tiers-billing": {
-      "title": "Account tiers & billing: personal/individual + business/enterprise base fee + payer of record",
-      "goal": "Hydroa sells differentiated subscription tiers \u2014 a personal/individual plan and business/enterprise plans with a recurring base fee \u2014 with all payment attributed to one designated billing owner per tenant",
-      "stage": "production",
-      "status": "active",
-      "created": "2026-07-16T03:12:00+00:00",
-      "updated": "2026-07-16T03:21:31+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-07-16T03:21:31+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "enterprise-domain-onboarding": {
       "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
       "goal": "A business's users are automatically routed into their company tenant by verified email domain across both signup and SSO login from one source of truth, with self-service domain management in the dashboard, while self-signup into a tenant stays invite-or-verified-domain only",
@@ -1465,7 +1303,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-18T01:39:41+00:00",
+  "updated": "2026-07-18T08:37:18+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2462,14 +2300,25 @@
         "self-serve-plans-catalog"
       ],
       "archived": "2026-07-18"
+    },
+    {
+      "slug": "account-tiers-billing",
+      "title": "Account tiers & billing: personal/individual + business/enterprise base fee + payer of record",
+      "tasks": 4,
+      "task_slugs": [
+        "account-type-discriminator",
+        "plan-tiers-and-base-fee",
+        "billing-owner-of-record",
+        "billing-owner-signup-population"
+      ],
+      "archived": "2026-07-18"
     }
   ],
   "active_milestones": [
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1",
-    "account-tiers-billing"
+    "agent-gateway-v1"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2477,8 +2326,7 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console",
-    "account-tiers-billing": "billing-owner-signup-population"
+    "agent-gateway-v1": "agents-console"
   },
   "todos": [
     {

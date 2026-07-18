@@ -92,32 +92,35 @@ billing is usage(marked-up)+seats; `line_type="base"` is the new flat recurring 
 ## Exit criteria (observable; map each to the task that delivers it)
 - [x] A personal signup creates an `account_type=personal` tenant (default plan) with 1 OWNER seat   (← account-type-discriminator; default plan repointed to `free` by plan-tiers-and-base-fee)
 - [x] A business signup / existing customer tenant is `account_type=business` and can be assigned team/enterprise plans   (← account-type-discriminator)
-- [ ] The `plans` catalog holds the 5 Tin-locked tiers (free $0 / starter $1 / pro $20 / team $99 / enterprise NULL); personal signup lands on `free`   (← plan-tiers-and-base-fee)
-- [ ] A team/enterprise/paid invoice includes a `base` line equal to the plan's `base_price_usd_monthly`, independent of usage AND seat count (a $0-usage $99 team tenant is still billed $99)   (← plan-tiers-and-base-fee)
-- [ ] The marketing `/pricing` figures match the backend plan `base_price_usd_monthly` (no unwired copy — enforced by a no-drift test)   (← plan-tiers-and-base-fee)
-- [ ] Every tenant has exactly one designated billing owner; invoices/credits attribute to it   (← billing-owner-of-record)
-- [ ] The last billing-capable owner cannot be demoted or deactivated — the guard rejects it with a clear error   (← billing-owner-of-record)
+- [x] The `plans` catalog holds the 5 Tin-locked tiers (free $0 / starter $1 / pro $20 / team $99 / enterprise NULL); personal signup lands on `free`   (← plan-tiers-and-base-fee — migration test asserts EXACTLY 5 rows {free,starter,pro,team,enterprise}; reconciled signup test asserts free id)
+- [x] A team/enterprise/paid invoice includes a `base` line equal to the plan's `base_price_usd_monthly`, independent of usage AND seat count (a $0-usage $99 team tenant is still billed $99)   (← plan-tiers-and-base-fee — base line folded into raw+rounded total in the atomic invoice txn; read back through the REAL invoice-detail endpoint == $99; enterprise/unplanned byte-identical)
+- [x] The marketing `/pricing` figures match the backend plan `base_price_usd_monthly` (no unwired copy — enforced by a no-drift test)   (← plan-tiers-and-base-fee — 3 no-drift dashboard vitest bind page figures to hardcoded EXPECTED_SEED + explicit drift-detection case)
+- [x] Every tenant has exactly one designated billing owner; invoices/credits attribute to it   (← billing-owner-of-record + billing-owner-signup-population — nullable FK backfills existing customers; signup populates new tenants via flush-then-assign inside the one begin())
+- [x] The last billing-capable owner cannot be demoted or deactivated — the guard rejects it with a clear error   (← billing-owner-of-record — FOR-UPDATE tenants-row lock serializes reassign vs demote/deactivate; barrier-forced race test proves the invariant never yields zero billing-capable owners)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway  : `plans` catalog → 5 Tin-locked tiers + `base_price_usd_monthly` column; new `line_type="base"` invoice line (folded in the atomic invoice txn, mirror of seat_pricer); `TenantRow.account_type` (personal|business) + `billing_owner_user_id` nullable FK (use_alter, circular-FK-safe) + 2 CHECKs; signup provisions account_type + repoints personal default → `free` + populates billing owner via flush-then-assign; billing-owner reassign/demote/deactivate guard (FOR-UPDATE lock, "never zero billing-capable owner"); SCIM deprovision returns 409 on the last billing owner. Migrations: `a7c3e9f1b2d4` (account_type), plan-tiers migration (5-tier restructure + base_price), `f94771e4aa7c` (billing owner).
+- dashboard : `/pricing` marketing figures bound to backend `base_price_usd_monthly` via a hardcoded EXPECTED_SEED constants module + 3 no-drift vitest (drift-detection case included).
+- tooling / skill / book : untouched.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- account-type-discriminator     : gate=PASS · tests=6/6 + 4/4 migration backfill + 203 signup/tenants/plan regression green · residue=`plan_id` FK violation would mis-map to EmailAlreadyRegistered — unreachable (plans seed-only/immutable), noted non-blocking.
+- plan-tiers-and-base-fee        : gate=PASS · tests=84 task + 155 invoice/seat/plan + 21 migrations BE + 3 no-drift + 12 pricing-page dashboard vitest green · residue=`starter`-repurpose silently reclassifies any live business tenant on old `starter` → personal $1 (Tin-directed; recon found zero such tenants; pre-deploy `SELECT count(*) … plan_id=starter` flagged operationally).
+- billing-owner-of-record        : gate=PASS (SECURITY — dual adversarial verify: orchestrator + independent add-verify `ae80c82822877fd0e`; barrier-forced race test at the real lock site) · tests=22/22 new + 184 touched-surface regression + 526 full regression green · residue=a direct admin DB script could bypass the app-layer guard (Tin-locked residual, named in §0).
+- billing-owner-signup-population : gate=PASS · tests=3/3 new (raw-SQL readback) + 5 reconciled sibling + 149+184+36+8 targeted regression green (full bulk 3922✓/32 — the 32 are pre-existing shared-:5433/Redis-contention flakes, every dir green in isolation, zero overlap with the changed code) · residue=SCIM-deprovision of the billing owner → 409 until reassigned (Tin-approved Option A).
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (criteria 1–2 ← account-type-discriminator; 3–5 ← plan-tiers-and-base-fee; 6 ← billing-owner-of-record + billing-owner-signup-population; 7 ← billing-owner-of-record — all cited inline on each criterion)
+- goal: *Hydroa sells differentiated subscription tiers — a personal/individual plan and business/enterprise plans with a recurring base fee — with all payment attributed to one designated billing owner per tenant.* Proven: the 5-tier catalog ships with a `base_price_usd_monthly` that emits a real `line_type="base"` invoice line billed even at $0 usage, and every tenant (existing via backfill, new via signup) carries exactly one guarded billing owner of record. All 4 tasks gate=PASS; the security task dual-verified; code merged in PR #76.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] run the DB migration (account_type + base_price_usd_monthly + billing-owner columns; individual plan seed) — additive, backward-compatible; confirm existing-customer backfill = business
-- [ ] open a PR from the Close ship-review above; the human reviews + merges (billing-owner-of-record is security — dual adversarial verify recorded before merge)
-- [ ] document the base-fee runbook (which plans carry a base fee; how a $0-usage tenant is still billed)
-- [ ] tag / publish / deploy (human-run, per release.md) — bundle with the sibling onboarding milestone + the other closed roadmap milestones into the next release cut
+- [x] run the DB migration (account_type + base_price_usd_monthly + billing-owner columns; 5-tier plan seed) — additive, backward-compatible; existing-customer backfill = business (migrations `a7c3e9f1b2d4` + plan-tiers + `f94771e4aa7c`, merged in #76)
+- [x] open a PR from the Close ship-review above; the human reviews + merges (billing-owner-of-record is security — dual adversarial verify recorded before merge) — shipped in PR #76 (admin-merge `a82d1b1`)
+- [ ] document the base-fee runbook (which plans carry a base fee; how a $0-usage tenant is still billed) — deferred follow-up
+- [ ] tag / publish / deploy (human-run, per release.md) — this milestone's code is already on `main` (#76) but was NOT bundled into 0.10.0 (it read `active` at cut time); it now becomes releasable and folds into the NEXT release cut
