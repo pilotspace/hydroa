@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "self-serve-plans-catalog",
-  "active_milestone": "commercial-self-serve",
+  "active_task": "billing-owner-signup-population",
+  "active_milestone": "account-tiers-billing",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1337,168 +1337,6 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "activation-quickstart": {
-      "title": "Signup account_type\u2192Free-plan wiring + post-key quickstart panel + Overview onboarding checklist + docs quickstart",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "commercial-self-serve",
-      "depends_on": [],
-      "created": "2026-07-17T14:34:01+00:00",
-      "updated": "2026-07-17T16:45:58+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "83e62ee7b29e6aa38757a7dc5c07a4c9",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/"
-        ],
-        "snapshot_md5": "995f9515a7e6ed3ec7c29379d0aebda9"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-17T16:39:26+00:00",
-            "reason": "scope_violation: task 'activation-quickstart' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.ruff_cache/0.15.16/9569048616658404476 \u00b7 apps/gateway/migrations/versions/b7e2c4a9f1d3_self_serve_checkout.py \u00b7 apps/gateway/src/gateway/agent_oauth/api/device_approval_router.py \u00b7 apps/gateway/src/gateway/agent_oauth/application/use_cases.py (50 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "transactional-email": {
-      "title": "EmailSender port (smtp+console adapters) + invite email delivery, copy-link preserved",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "commercial-self-serve",
-      "depends_on": [],
-      "created": "2026-07-17T14:34:01+00:00",
-      "updated": "2026-07-17T17:01:59+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "e3eb2ca574487db8a31ba69d76a17707",
-        "tests": {
-          "apps/gateway/tests/transactional_email/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/transactional_email/conftest.py": "c339c4b4373f1339f858c2064161ccde",
-          "apps/gateway/tests/transactional_email/test_transactional_email.py": "328b3ac503f3b65d9d01bad1333dd5df"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/email/",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/tenants/api/invites_router.py",
-          "apps/gateway/tests/",
-          "tests/transactional_email/",
-          "apps/dashboard/components/members/InviteMemberDialog.tsx",
-          "apps/dashboard/components/members/types.ts"
-        ],
-        "snapshot_md5": "19d181e97311352f34f9c6efeb6b67e5"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "device-activate-page": {
-      "title": "/activate device-approval page over existing approve/deny + verification_uri default",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "commercial-self-serve",
-      "depends_on": [],
-      "created": "2026-07-17T14:34:01+00:00",
-      "updated": "2026-07-17T17:03:23+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "5cdf3a1a16d41bcdba6bfc82400c6a32",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "19d181e97311352f34f9c6efeb6b67e5"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "self-serve-checkout": {
-      "title": "PaymentProvider port (dev+stripe-shaped) + tenant-scoped checkout for plan/credits/seats + plan & credits CTAs",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "commercial-self-serve",
-      "depends_on": [],
-      "created": "2026-07-17T14:34:01+00:00",
-      "updated": "2026-07-17T17:05:16+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "9617e8f2491a99dbef9441d50ee93dcf",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/self-serve-checkout/src/",
-          "apps/gateway/src/gateway/payments/",
-          "apps/gateway/src/gateway/tenants/application/plan_assignment.py",
-          "apps/gateway/src/gateway/tenants/api/platform_plans_router.py",
-          "apps/gateway/src/gateway/tenants/domain/authz.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/",
-          "apps/dashboard/components/plan/PlanSeatsPage.tsx",
-          "components/credits/CreditsPage.tsx",
-          "apps/dashboard/components/checkout/",
-          "apps/dashboard/lib/"
-        ],
-        "snapshot_md5": "19d181e97311352f34f9c6efeb6b67e5"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "self-serve-plans-catalog": {
-      "title": "Tenant-scoped self-serve plans-list read + live UpgradePlanDialog wiring",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "commercial-self-serve",
-      "depends_on": [],
-      "created": "2026-07-17T17:06:44+00:00",
-      "updated": "2026-07-17T17:42:35+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "d570f8451581768e25062b703a5f62d7",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tenants/application/self_serve_plans.py",
-          "apps/gateway/src/gateway/tenants/api/plan_router.py",
-          "apps/dashboard/lib/checkout.ts",
-          "apps/dashboard/components/plan/PlanSeatsPage.tsx",
-          "apps/dashboard/tests/mocks/handlers.ts",
-          "apps/gateway/tests/self_serve_plans_catalog/",
-          "apps/dashboard/tests/plan-upgrade-live-catalog.test.tsx"
-        ],
-        "snapshot_md5": "17a376a47636d6ce49df468751ffd586"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -1624,23 +1462,10 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
-    },
-    "commercial-self-serve": {
-      "title": "Commercial Self Serve",
-      "goal": "",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-07-17T14:32:21+00:00",
-      "updated": "2026-07-17T18:39:26+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-17T18:40:03+00:00",
+  "updated": "2026-07-18T01:39:41+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2624,6 +2449,19 @@
         "airier-theme-restyle"
       ],
       "archived": "2026-07-17"
+    },
+    {
+      "slug": "commercial-self-serve",
+      "title": "Commercial Self Serve",
+      "tasks": 5,
+      "task_slugs": [
+        "activation-quickstart",
+        "transactional-email",
+        "device-activate-page",
+        "self-serve-checkout",
+        "self-serve-plans-catalog"
+      ],
+      "archived": "2026-07-18"
     }
   ],
   "active_milestones": [
@@ -2631,8 +2469,7 @@
     "platform-access-plan",
     "eu-ai-act-readiness",
     "agent-gateway-v1",
-    "account-tiers-billing",
-    "commercial-self-serve"
+    "account-tiers-billing"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2641,8 +2478,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "account-tiers-billing": "billing-owner-signup-population",
-    "commercial-self-serve": "self-serve-plans-catalog"
+    "account-tiers-billing": "billing-owner-signup-population"
   },
   "todos": [
     {
