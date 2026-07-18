@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 52
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 53
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -135,6 +135,7 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) Composing new behavior OUTSIDE a frozen fail-closed seam (a wrapper that catches the seam's own exception) let a hard "NEVER fallback" invariant be superseded for ONE caller without editing the frozen contract or weakening it for every other caller — a reusable pattern for "add an escape hatch to a fail-closed gate." (evidence: _resolve_platform_fallback composes over resolve() untouched)  [folded foundation-version 53 · from platform-credential-fallback]
 - (SDD) a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8).  [folded foundation-version 50 · from ml-moderation-layer]
 - (SDD) a new self-service WRITE API silently widens the blast radius of PRE-EXISTING read-time semantics elsewhere (recovery re-resolve; env.py autogen); a build's grounding should scan "what does making X mutable newly expose?" not just "does X compute right" (evidence: C1 + C2 both pre-existing, both newly reachable via this task).  [folded foundation-version 49 · from tiered-rate-cards]
 - (SDD) A "bound EVERY X call" Must must be verified against EACH call in the path, not the one the pseudocode illustrates — first build wrapped only XADD and left the three advisory `incrbyfloat` awaits bare, partially missing the frozen §1 B4-timeout Must; caught by the pre-gate advisor review, not by tests (no test asserted the advisory-call timeout). Evidence: recorder.py advisory block.  [folded foundation-version 49 · from usage-flusher-durability]
@@ -358,6 +359,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) a green `next build` proves compilation, NOT that a font/theme applies — verify computed style on a LIVE render (evidence: Geist fell back to ui-sans-serif while the build was green; caught only by a playwright probe).  [folded foundation-version 53 · from airier-theme-restyle]
+- (UDD) an accent hue that works as a solid FILL can fail AA as TEXT on its own soft tint — give accent-as-text its own AA-safe token (evidence: #2f6df0 on #eef3fe = 4.14:1, failed on ~30 routes via the shared active-nav).  [folded foundation-version 53 · from airier-theme-restyle]
+- (UDD) A financial-document idiom (InvoiceStatusSeal/InvoiceDetailPage) does not always transplant its exact vocabulary onto a structurally-similar-but-semantically-different document (an Art. 12 bundle has no draft state) — the lesson is to translate the IDIOM (dated header, tabular-nums, visible immutability marker) rather than force-reuse the exact component/prop union (evidence: BundleEvidenceSeal introduced as a sibling, not an InvoiceStatusSeal prop-union widening).  [folded foundation-version 53 · from compliance-report-center]
 - (UDD) a security-critical access-control feature benefits from BOTH a static presence/absence test (M1) AND a separate, actively-adversarial dynamic test (R2, firing the real trigger and asserting no effect) — the static check alone would not have caught a fail-open bug where only markup was conditionally hidden but a listener was unconditionally attached (evidence: R2's own code comment names this exact failure mode; independently confirmed sound by the orchestrator reading its implementation).  [folded foundation-version 48 · from command-palette]
 
 - (UDD) the "build-grounding scrub" (re-checking an approved mock against the frozen contract and build-time reality immediately before implementing, correcting transparently rather than building blindly or silently deviating) held 3-for-3 within this single task alone (`savings_usd` constant at build time; the `.toggle-row` referencing an unbuilt sibling task's control; the hero-sub copy asserting a live query that doesn't exist) — worth naming as a standing UDD step rather than rediscovering it ad hoc per task (evidence: this task, 2026-07-03).  [folded foundation-version 44 · from batch-dashboard-surface]
@@ -493,6 +497,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-17 | fold all → foundation-version 53 (SDD 1 · UDD 3 · TDD 1 · ADD 3 · GLOSSARY 11) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 10 glossary term(s) added; 52→53 |
 | 2026-07-13 | fold all → foundation-version 52 (GLOSSARY 4) | consolidate captured OBSERVE lessons into the versioned foundation | 0 lessons open→folded; +0 routed bullets; 4 glossary term(s) added; 51→52 |
 | 2026-07-12 | fold all → foundation-version 51 (ADD 1 · GLOSSARY 4) | consolidate captured OBSERVE lessons into the versioned foundation | 1 lessons open→folded; +1 routed bullets; 3 glossary term(s) added; 50→51 |
 | 2026-07-11 | fold all → foundation-version 50 (DDD 2 · SDD 1 · GLOSSARY 7) | consolidate captured OBSERVE lessons into the versioned foundation | 3 lessons open→folded; +3 routed bullets; 7 glossary term(s) added; 49→50 |

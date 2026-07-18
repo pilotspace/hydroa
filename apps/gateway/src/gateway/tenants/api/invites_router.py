@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr
@@ -48,6 +48,8 @@ from gateway.core.error_catalog import (
     INVITE_NOT_PENDING,
     PAYLOAD_INVALID,
 )
+from gateway.email.application.email_dispatch import send_email
+from gateway.email.application.invite_email_template import render_invite_email
 from gateway.tenants.application.invite_use_cases import (
     CreateInviteUseCase,
     ListPendingInvitesUseCase,
@@ -85,6 +87,10 @@ class InviteCreateResponse(BaseModel):
     created_at: datetime
     invited_by_user_id: uuid.UUID
     token: str  # PLAINTEXT — shown exactly once, never retrievable again (M3)
+    # transactional-email M9: which EmailSender adapter the accept-link email was
+    # DISPATCHED to (attempted, not confirmed-delivered — fire-and-forget can't know
+    # delivery outcome by response time). Every other field above is byte-identical.
+    email_delivery_channel: Literal["smtp", "console"]
 
 
 class InviteResponse(BaseModel):
@@ -184,6 +190,25 @@ async def create_invite(
         )
     )
 
+    # Invite-accept email — fire-and-forget, fail-open, INDEPENDENT of the audit
+    # dispatch above (a failure in either must never affect the other or the 201
+    # response, transactional-email TASK.md §5 safety rule).
+    settings = request.app.state.settings
+    email_delivery_channel: Literal["smtp", "console"] = (
+        "smtp" if settings.email_smtp_enabled else "console"
+    )
+    asyncio.ensure_future(  # noqa: RUF006
+        send_email(
+            request.app.state.email_sender,
+            render_invite_email(
+                to=invite.email,
+                role=invite.role.value,
+                token=token,
+                origin=settings.dashboard_public_origin,
+            ),
+        )
+    )
+
     return InviteCreateResponse(
         id=invite.id,
         email=invite.email,
@@ -191,6 +216,7 @@ async def create_invite(
         status=invite.status.value,
         expires_at=invite.expires_at,
         created_at=invite.created_at,
+        email_delivery_channel=email_delivery_channel,
         invited_by_user_id=invite.invited_by_user_id,
         token=token,
     )

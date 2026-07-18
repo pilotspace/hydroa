@@ -96,6 +96,19 @@ class PlanRow(Base):
     base_price_usd_monthly: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True, default=None
     )
+    # self-serve-checkout TASK.md §3 (FROZEN @ v1, I2/A3) — additive, migration-seeded only.
+    # NOT NULL DEFAULT false: "enterprise = contact sales" is data-driven, NOT the ambiguous
+    # base_price IS NULL test (which is ALSO true for free). Seed: free/starter/pro/team=true,
+    # enterprise=false. Mirrors feature_flags' NOT-NULL-with-server_default additive shape.
+    self_serve: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    # self-serve-checkout TASK.md §3 (FROZEN @ v1, I3/A1) — additive, migration-seeded only.
+    # NULL = no audience gate (defensive default). Seed: free/starter/pro='personal',
+    # team/enterprise='business'. A personal tenant self-selecting a business-audience plan
+    # is rejected (plan_account_type_mismatch) — the personal/business split becomes
+    # data-driven instead of seed-convention-only. Mirrors account_type's nullable-text shape.
+    audience: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # TIMESTAMPTZ per §3 Schema — a NEW table gets the tz-aware convention (mirrors
     # InviteRow's own explicit DateTime(timezone=True), NOT TenantRow/UserRow's older
     # bare-Mapped[datetime] style). No onupdate — inert in v1 (no write path updates a

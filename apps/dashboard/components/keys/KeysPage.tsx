@@ -22,6 +22,8 @@ import { KeyRow } from "./KeyRow";
 import { CreateKeyDialog } from "./CreateKeyDialog";
 import type { Tier } from "./TierSelector";
 import { PlaintextKeyBanner } from "./PlaintextKeyBanner";
+import { QuickstartPanel } from "./QuickstartPanel";
+import { publicApiBaseUrl } from "@/lib/public-api-base-url";
 import { KeyGovernanceEditor, ApiKeyGovernance } from "./KeyGovernanceEditor";
 import { RatelimitsPanel } from "./RatelimitsPanel";
 import { BandwidthPanel } from "./BandwidthPanel";
@@ -199,12 +201,16 @@ export function KeysPage() {
       />
 
       {/* One-time plaintext key banner (create) — OUTSIDE the tabs so it persists
-          regardless of which tab is active. */}
+          regardless of which tab is active. QuickstartPanel mounts alongside it,
+          sharing the SAME in-memory plaintextKey — no new fetch (activation-quickstart M4). */}
       {plaintextKey && (
-        <PlaintextKeyBanner
-          plaintextKey={plaintextKey}
-          onDismiss={handleDismissBanner}
-        />
+        <>
+          <PlaintextKeyBanner
+            plaintextKey={plaintextKey}
+            onDismiss={handleDismissBanner}
+          />
+          <QuickstartPanel plaintextKey={plaintextKey} baseUrl={publicApiBaseUrl()} />
+        </>
       )}
 
       {/* Revoke confirmation dialog — OUTSIDE the tabs (a fixed overlay; its focus-trap

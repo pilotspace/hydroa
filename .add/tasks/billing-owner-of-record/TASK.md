@@ -517,7 +517,7 @@ Glossary deltas:
     always an ACTIVE, billing-capable user of that same tenant; changed ONLY via
     `PUT /admin/billing-owner` (OWNER-only) — never implicitly, never by demotion/deactivation.
   billing-capable role: `Role.OWNER` or `Role.BILLING_ADMIN` — the set a tenant's billing owner must
-    belong to (`BILLING_CAPABLE_ROLES`).
+    belong to (`BILLING_CAPABLE_ROLES`). [folded foundation-version 53]
 
 Least-sure flag surfaced at freeze: [spec] attribution is a LIVE read-side join
   (`tenant_id -> tenants.billing_owner_user_id`), not a point-in-time snapshot on each invoice/credit

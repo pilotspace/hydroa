@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from gateway.agent_oauth.domain.entities import MintedAgentToken, MintedDeviceCodes
 from gateway.agent_oauth.domain.ports import AgentOAuthRepository
@@ -75,3 +77,66 @@ class AgentOAuthService:
             now=now,
         )
         return MintedAgentToken(access_token=access_token, refresh_token=refresh_token, token=token)
+
+
+class NotPreviewableError(Exception):
+    """The grant is not in a previewable state (pending AND non-expired).
+
+    Raised as ONE uniform outcome for EVERY non-pending / expired / unknown case
+    (device-activate-page §3 M7, R-B): preview must not be a validity oracle over the
+    short user_code space, so unknown / expired / approved / denied / consumed all map
+    here and the router returns one byte-identical 404. Carries no distinguishing detail.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceAuthorizationPreview:
+    """Server-known facts about a PENDING grant, shown to the human before approve/deny.
+
+    Only facts the server actually knows and can vouch for: scope, seconds-to-expiry,
+    the poll interval, and the SYSTEM default budget cap that will apply to a minted
+    token (agent_oauth_default_budget_usd — NOT an agent-specific budget; the data model
+    carries no per-agent identity/budget on a pending grant). No client-declared string
+    is ever surfaced (consent-phishing surface — device-activate-page §1 A1).
+    """
+
+    scope: str
+    expires_in: int
+    interval: int
+    default_budget_usd: str  # 2dp string, a system default cap (not agent-specific)
+
+
+class PreviewDeviceAuthorizationUseCase:
+    """Read-only, non-leaky peek at a PENDING device-authorization grant.
+
+    Reuses ``repository.get_by_user_code_hash`` (returns the row regardless of status) and
+    decides previewability HERE: facts are returned ONLY when status == 'pending' AND the
+    grant has not expired; every other state raises the single ``NotPreviewableError`` so
+    no distinction leaks. The failure direction is CLOSED (any non-pending → uniform error).
+    """
+
+    def __init__(
+        self, *, repo: AgentOAuthRepository, hasher: SecretHasher, default_budget_usd: Decimal
+    ) -> None:
+        self._repo = repo
+        self._hasher = hasher
+        self._default_budget_usd = default_budget_usd
+
+    async def execute(
+        self, *, user_code_normalized: str, now: datetime
+    ) -> DeviceAuthorizationPreview:
+        authorization = await self._repo.get_by_user_code_hash(
+            self._hasher.hash(user_code_normalized)
+        )
+        if authorization is None or authorization.status != "pending":
+            raise NotPreviewableError()
+        expires_in = int((authorization.expires_at - now).total_seconds())
+        if expires_in <= 0:
+            # Pending but past expiry — indistinguishable from every other non-pending state.
+            raise NotPreviewableError()
+        return DeviceAuthorizationPreview(
+            scope=authorization.scope,
+            expires_in=expires_in,
+            interval=authorization.interval_seconds,
+            default_budget_usd=f"{self._default_budget_usd:.2f}",
+        )

@@ -13,12 +13,13 @@
  */
 
 import { useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { bffGet, BffError } from "@/lib/bff-client";
-import { Loading, Empty, ErrorState, StatCard } from "@/components/ui";
+import { Loading, Empty, ErrorState, StatCard, Button } from "@/components/ui";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatUsd } from "@/lib/format";
 import { CreditsHistoryTable } from "./CreditsHistoryTable";
+import { AddCreditsDialog } from "@/components/checkout/AddCreditsDialog";
 
 interface CreditsBalance {
   tenant_id: string;
@@ -53,7 +54,15 @@ function buildHistoryQuery(cursor: string | undefined): string {
 
 export function CreditsPage() {
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined]);
+  const [addOpen, setAddOpen] = useState(false);
+  const queryClient = useQueryClient();
   const currentCursor = cursorStack[cursorStack.length - 1];
+
+  function handleTopupSuccess() {
+    // Refetch balance + every history page so the new top-up appears immediately.
+    void queryClient.invalidateQueries({ queryKey: ["admin-credits-balance"] });
+    void queryClient.invalidateQueries({ queryKey: ["admin-credits-history"] });
+  }
 
   const balanceQuery = useQuery<CreditsBalance>({
     queryKey: ["admin-credits-balance"],
@@ -79,7 +88,14 @@ export function CreditsPage() {
         title="Credits"
         titleId="credits-heading"
         description="Prepaid balance and top-up history for this tenant."
+        actions={
+          <Button type="button" onClick={() => setAddOpen(true)}>
+            Add credits
+          </Button>
+        }
       />
+
+      <AddCreditsDialog isOpen={addOpen} onClose={() => setAddOpen(false)} onSuccess={handleTopupSuccess} />
 
       {isLoading ? (
         <Loading label="Loading credits…" />

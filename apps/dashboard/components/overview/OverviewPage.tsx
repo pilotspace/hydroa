@@ -21,6 +21,7 @@ import { bffGet } from "@/lib/bff-client";
 import { cn } from "@/lib/cn";
 import { formatNumber, formatUsd, formatBucketLabel, formatCompact, formatTimestamp } from "@/lib/format";
 import { Loading, ErrorState } from "@/components/ui/states";
+import { OnboardingChecklist } from "./OnboardingChecklist";
 import {
   Card,
   CardContent,
@@ -198,6 +199,8 @@ export function OverviewPage() {
           ))}
         </div>
       </div>
+
+      <OnboardingChecklist />
 
       <section aria-label="Key metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

@@ -61,6 +61,7 @@ from gateway.core.error_catalog import (
     PLAN_TENANT_INELIGIBLE,
     TENANT_NOT_FOUND,
 )
+from gateway.tenants.application.plan_assignment import assign_plan
 from gateway.tenants.domain.authz import authorize_tenant_scope, require_superadmin
 from gateway.tenants.domain.entities import Identity, Plan
 from gateway.tenants.infrastructure.orm import PlanRow, TenantRow
@@ -278,11 +279,11 @@ async def put_platform_tenant_plan(
             # seat_cap at this moment — never left at a stale prior plan's value.
             resolved_seat_cap = plan_row.seat_cap
 
-    old_plan_id = tenant_row.plan_id
-    old_seat_cap = tenant_row.seat_cap
-
-    tenant_row.plan_id = body.plan_id
-    tenant_row.seat_cap = resolved_seat_cap
+    # I1 extraction (self-serve-checkout §3, M8): the plan/seat_cap write now goes through
+    # the SHARED assign_plan use-case that self-serve checkout also calls — never a second,
+    # parallel write path. Behavior is byte-identical (same two attributes set on the same
+    # live TenantRow, same immediate commit, same audit values).
+    assignment = assign_plan(tenant_row, plan_id=body.plan_id, seat_cap=resolved_seat_cap)
     await session.commit()
 
     await emit_platform_audit(
@@ -293,10 +294,14 @@ async def put_platform_tenant_plan(
         target_type="plan",
         target_id="assignment",
         metadata={
-            "old_plan_id": str(old_plan_id) if old_plan_id is not None else None,
-            "new_plan_id": str(body.plan_id) if body.plan_id is not None else None,
-            "old_seat_cap": old_seat_cap,
-            "new_seat_cap": resolved_seat_cap,
+            "old_plan_id": (
+                str(assignment.old_plan_id) if assignment.old_plan_id is not None else None
+            ),
+            "new_plan_id": (
+                str(assignment.new_plan_id) if assignment.new_plan_id is not None else None
+            ),
+            "old_seat_cap": assignment.old_seat_cap,
+            "new_seat_cap": assignment.new_seat_cap,
         },
     )
     return TenantPlanResponse(

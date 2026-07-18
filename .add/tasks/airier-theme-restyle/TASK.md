@@ -226,9 +226,9 @@ Watch: on future dashboard PRs, re-run the axe capture (regression guard on the 
   on memory/vision, heading-order on routing/plans) — out of scope for a color/type restyle (evidence: axe re-run).
 
 ### Competency deltas
-- [UDD · open] a green `next build` proves compilation, NOT that a font/theme applies — verify computed style on a
+- [UDD · folded] a green `next build` proves compilation, NOT that a font/theme applies — verify computed style on a [folded foundation-version 53]
   LIVE render (evidence: Geist fell back to ui-sans-serif while the build was green; caught only by a playwright probe).
-- [UDD · open] an accent hue that works as a solid FILL can fail AA as TEXT on its own soft tint — give accent-as-text
+- [UDD · folded] an accent hue that works as a solid FILL can fail AA as TEXT on its own soft tint — give accent-as-text [folded foundation-version 53]
   its own AA-safe token (evidence: #2f6df0 on #eef3fe = 4.14:1, failed on ~30 routes via the shared active-nav).
-- [ADD · open] Tailwind v4 `@theme inline` output is UNLAYERED and beats `@layer base :root`; a same-name
+- [ADD · folded] Tailwind v4 `@theme inline` output is UNLAYERED and beats `@layer base :root`; a same-name [folded foundation-version 53]
   self-reference collapses to empty (evidence: --font-sans: var(--font-sans) dropped Geist — [[tailwind-v4-font-token-collision]]).

@@ -444,6 +444,46 @@ class Settings(BaseSettings):
     # defaults ON at 60s. 0 disables the background task entirely.
     credits_recovery_sweep_interval_seconds: int = Field(default=60)
 
+    # ── Self-serve checkout / payment provider (self-serve-checkout TASK.md §3) ──
+    # GATEWAY_PAYMENT_PROVIDER — 'dev' (DEFAULT, auto-succeeds, no outbound IO) or 'stripe'
+    # (config-gated hosted checkout). Selecting 'stripe' with an empty/whitespace api key is
+    # a BOOT ERROR (see _validate_payment_provider below, mirroring _validate_otel_config).
+    # An absent stripe key = stripe disabled, dev used.
+    payment_provider: str = "dev"  # GATEWAY_PAYMENT_PROVIDER
+    # GATEWAY_PAYMENT_STRIPE_API_KEY — Stripe secret key. Treated as a secret; never logged.
+    payment_stripe_api_key: str = ""
+    # GATEWAY_PAYMENT_STRIPE_BASE_URL — Stripe API base; override in e2e overlays to a stub.
+    payment_stripe_base_url: str = "https://api.stripe.com"
+    # GATEWAY_PAYMENT_STRIPE_TIMEOUT_SECONDS — per-call bounded timeout (M12).
+    payment_stripe_timeout_seconds: float = Field(default=10.0, gt=0)
+    # GATEWAY_PAYMENT_STRIPE_MAX_RETRIES — bounded retry attempts after the first (M12).
+    payment_stripe_max_retries: int = Field(default=2, ge=0, le=5)
+    # GATEWAY_PAYMENT_STRIPE_BREAKER_FAILURE_THRESHOLD / _COOLDOWN_SECONDS — circuit breaker
+    # (M12); mirror proxy/infrastructure/circuit_breaker.py's own defaults (5 / 30s).
+    payment_stripe_breaker_failure_threshold: int = Field(default=5, ge=1)
+    payment_stripe_breaker_cooldown_seconds: float = Field(default=30.0, gt=0)
+    # GATEWAY_PAYMENT_CHECKOUT_ENABLED — kill switch (M11); default ON. When OFF the
+    # /admin/checkout/* endpoints reject cleanly (403 checkout_disabled) with no mutation.
+    payment_checkout_enabled: bool = Field(default=True)
+    # GATEWAY_PAYMENT_TOPUP_MAX_USD — self-serve credit-topup ceiling (A7). Must be a finite,
+    # positive USD amount (validated below); `amount_exceeds_max` fires above it.
+    payment_topup_max_usd: Decimal = Field(default=Decimal("10000"))
+
+    @field_validator("payment_topup_max_usd", mode="before")
+    @classmethod
+    def _validate_topup_max(cls, v: object) -> object:
+        """A7: the self-serve top-up ceiling must be a finite, positive USD amount."""
+        try:
+            d = Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return v  # not parseable — let Pydantic raise its normal decimal error
+        if not d.is_finite() or d <= 0:
+            raise ValueError(
+                "INVALID_PAYMENT_TOPUP_MAX_USD: GATEWAY_PAYMENT_TOPUP_MAX_USD must be a "
+                f"finite, positive USD amount; got {v!r}"
+            )
+        return v
+
     # GATEWAY_STT_MAX_DURATION_SECONDS — upper clamp (seconds) on a billed STT per_second
     # duration. A corrupt/lying audio header (or a lying upstream body["duration"]) can
     # over-derive an absurd duration → over-bill; the resolved duration is clamped to this
@@ -825,6 +865,45 @@ class Settings(BaseSettings):
     # GATEWAY_OBJECT_STORE_MAX_RETRIES — bounded retry for IDEMPOTENT reads only (0 = off).
     object_store_max_retries: int = Field(default=2, ge=0)
 
+    # ── Transactional email (transactional-email) — EmailSender adapter selection ──
+    # Unset (default) -> ConsoleEmailSender (logs the rendered mail, no real delivery).
+    # email_smtp_enabled=True -> SmtpEmailSender, boot-validated below (host + dashboard
+    # origin required; see _validate_email_smtp_config). Mirrors object_store's own
+    # bool-gate + field-group + honest-degrade-default shape exactly.
+    email_smtp_enabled: bool = False  # GATEWAY_EMAIL_SMTP_ENABLED
+    email_smtp_host: str = ""  # GATEWAY_EMAIL_SMTP_HOST
+    email_smtp_port: int = 587  # GATEWAY_EMAIL_SMTP_PORT
+    email_smtp_username: str = ""  # GATEWAY_EMAIL_SMTP_USERNAME
+    # GATEWAY_EMAIL_SMTP_PASSWORD — masked at rest; never logged/repr'd.
+    email_smtp_password: SecretStr = SecretStr("")
+    email_smtp_use_tls: bool = True  # GATEWAY_EMAIL_SMTP_USE_TLS (STARTTLS, port 587)
+    email_smtp_from_address: str = "no-reply@hydroa.local"  # GATEWAY_EMAIL_SMTP_FROM_ADDRESS
+    # GATEWAY_EMAIL_SMTP_TIMEOUT_SECONDS — explicit smtplib socket timeout. Never a hang.
+    email_smtp_timeout_seconds: float = Field(default=5.0, gt=0)
+    # GATEWAY_EMAIL_SMTP_MAX_RETRIES — bounded retry for transient/connection errors only.
+    email_smtp_max_retries: int = Field(default=2, ge=0)
+    # GATEWAY_DASHBOARD_PUBLIC_ORIGIN — the dashboard's public origin, used to build an
+    # absolute invite-accept link server-side (f"{origin}/invite/{token}"). Empty (default)
+    # + SMTP disabled never boot-errors — render_invite_email falls back to a relative
+    # "/invite/{token}" link for the console adapter's log line.
+    dashboard_public_origin: str = ""  # GATEWAY_DASHBOARD_PUBLIC_ORIGIN
+
+    @model_validator(mode="after")
+    def _validate_email_smtp_config(self) -> "Settings":
+        """If email_smtp_enabled=True, host + dashboard_public_origin must be non-empty
+        (startup guard — mirrors _validate_otel_config's exact shape). A delivery of a
+        link nobody can build server-side must never be silently sent broken.
+        """
+        if self.email_smtp_enabled and not self.email_smtp_host:
+            raise ValueError(
+                "GATEWAY_EMAIL_SMTP_HOST must be set when GATEWAY_EMAIL_SMTP_ENABLED=true"
+            )
+        if self.email_smtp_enabled and not self.dashboard_public_origin:
+            raise ValueError(
+                "GATEWAY_DASHBOARD_PUBLIC_ORIGIN must be set when GATEWAY_EMAIL_SMTP_ENABLED=true"
+            )
+        return self
+
     # ── Realtime WebSocket voice endpoint (/v1/realtime) ─────────────────────
     # GATEWAY_REALTIME_AUTH_TIMEOUT_SECONDS — how long the server waits for the
     # first {"type":"auth"} frame before closing with code 4408.  ge=0 allows
@@ -984,6 +1063,16 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _validate_payment_provider(self) -> "Settings":
+        """M10: selecting stripe with an empty/whitespace api key is a boot error
+        (mirrors _validate_otel_config). An absent key = stripe disabled, dev used."""
+        if self.payment_provider == "stripe" and not self.payment_stripe_api_key.strip():
+            raise ValueError(
+                "GATEWAY_PAYMENT_STRIPE_API_KEY must be set when GATEWAY_PAYMENT_PROVIDER=stripe"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _forbid_dev_secret_outside_dev(self) -> "Settings":
         if self.environment not in ("dev", "test") and self.jwt_secret == _DEV_JWT_SECRET:
             raise ValueError(
@@ -992,9 +1081,14 @@ class Settings(BaseSettings):
         return self
 
     # ── Agent OAuth device-authorization endpoint (device-authorization-endpoint task) ──
-    # GATEWAY_AGENT_OAUTH_VERIFICATION_URI — dashboard URL shown to the human approver.
-    # Empty string = unconfigured (verification_uri_complete is omitted from the 200 body).
-    agent_oauth_verification_uri: str = ""  # GATEWAY_AGENT_OAUTH_VERIFICATION_URI
+    # GATEWAY_AGENT_OAUTH_VERIFICATION_URI — the RFC 8628 absolute page URL the human
+    # visits to approve (the dashboard /activate screen). Non-empty by DEFAULT (dev origin)
+    # so verification_uri + verification_uri_complete are populated out of the box
+    # (device-activate-page §3 M8). A prod boot-guard (_validate_verification_uri, below)
+    # refuses an empty / localhost / non-https value when environment is not dev/test.
+    agent_oauth_verification_uri: str = (
+        "http://localhost:3000/activate"  # GATEWAY_AGENT_OAUTH_VERIFICATION_URI
+    )
     # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS — how long a pending device_code lives.
     # Must be > 0; fails fast at boot when set to 0 or negative.
     agent_oauth_device_code_ttl_seconds: int = 600  # GATEWAY_AGENT_OAUTH_DEVICE_CODE_TTL_SECONDS
@@ -1010,6 +1104,11 @@ class Settings(BaseSettings):
     # (requests/60 s). Bounds user_code enumeration by an authenticated actor. Must be > 0;
     # fails fast at boot when set to 0 or negative. (device-approval-flow task §3)
     agent_oauth_approve_rpm: int = 30  # GATEWAY_AGENT_OAUTH_APPROVE_RPM
+    # GATEWAY_AGENT_OAUTH_PREVIEW_RPM — per-USER fixed-window rate limit on the /activate
+    # PREVIEW read (requests/60 s, key "preview:{user_id}"). A DEDICATED knob so page-load
+    # previews never exhaust the approve/deny allowance (device-activate-page §3 A5). Must
+    # be > 0; fails fast at boot when set to 0 or negative.
+    agent_oauth_preview_rpm: int = 30  # GATEWAY_AGENT_OAUTH_PREVIEW_RPM
 
     # ── Agent OAuth token endpoint (agent-token-endpoint task) ──────────────────
     # GATEWAY_AGENT_OAUTH_ACCESS_TOKEN_TTL_SECONDS — lifetime of a minted access token.
@@ -1061,6 +1160,7 @@ class Settings(BaseSettings):
         "agent_oauth_poll_interval_seconds",
         "agent_oauth_authorize_rpm",
         "agent_oauth_approve_rpm",
+        "agent_oauth_preview_rpm",
         "agent_oauth_access_token_ttl_seconds",
         "agent_oauth_token_rpm",
     )
@@ -1077,10 +1177,42 @@ class Settings(BaseSettings):
             raise ValueError(
                 "INVALID_AGENT_OAUTH_KNOB: agent_oauth_device_code_ttl_seconds, "
                 "agent_oauth_poll_interval_seconds, agent_oauth_authorize_rpm, "
+                "agent_oauth_approve_rpm, agent_oauth_preview_rpm, "
                 "agent_oauth_access_token_ttl_seconds, and agent_oauth_token_rpm "
                 f"must each be a positive integer (> 0); got {v!r}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_verification_uri(self) -> "Settings":
+        """Refuse an unsafe agent_oauth_verification_uri outside dev/test.
+
+        The verification_uri is the absolute page URL an agent embeds in its device-flow
+        instructions and the human visits to approve (device-activate-page §3 M9, R-C).
+        The dev default points at localhost, which is correct for dev/test but a silent
+        footgun in production: an agent would tell users to visit localhost. So, exactly
+        like the line-988 jwt_secret guard, a NON-dev/test environment must set an
+        explicit, https, non-localhost URL — otherwise the process refuses to start.
+
+        Fails CLOSED: empty, localhost/127.0.0.1 host, or non-https scheme → boot error.
+        """
+        if self.environment in ("dev", "test"):
+            return self
+
+        from urllib.parse import urlsplit
+
+        uri = self.agent_oauth_verification_uri
+        parts = urlsplit(uri)
+        host = (parts.hostname or "").lower()
+        unsafe = uri == "" or parts.scheme != "https" or host in ("localhost", "127.0.0.1", "::1")
+        if unsafe:
+            raise ValueError(
+                "INVALID_AGENT_OAUTH_VERIFICATION_URI: "
+                "GATEWAY_AGENT_OAUTH_VERIFICATION_URI must be a non-empty, https, "
+                "non-localhost absolute URL when GATEWAY_ENVIRONMENT is not dev/test "
+                f"(the human-facing device-approval page); got {uri!r}"
+            )
+        return self
 
     @field_validator("agent_oauth_refresh_token_ttl_seconds")
     @classmethod

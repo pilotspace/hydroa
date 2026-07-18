@@ -54,6 +54,65 @@ import { resilientFetch, BffError, type ProblemDetail } from "./resilient-fetch"
 export { BffError };
 export type { ProblemDetail };
 
+/**
+ * Build the `/login?next=<encoded>` bounce URL preserving the caller's return path
+ * (device-activate-page M1). Defined in this low BFF layer so the 401 bounce below and
+ * the /activate page + login page share ONE implementation (with sanitizeNext/loginNextTarget).
+ * Never preserves an already-`/login` location (avoids a redirect loop).
+ */
+export function buildLoginBounceUrl(pathAndSearch: string): string {
+  // Preserve ONLY a meaningful, same-origin, non-root, non-login return path. An empty,
+  // root ("/"), scheme-relative ("//host"), already-/login, or non-string value yields a
+  // bare "/login" — there is nothing worth returning to (and no open-redirect surface).
+  if (
+    typeof pathAndSearch !== "string" ||
+    !pathAndSearch.startsWith("/") ||
+    pathAndSearch.startsWith("//") ||
+    pathAndSearch.startsWith("/login") ||
+    pathAndSearch === "/"
+  ) {
+    return "/login";
+  }
+  return `/login?next=${encodeURIComponent(pathAndSearch)}`;
+}
+
+/** Default post-login destination when no valid same-origin `next` is present. */
+export const DEFAULT_POST_LOGIN = "/app/keys";
+
+// Reject CR/LF/tab/other control chars (0x00-0x1f, 0x7f) — header/redirect smuggling
+// vectors. A char-code scan avoids embedding raw control bytes in this source file.
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c <= 0x1f || c === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Open-redirect guard (device-activate-page R-D): return `raw` ONLY when it is a
+ * same-origin RELATIVE path, else null. Rejects absolute URLs, scheme-relative `//host`,
+ * any backslash (browsers normalize `\` -> `/`, so `/\evil` becomes `//evil`), a
+ * leading-whitespace-smuggled scheme, embedded control chars, and anything not rooted at `/`.
+ * Lives beside buildLoginBounceUrl so all /login redirect-safety logic is in one place.
+ */
+export function sanitizeNext(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  if (raw.includes("\\")) return null; // backslash-smuggled -> normalizes to //host
+  if (!raw.startsWith("/")) return null; // must be rooted-relative (rejects scheme, ws-smuggle)
+  if (raw.startsWith("//")) return null; // scheme-relative -> off-origin
+  if (hasControlChar(raw)) return null; // CR/LF/tab/control smuggling
+  return raw;
+}
+
+/** The validated post-login destination: a same-origin `next`, else the default. */
+export function loginNextTarget(
+  rawNext: string | null | undefined,
+  fallback: string = DEFAULT_POST_LOGIN,
+): string {
+  return sanitizeNext(rawNext) ?? fallback;
+}
+
 async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Promise<T> {
   if (res.status === 401 && !isAuthEndpoint) {
     let body: ProblemDetail;
@@ -74,7 +133,12 @@ async function handleBffResponse<T>(res: Response, isAuthEndpoint = false): Prom
       typeof window !== "undefined" &&
       (bodyCode === "ERR_AUTH_SESSION_EXPIRED" || bodyCode === "ERR_AUTH_NO_SESSION")
     ) {
-      window.location.href = "/login";
+      // Preserve the current path+search so login can return the user here (e.g. an
+      // in-flight /activate preview that hit an expired session). Defensive `?? ""` —
+      // some environments expose a partial location; buildLoginBounceUrl falls back to a
+      // bare "/login" for any non-meaningful path. login re-validates via sanitizeNext.
+      const returnTo = `${window.location.pathname ?? ""}${window.location.search ?? ""}`;
+      window.location.href = buildLoginBounceUrl(returnTo);
     }
     throw new BffError(401, body);
   }

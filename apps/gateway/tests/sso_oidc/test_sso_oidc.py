@@ -1051,12 +1051,16 @@ async def test_session_cookie_attributes() -> None:
     await bootstrap_app.state.engine.dispose()
 
     # Use environment="production" to trigger Secure flag
+    # SANCTIONED EDIT (device-activate-page manifest maintenance, 2026-07-18): a production
+    # Settings now requires a non-localhost https device-approval page URL
+    # (_validate_agent_oauth_verification_uri); supplied so create_app boots under production.
     oidc_settings = Settings(
         database_url=_redis_env.TEST_DATABASE_URL,
         jwt_secret=TEST_JWT_SECRET,
         redis_url=_redis_env.TEST_REDIS_URL,
         public_signup_enabled=True,  # signup-and-routing-authz S1: this suite bootstraps via signup
         environment="production",
+        agent_oauth_verification_uri="https://app.hydroa.example/activate",
         oidc_enabled=True,
         oidc_issuer=FAKE_ISSUER,
         oidc_client_id=FAKE_CLIENT_ID,

@@ -14,7 +14,15 @@ def test_production_refuses_dev_jwt_secret() -> None:
 
 
 def test_production_boots_with_real_secret() -> None:
-    s = Settings(environment="production", jwt_secret="a" * 48)
+    # SANCTIONED EDIT (device-activate-page manifest maintenance, 2026-07-18): a production
+    # Settings now also requires a non-localhost https device-approval page URL
+    # (_validate_agent_oauth_verification_uri). Supplied so a valid production config boots;
+    # this test's assertion (production boots with a real jwt secret) is unchanged.
+    s = Settings(
+        environment="production",
+        jwt_secret="a" * 48,
+        agent_oauth_verification_uri="https://app.hydroa.example/activate",
+    )
     assert s.environment == "production"
 
 

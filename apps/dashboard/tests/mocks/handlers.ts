@@ -119,4 +119,12 @@ export const defaultHandlers = [
   http.get(`${APP}/api/gw/admin/service-tiers`, () =>
     HttpResponse.json({ default_tier: "standard", priority_markup_pct: "25" })
   ),
+
+  // self-serve-plans-catalog (M4): PlanSeatsPage now fires GET /admin/plans unconditionally
+  // (its own independent read feeding the Upgrade dialog's live menu). MUST be an INITIAL
+  // handler (not a runtime server.use) for the same reason as residency-policy/service-tiers
+  // above — resetHandlers() must preserve it so every existing PlanSeatsPage render (e.g.
+  // tests/billing-plan.test.tsx) stays green untouched. Default = empty catalog; tests
+  // asserting live-menu content override per scenario.
+  http.get(`${APP}/api/gw/admin/plans`, () => HttpResponse.json({ plans: [] })),
 ];

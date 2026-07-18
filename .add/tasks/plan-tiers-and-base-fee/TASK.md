@@ -415,7 +415,7 @@ Glossary deltas:
     (enterprise/unplanned).
   5-tier catalog: free/starter/pro (personal) + team/enterprise (business) — supersedes the 3-tier
     starter/team/enterprise catalog and the transient post-task-1 4-row state (adds `free`, renames
-    `individual`→`pro`).
+    `individual`→`pro`). [folded foundation-version 53]
 
 Least-sure flag surfaced at freeze: [spec] the /pricing no-drift binding mechanism (§1 ⚠) — a NEW shared
   TS constants module + a test asserting it against HARDCODED expected figures (dashboard tests can't

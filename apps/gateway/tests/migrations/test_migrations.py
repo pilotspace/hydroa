@@ -75,6 +75,7 @@ EXPECTED_TABLES = frozenset(
         "agent_principals",  # SANCTIONED EDIT — agent-identity-governance TASK.md §3 manifest maintenance; disposition: additive migration 9cb98362515f adds this table
         "tenant_report_schedules",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
         "compliance_report_runs",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
+        "checkout_sessions",  # SANCTIONED EDIT — self-serve-checkout TASK.md §3 manifest maintenance; disposition: additive migration b7e2c4a9f1d3 adds this table (plans.self_serve/audience are additive COLUMNS, no new table)
     }
 )
 
@@ -272,6 +273,12 @@ async def test_create_all_skipped_under_production_env() -> None:
         environment="production",
         database_url="postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test",
         jwt_secret="prod-secret-that-is-not-the-dev-default-xyzzy",
+        # SANCTIONED EDIT (self-serve/device-activate-page manifest maintenance, 2026-07-18):
+        # a production Settings now requires a non-localhost https device-approval page URL
+        # (device-activate-page's _validate_agent_oauth_verification_uri boot-guard). Supplied
+        # here so the Settings construction succeeds — this test's assertion (create_all is
+        # skipped under production) is unrelated to the URI.
+        agent_oauth_verification_uri="https://app.hydroa.example/activate",
     )
 
     with patch("gateway.core.db.Base.metadata") as mock_metadata:

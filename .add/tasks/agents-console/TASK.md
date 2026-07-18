@@ -633,7 +633,7 @@ Glossary deltas:
   drawer idiom, scoped (imprecisely, pending CR-C) to MCP tool-call trace rows.
 - No new backend domain term is introduced by this task (it is presentation-only); the three
   glossary deltas already recorded by its parent contracts (agent principal, MCP allow-list,
-  tool-call pricing unit) are unchanged.
+  tool-call pricing unit) are unchanged. [folded foundation-version 53]
 
 **Freeze decisions (Tin-confirmed 2026-07-14):**
 - [x] Nav placement: inside the existing **"Govern"** group (§1 ⚠ #3 — "Govern group").

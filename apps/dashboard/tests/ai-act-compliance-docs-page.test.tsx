@@ -46,12 +46,15 @@ describe("test_docs_page_carries_real_content", () => {
     expect(target).toBeTruthy();
   });
 
-  it("the other 4 existing docs categories remain untouched 'coming soon' stubs", () => {
+  it("the remaining docs categories stay untouched 'coming soon' stubs", () => {
+    // Superseded by activation-quickstart §3 M8 (FROZEN 2026-07-17): the
+    // "Quickstart" entry gained a real href (/docs/quickstart) via the same
+    // disclosed carve-out precedent this suite itself established — 4 → 3 stubs.
     render(<DocsPage />);
     const comingSoonLinks = screen
       .getAllByRole("link")
       .filter((l) => l.getAttribute("href") === "#coming-soon");
-    expect(comingSoonLinks.length).toBe(4);
+    expect(comingSoonLinks.length).toBe(3);
   });
 });
 

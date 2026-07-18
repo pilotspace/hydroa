@@ -201,7 +201,7 @@ Behavior:
 ```
 
 Glossary deltas: account_type: the personal|business flavor of a customer tenant, set at signup; NULL on
-  the reserved platform tenant. A personal account is a 1-member OWNER tenant on the individual plan.
+  the reserved platform tenant. A personal account is a 1-member OWNER tenant on the individual plan. [folded foundation-version 53]
 Least-sure flag surfaced at freeze: [spec] default `account_type="business"` on an omitted signup field
   (§1 ⚠) — a product-framing call; chosen for backward-compat (every existing signup path already makes an
   org/OWNER tenant). Low-cost/reversible if the product wants personal-default later.
