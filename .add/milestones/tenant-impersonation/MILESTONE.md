@@ -3,6 +3,7 @@
 goal: A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record
 rationale: part of the "Full 5, admin-first" superadmin/platform-tenant roadmap (see `platform-identity`/`platform-admin-console`), sequenced third. Sized alongside `team-member-invite`/`platform-access-plan` per Tin's 2026-07-03 instruction to build in parallel.
 stage: production · status: active · created: 2026-07-02T15:53:53+00:00
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

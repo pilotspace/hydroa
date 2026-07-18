@@ -11,6 +11,7 @@ rationale: sub-milestone — milestone 2 of 5 in the confirmed "Full 5, admin-fi
   cross-tenant variant, rather than inventing a parallel surface. Unblocks tenant-impersonation
   (milestone 3), which plugs an "act as" action into this console's tenant-detail view.
 stage: production · status: active · created: 2026-07-02T15:53:53+00:00
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

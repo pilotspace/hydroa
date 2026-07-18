@@ -3,7 +3,7 @@
 goal: Every dashboard surface (all 45 routes, public + authed, light + dark) reads as a polished, professional enterprise AI-SaaS console — the Tin-locked "Airier" direction — with real design-system typography and a WCAG-AA floor, driven from the shared token layer rather than per-page edits.
 rationale: sub-milestone (production stage). A whole-app presentation restyle triggered by the standing UI/UX polish bar (user-facing surfaces get the UDD design loop, never bare CRUD) + the aifeature-usable bar; Tin pre-approved this exact scope and locked the captured screen before build.
 stage: production · status: active · created: 2026-07-17T06:35:03+00:00
-release: pending
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN.
 

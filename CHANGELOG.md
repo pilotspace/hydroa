@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.10.0 — 2026-07-18 — Self-serve commercial platform
+
+Bundles eight milestones closed since 0.9.0 — the tenant lifecycle goes fully
+self-serve (signup → first call → invite → agent approval → paid upgrade) on a
+DB-backed model catalog, a restyled dashboard, and a hardened platform-admin /
+impersonation surface.
+
+### Added
+- **Self-serve activation & transaction** (commercial-self-serve): signup
+  `account_type`→Free-plan wiring, post-key quickstart panel + onboarding
+  checklist, `EmailSender` port (console/SMTP) with fire-and-forget invite
+  delivery, `/activate` device-approval page over the existing device flow
+  (uniform-404 preview endpoint + production verification-URI boot-guard), and a
+  `PaymentProvider` checkout seam (dev adapter default-on, stripe config-gated)
+  for tenant-scoped plan upgrades + credit top-ups reusing the superadmin domain
+  ops, plus a tenant self-serve plans catalog feeding the live upgrade menu.
+- **DB-backed model catalog** (model-catalog-db): SQL-seeded catalog (34 rows)
+  with an async provider-refresh scheduler, replacing the static in-code list.
+- **Platform Admin Console** (platform-admin-console): superadmin operations
+  console with a components registry.
+- **Tenant Impersonation** (tenant-impersonation): audited, time-boxed superadmin
+  impersonation session lifecycle.
+- **Platform Access Subscription Plan** (platform-access-plan): plan-tier rate
+  enforcement across the gateway.
+- **Team Member Invite** (team-member-invite): tenant member invitation flow.
+- **Platform Key Default Credential** (platform-key-default): keyless tenants fall
+  back to the platform tenant's BYOK credential (own-key always wins, default-on
+  with a kill switch) + a `credential_source` usage marker.
+
+### Changed
+- **Dashboard "Airier" restyle** (dashboard-hallmark-restyle): whole-dashboard
+  visual identity — Geist / Geist Mono + azure/graphite tokens across 45 routes,
+  light + dark, driven from the token layer; fixed a Tailwind v4 font-token
+  collision and 20 AA-contrast violations (new `--accent-soft-foreground`).
+
+### Fixed
+- Cross-task schema-manifest + production boot-guard drift surfaced by the
+  pre-close full-suite sweep (new `checkout_sessions` table added to both table
+  manifests; three pre-existing production-`Settings()` tests updated for the new
+  device verification-URI boot-guard) — additive, no assertion weakened.
+
+### Security
+- Two security-classified milestones dual/triple adversarially verified
+  (device-activate-page ×2, self-serve-checkout ×3) — all EARNED / CLEAR, zero
+  open HARD-STOP. Disclosed fail-closed follow-up (rides as a tracked delta,
+  non-blocking): the self-serve credit top-up threads the tenant `idempotency_key`
+  into the global credit-ledger index — a fail-closed cross-tenant existence
+  oracle, non-exploitable with the client's UUID keys; scheduled for an M3
+  contract change-request to a session-scoped key.
+
+### Evidence
+- 8 milestones / ~30 tasks gated PASS, all merged to `main` (PRs #76 #77 #79 +
+  earlier). Full bundle suite green: gateway ~4031 tests, dashboard 1505 (13
+  pre-existing Airier design-token failures ride as disclosed backlog). 0 blockers,
+  0 waivers. 20 open SPEC deltas ride as disclosed backlog (precedent: 0.8.0 rode
+  15, 0.7.0 ~220). Merged past the org-billing 0-step CI via admin-merge on local
+  suite evidence.
+
 ## 0.9.0 — 2026-07-14
 
 - Agent-era gateway — MCP governance, tool metering, Messages ingress — 0 carried · 0 key decision(s)

@@ -3,7 +3,7 @@
 goal: A tenant can activate and transact with Hydroa entirely self-serve — the signup→first-call→invite→agent-approval→upgrade journey completes with zero platform-operator intervention.
 rationale: new-major (Tin-confirmed 2026-07-17: "kick off new milestone then implement all enhancement of it in parallel"). Source: the code-grounded UX research P0 set (artifact 2026-07-17) — the commercial/activation layer is the professionalization gap while the data plane is already enterprise-grade. Relationship: EXTENDS account-tiers-billing (makes the shipped 5-tier plan catalog purchasable) · EXTENDS team-member-invite (adds email delivery to the shipped copy-link invites) · EXTENDS agent-gateway-v1 (gives the shipped RFC 8628 device flow its missing human approval surface) · does NOT overlap enterprise-domain-onboarding (domain-claims console stays there).
 stage: production · status: active · created: 2026-07-17T14:32:21+00:00
-release: pending
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

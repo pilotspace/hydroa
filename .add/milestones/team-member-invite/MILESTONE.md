@@ -3,7 +3,7 @@
 goal: A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password — without requiring SSO/domain-mapping to be configured
 rationale: new-major — a confirmed, previously-unaddressed gap: password-auth tenants have ZERO path to add a colleague short of configuring OIDC domain-mapping (`POST /admin/auth/signup` always mints a brand-new tenant; the Teams "add member" dialog only resolves an email ALREADY in the caller's tenant). Sized as its own milestone — not a sub-part of the "Full 5, admin-first" superadmin roadmap, since it is core tenant self-service, not a platform/superadmin capability — per Tin's 2026-07-03 instruction to build it in parallel with `tenant-impersonation`/`platform-access-plan`.
 stage: production · status: active · created: 2026-07-03T16:21:50+00:00
-release: pending
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

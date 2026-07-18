@@ -3,7 +3,7 @@
 goal: The model catalog + pricing live in the DB as the source of truth (seed migration replaces in-code static seeds), refreshed on a schedule by an in-process asyncio sweeper
 rationale: sub-milestone (Tin-confirmed 2026-07-16) — the in-code static seed constants (MINIMAX/GPT_REALTIME/BEDROCK/VERTEX/OPENAI seeds) become a DB SQL seed migration (source of truth), then a scheduler re-runs SyncCatalogUseCase periodically to keep it current. Split B1 (seed) + B2 (scheduled refresh) per Tin. NOTE: B2's mechanism was changed from Celery worker+beat to an asyncio lifespan sweeper (Tin change-request 2026-07-16) — celery/kombu caps redis<6.5 but the repo runs redis 8.x; see `.add/tasks/catalog-celery-refresh/TASK.md` ⚠ CHANGE-REQUEST v2.
 stage: production · status: active · created: 2026-07-16T09:47:52+00:00
-release: pending
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

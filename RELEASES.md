@@ -1,5 +1,12 @@
 # Releases
 
+## 0.10.0 — 2026-07-18
+milestones: platform-admin-console, tenant-impersonation, platform-access-plan, team-member-invite, platform-key-default, model-catalog-db, dashboard-hallmark-restyle, commercial-self-serve
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: 8 milestones/~30 tasks gated PASS, all merged to main (PRs #76 #77 #79 + earlier); full bundle suite green: gateway ~4031, dashboard 1505 (13 pre-existing Airier design-token failures ride as disclosed backlog); 2 security milestones dual/triple adversarially verified (device x2, checkout x3) all EARNED/CLEAR; 0 HARD-STOP blockers, 0 waivers; 20 open SPEC deltas ride as disclosed backlog (precedent: 0.8.0 rode 15, 0.7.0 ~220); disclosed fail-closed follow-up: checkout idempotency-namespace M3 contract-CR. Admin-merged past org-billing 0-step CI on local evidence.
+
 ## 0.9.0 — 2026-07-14
 milestones: agent-gateway-v1, eu-ai-act-readiness
 loose tasks: none

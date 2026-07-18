@@ -3,6 +3,7 @@
 goal: A tenant can subscribe to a metered, rate-limited, fully audited plan governing platform-tenant-backed usage
 rationale: part of the "Full 5, admin-first" superadmin/platform-tenant roadmap, sequenced fifth (after `platform-key-default`). Tin instructed sizing it NOW, in parallel with `tenant-impersonation`/`team-member-invite`, ahead of its original roadmap order — see the scope-reading decision below, which exists because of that reordering.
 stage: production · status: active · created: 2026-07-02T15:53:54+00:00
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

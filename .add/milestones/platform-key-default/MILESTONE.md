@@ -11,6 +11,7 @@ rationale: sub-milestone — milestone 4 of 5 in the confirmed "Full 5, admin-fi
   currently-frozen fail-closed invariant (`ports.py:536` "NEVER returns a platform key as a fallback"),
   which makes the core task security-sensitive (dual adversarial verify).
 stage: production · status: active · created: 2026-07-02T15:53:54+00:00
+release: 0.10.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,
