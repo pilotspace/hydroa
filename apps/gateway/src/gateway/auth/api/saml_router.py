@@ -117,7 +117,7 @@ async def saml_acs(
         raise SAML_REQUEST_NOT_FOUND.exc(detail="SAMLResponse form field is missing")
 
     try:
-        jwt_token, expires_in, redirect_path = await use_case.execute(
+        jwt_token, expires_in, redirect_path, newly_provisioned = await use_case.execute(
             saml_response_b64=saml_response_b64, relay_state=relay_state
         )
     except SamlRequestAlreadyUsedError as exc:
@@ -160,6 +160,13 @@ async def saml_acs(
         ) from exc
 
     secure = settings.environment != "dev"
+    # domain-auto-assign-login TASK.md §3 M3: signal a FIRST login (this ACS call
+    # JIT-provisioned the user) via ?joined=1 on the redirect — success path only;
+    # every error branch above raises before reaching this line. Query-safe append:
+    # respect any existing query string on the validated redirect path.
+    if newly_provisioned:
+        separator = "&" if "?" in redirect_path else "?"
+        redirect_path = f"{redirect_path}{separator}joined=1"
     response = RedirectResponse(url=redirect_path, status_code=302)
     response.set_cookie(
         key="ai_proxy_session",

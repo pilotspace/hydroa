@@ -125,6 +125,18 @@ def _decode_id_token_claims(id_token: str) -> dict[str, Any]:
 class OidcLoginUseCase:
     """Orchestrates the OIDC server-side authorization-code callback flow."""
 
+    # domain-auto-assign-login TASK.md §3 M1/M2 — the §3-sanctioned TRANSIENT-
+    # ATTRIBUTE carrier ("Build MAY instead carry the bit as a transient
+    # attribute... the observable contract is the ?joined param, not the
+    # tuple"): True IFF the LAST successful execute() JIT-provisioned a brand-
+    # new user. execute()'s (jwt_token, expires_in) return shape stays byte-
+    # identical because the FROZEN superadmin-audit suite
+    # (tests/superadmin_audit_foundation/test_part_c_oidc_login_audit.py)
+    # unpacks it as a 2-tuple at four sites. Read by oidc_router.oidc_callback
+    # AFTER execute() returns; class-level default False so a pre-execute read
+    # can never AttributeError.
+    newly_provisioned: bool = False
+
     def __init__(
         self,
         exchanger: OidcTokenExchanger,
@@ -207,6 +219,11 @@ class OidcLoginUseCase:
         cookie_nonce: str | None,
     ) -> tuple[str, int]:
         """Execute OIDC callback flow; returns (jwt_token, expires_in).
+
+        Side signal: sets self.newly_provisioned (True IFF this call JIT-
+        provisioned the user) for the router's ?joined=1 redirect param —
+        see the class-attribute note above for why it is not a third tuple
+        element.
 
         Raises:
             OidcInvalidCallbackError  — code or state param missing
@@ -355,8 +372,11 @@ class OidcLoginUseCase:
                     f"Email domain {domain!r} not in GATEWAY_OIDC_DOMAIN_MAPPING"
                 )
 
-        # Step 7: provision or look up user (ALWAYS role=member)
-        user = await self._repository.get_or_provision_oidc_user(
+        # Step 7: provision or look up user (ALWAYS role=member).
+        # domain-auto-assign-login TASK.md §3 M1: newly_provisioned is True IFF
+        # this call INSERTed the user — carried to the router (for ?joined=1)
+        # via the transient attribute, never the return tuple (frozen 2-tuple).
+        user, self.newly_provisioned = await self._repository.get_or_provision_oidc_user(
             email=email,
             tenant_id=mapped_tenant_id,
             password_hash=SSO_PASSWORD_HASH_SENTINEL,

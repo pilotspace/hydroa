@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "domain-routing-unification",
+  "active_task": "domain-auto-assign-login",
   "active_milestone": "enterprise-domain-onboarding",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1252,6 +1252,62 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "domain-auto-assign-login": {
+      "title": "Auto-assign MEMBER into the verified-domain tenant on SSO/first login + thread joined_existing_tenant through the BFF",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "enterprise-domain-onboarding",
+      "depends_on": [],
+      "created": "2026-07-18T14:57:25+00:00",
+      "updated": "2026-07-19T03:14:20+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "98a316aa7b33b637df3996d1aba47d7a",
+        "tests": {
+          "apps/gateway/tests/domain_auto_assign_login/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/domain_auto_assign_login/conftest.py": "c292aeb9424d1dd66e08fef00bdf9185",
+          "apps/gateway/tests/domain_auto_assign_login/test_domain_auto_assign_login.py": "35891f8f175d89d60bde9dde9c864578"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/auth/api/oidc_router.py",
+          "apps/gateway/src/gateway/auth/api/saml_router.py",
+          "apps/gateway/src/gateway/auth/application/use_cases.py",
+          "apps/gateway/src/gateway/auth/application/saml_use_cases.py",
+          "apps/gateway/src/gateway/tenants/infrastructure/repository.py",
+          "apps/gateway/src/gateway/tenants/domain/ports.py",
+          "apps/gateway/tests/domain_auto_assign_login/",
+          "apps/dashboard/app/api/auth/signup/route.ts",
+          "apps/dashboard/app/auth/saml/",
+          "apps/dashboard/app/auth/oidc/callback/route.ts",
+          "apps/dashboard/components/auth/",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/tests/"
+        ],
+        "snapshot_md5": "312ebfee2e29fb538306037e6ae0ca9a"
+      },
+      "heal": {
+        "attempts": 2,
+        "history": [
+          {
+            "at": "2026-07-19T03:06:43+00:00",
+            "reason": "scope_violation: task 'domain-auto-assign-login' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/api/auth/signup/route.ts \u00b7 apps/dashboard/app/auth/saml/callback/route.ts \u00b7 apps/dashboard/app/auth/saml/login/route.ts \u00b7 apps/dashboard/components/auth/LoginForm.tsx \u00b7 apps/dashboard/components/auth/SignupForm.tsx (18 total)",
+            "source": "scope"
+          },
+          {
+            "at": "2026-07-19T03:08:53+00:00",
+            "reason": "scope_violation: task 'domain-auto-assign-login' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/api/auth/signup/route.ts \u00b7 apps/dashboard/app/auth/saml/callback/route.ts \u00b7 apps/dashboard/app/auth/saml/login/route.ts \u00b7 apps/dashboard/components/auth/LoginForm.tsx \u00b7 apps/dashboard/components/auth/SignupForm.tsx (18 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1368,7 +1424,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-18T14:53:02+00:00",
+  "updated": "2026-07-19T03:14:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2393,7 +2449,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "enterprise-domain-onboarding": "domain-routing-unification"
+    "enterprise-domain-onboarding": "domain-auto-assign-login"
   },
   "todos": [
     {

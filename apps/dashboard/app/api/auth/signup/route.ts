@@ -52,6 +52,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(errorBody, { status: signupRes.status });
   }
 
+  // domain-auto-assign-login M4: forward joined_existing_tenant from the gateway
+  // SUCCESS body to the client. Design for failure: an absent/unparseable field
+  // defaults to false — the flag is a UI hint, never a signup blocker.
+  let joinedExistingTenant = false;
+  try {
+    const signupData = (await signupRes.json()) as { joined_existing_tenant?: unknown };
+    joinedExistingTenant = signupData.joined_existing_tenant === true;
+  } catch {
+    joinedExistingTenant = false;
+  }
+
   // Step 2: auto-login to get the JWT
   const loginRes = await fetch(`${gatewayUrl()}/admin/auth/login`, {
     method: "POST",
@@ -72,7 +83,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const data = (await loginRes.json()) as { access_token: string };
   const jwt = data.access_token;
 
-  const res = NextResponse.json({ ok: true }, { status: 201 });
+  const res = NextResponse.json(
+    { ok: true, joined_existing_tenant: joinedExistingTenant },
+    { status: 201 },
+  );
   res.headers.set("Set-Cookie", buildSessionCookieValue(jwt));
   return res;
 }

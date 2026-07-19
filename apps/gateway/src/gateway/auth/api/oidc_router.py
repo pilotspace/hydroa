@@ -354,6 +354,16 @@ async def oidc_callback(
     secure = settings.environment != "dev"
     post_login_redirect = settings.oidc_post_login_redirect
 
+    # domain-auto-assign-login TASK.md §3 M2: signal a FIRST login (this callback
+    # JIT-provisioned the user) via ?joined=1 on the redirect — success path only;
+    # every error branch above raises before reaching this line. The bit rides the
+    # use case's §3-sanctioned transient attribute (execute()'s 2-tuple return is
+    # pinned by the frozen superadmin-audit Part C suite). Query-safe append:
+    # respect any existing query string on the configured redirect.
+    if use_case.newly_provisioned:
+        separator = "&" if "?" in post_login_redirect else "?"
+        post_login_redirect = f"{post_login_redirect}{separator}joined=1"
+
     response = RedirectResponse(url=post_login_redirect, status_code=302)
 
     # Set session cookie — matches BFF /api/auth/login cookie attributes exactly

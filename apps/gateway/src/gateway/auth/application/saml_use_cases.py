@@ -454,8 +454,8 @@ class SamlAcsUseCase:
 
     async def execute(
         self, *, saml_response_b64: str, relay_state: str | None
-    ) -> tuple[str, int, str]:
-        """Returns (jwt_token, expires_in, redirect_path).
+    ) -> tuple[str, int, str, bool]:
+        """Returns (jwt_token, expires_in, redirect_path, newly_provisioned).
 
         The Destination anchor used for `is_valid()`'s Destination check is
         ALWAYS the canonical `settings.saml_acs_url` — NEVER the raw incoming
@@ -599,8 +599,10 @@ class SamlAcsUseCase:
 
         # M7: JIT provisioning — ALWAYS role=member for new users; an
         # existing user's stored role is preserved (never downgraded).
+        # domain-auto-assign-login TASK.md §3 M1: newly_provisioned is True IFF
+        # this call INSERTed the user — threaded to the router for ?joined=1.
         try:
-            user = await self._repository.get_or_provision_saml_user(
+            user, newly_provisioned = await self._repository.get_or_provision_saml_user(
                 email=email,
                 tenant_id=pending.tenant_id,
                 password_hash=SSO_PASSWORD_HASH_SENTINEL,
@@ -656,4 +658,4 @@ class SamlAcsUseCase:
         redirect_path = _validate_relative_redirect(
             relay_state, default=self._settings.saml_post_login_redirect
         )
-        return jwt_token, expires_in, redirect_path
+        return jwt_token, expires_in, redirect_path, newly_provisioned
