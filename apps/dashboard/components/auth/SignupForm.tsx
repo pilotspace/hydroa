@@ -41,6 +41,9 @@ export function SignupForm() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // domain-auto-assign-login M5: true when the BFF signals the signup JOINED an
+  // existing verified-domain tenant instead of creating a new workspace.
+  const [joinedExistingTenant, setJoinedExistingTenant] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -91,6 +94,23 @@ export function SignupForm() {
         });
       }
 
+      // domain-auto-assign-login M5: a joined_existing_tenant: true response
+      // renders a differentiated "joined" outcome instead of the generic
+      // created-path push. Design for failure: an absent/unparseable field
+      // defaults to false, keeping the created path byte-identical (frozen
+      // signup-account-type pin: unconditional router.push("/app/keys")).
+      let joined = false;
+      try {
+        const data = (await res.json()) as { joined_existing_tenant?: unknown };
+        joined = data.joined_existing_tenant === true;
+      } catch {
+        joined = false;
+      }
+      if (joined) {
+        setJoinedExistingTenant(true);
+        return;
+      }
+
       // No localStorage write — cookie is set server-side by the BFF
       router.push("/app/keys");
     } catch (err) {
@@ -106,6 +126,23 @@ export function SignupForm() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  // domain-auto-assign-login M5: minimal differentiated joined outcome — the
+  // polished UI is a later task's job.
+  if (joinedExistingTenant) {
+    return (
+      <Card data-slot="auth-card">
+        <CardContent className="flex flex-col gap-4 p-6">
+          <p role="status" aria-live="polite" className="text-sm text-foreground">
+            You joined your team&apos;s existing workspace.
+          </p>
+          <Button type="button" className="w-full" onClick={() => router.push("/app/keys")}>
+            Continue
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

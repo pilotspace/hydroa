@@ -191,6 +191,8 @@ async def test_existing_member_saml_relogin_never_gated_by_seat_cap(
     existing_email = existing_emails[0]
 
     keypair = generate_idp_keypair()
+    # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    # requires a verified claim first — precondition added, assertion intent unchanged.
     config_resp = await put_saml_config(
         saml_client,
         owner_token=owner["owner_token"],
@@ -198,6 +200,7 @@ async def test_existing_member_saml_relogin_never_gated_by_seat_cap(
         idp_entity_id="https://fake-idp.test/entity-samlrelogin",
         idp_sso_url="https://fake-idp.test/sso-samlrelogin",
         email_domains=[existing_email.split("@", 1)[-1]],
+        db_session=saml_db_session,
     )
     assert config_resp.status_code == 200, config_resp.text
     config = config_resp.json()

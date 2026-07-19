@@ -24,6 +24,8 @@ const LoginSchema = z.object({
 type FieldErrors = Partial<Record<"email" | "password", string>>;
 
 const OIDC_LOGIN_PATH = "/api/auth/oidc/login";
+/** domain-auto-assign-login M6: the NET-NEW SAML login-init relay. */
+const SAML_LOGIN_PATH = "/auth/saml/login";
 /** Non-secret UI preference: the last SSO domain a user signed in with. */
 const SSO_DOMAIN_KEY = "sso_domain";
 /** Bound the pre-flight so a slow/hung gateway never blocks a real login. */
@@ -140,6 +142,25 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
     }
     // Full-page navigation so the browser follows the relay's 302 chain to the IdP.
     window.location.assign(target);
+  }
+
+  /**
+   * domain-auto-assign-login M6: SAML SSO affordance. Same "Work email or
+   * domain" field as OIDC, but SAML always requires a resolvable domain (the
+   * gateway's /auth/saml/login resolves the tenant config by domain) and no
+   * pre-flight probe: a full-page navigation carries the browser through the
+   * relay's 302 chain to the IdP; a gateway 4xx surfaces on the relay itself.
+   */
+  function handleSamlSso() {
+    setSsoError(null);
+    const domain = resolveSsoDomain(ssoDomain);
+    const error = validateSsoDomain(domain);
+    if (error) {
+      setSsoError(error); // block navigation; the gateway never sees a bad domain
+      return;
+    }
+    // Full-page navigation so the browser follows the relay's 302 to the IdP.
+    window.location.assign(`${SAML_LOGIN_PATH}?domain=${encodeURIComponent(domain)}`);
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -282,6 +303,17 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
             onClick={handleSso}
           >
             Sign in with SSO
+          </Button>
+
+          {/* domain-auto-assign-login M6: SAML sibling of the OIDC button above —
+              same domain field, full-page navigation to the SAML login relay. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleSamlSso}
+          >
+            Sign in with SAML
           </Button>
         </CardContent>
       </Card>

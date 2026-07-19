@@ -136,6 +136,12 @@ async def test_me_returns_identity(client: httpx.AsyncClient) -> None:
         "tenant_id": signup.json()["tenant_id"],
         "email": "ada@acme.io",
         "role": "owner",
+        # CROSS-TASK RECONCILIATION (domain-claims-console TASK.md §4 CR 2026-07-19,
+        # Tin-approved): /me now additively carries the caller's OWN tenant display name.
+        # ADA signs up with tenant_name "Acme", so /me echoes it. This assertion stays a
+        # COMPLETE exact-equality on the /me shape (still fails on any UNEXPECTED field) —
+        # the new key is added, nothing weakened.
+        "tenant_name": "Acme",
     }
 
 

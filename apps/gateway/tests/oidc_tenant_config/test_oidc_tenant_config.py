@@ -87,6 +87,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -478,8 +479,7 @@ async def get_user_by_email(session: AsyncSession, email: str) -> dict[str, Any]
     row = (
         await session.execute(
             text(
-                "SELECT id, tenant_id, email, password_hash, role"
-                " FROM users WHERE email = :email"
+                "SELECT id, tenant_id, email, password_hash, role FROM users WHERE email = :email"
             ),
             {"email": email.lower()},
         )
@@ -525,6 +525,41 @@ async def bootstrap_tenant_via_api(
 
     await app.state.engine.dispose()
     return tenant_id
+
+
+async def seed_verified_domain_claim(sessionmaker: Any, *, tenant_id: str, domain: str) -> None:
+    """SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    requires a verified claim first — precondition added, assertion intent unchanged.
+
+    PUT /admin/oidc now rejects an email_domains entry with no VERIFIED
+    tenant_domain_claims row for the calling tenant (M5/R3). This suite has no
+    DNS-TXT resolver seam wired (it predates domain_capture's DNS-TXT flow), so
+    a verified claim is direct-inserted here rather than driven through
+    POST /admin/domain-claims + /verify — the write-gate only cares that a
+    verified row exists, not how it got there.
+    """
+    from gateway.domain_capture.infrastructure.orm import TenantDomainClaimRow
+
+    async with sessionmaker() as session:
+        owner_row = (
+            await session.execute(
+                text("SELECT id FROM users WHERE tenant_id = :tid ORDER BY created_at LIMIT 1"),
+                {"tid": tenant_id},
+            )
+        ).scalar_one()
+        session.add(
+            TenantDomainClaimRow(
+                id=uuid.uuid4(),
+                tenant_id=uuid.UUID(str(tenant_id)),
+                domain=domain,
+                verification_token="sanctioned-edit-seed",  # noqa: S106
+                status="verified",
+                verified_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(days=365),
+                created_by_user_id=owner_row,
+            )
+        )
+        await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -759,6 +794,10 @@ async def test_secret_never_returned_in_get_response() -> None:
         assert lr.status_code == 200
         owner_token = lr.json()["access_token"]
 
+        # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+        # requires a verified claim first — precondition added, assertion intent unchanged.
+        await seed_verified_domain_claim(sessionmaker, tenant_id=tenant_id, domain="secret.test")
+
         # PUT a config so there is something to GET
         put_resp = await client.put(
             ADMIN_OIDC,
@@ -824,7 +863,7 @@ async def test_secret_never_logged_during_put() -> None:
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        _, _tenant_id = await signup_tenant(
+        _, tenant_id = await signup_tenant(
             client,
             tenant_name="LogTestTenant",
             email="owner-t3@log.test",
@@ -835,6 +874,10 @@ async def test_secret_never_logged_during_put() -> None:
         )
         assert lr.status_code == 200
         owner_token = lr.json()["access_token"]
+
+        # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+        # requires a verified claim first — precondition added, assertion intent unchanged.
+        await seed_verified_domain_claim(sessionmaker, tenant_id=tenant_id, domain="log.test")
 
         # Capture log output during PUT
         log_handler = _CapturingLogHandler()
@@ -1384,12 +1427,20 @@ async def test_jwks_cache_no_cross_tenant_collision() -> None:
     await signup_app.state.engine.dispose()
 
     id_token_a = make_rs256_id_token(
-        private_key_a, kid=shared_kid, email="alice@a11.com",
-        issuer=FAKE_ISSUER_A, audience=FAKE_CLIENT_ID_A, nonce=FAKE_NONCE_A,
+        private_key_a,
+        kid=shared_kid,
+        email="alice@a11.com",
+        issuer=FAKE_ISSUER_A,
+        audience=FAKE_CLIENT_ID_A,
+        nonce=FAKE_NONCE_A,
     )
     id_token_b = make_rs256_id_token(
-        private_key_b, kid=shared_kid, email="bob@b11.com",
-        issuer=FAKE_ISSUER_B, audience=FAKE_CLIENT_ID_B, nonce=FAKE_NONCE_B,
+        private_key_b,
+        kid=shared_kid,
+        email="bob@b11.com",
+        issuer=FAKE_ISSUER_B,
+        audience=FAKE_CLIENT_ID_B,
+        nonce=FAKE_NONCE_B,
     )
 
     jwks_client_a = FakeJwksClient(keys={shared_kid: pem_a})
@@ -1520,6 +1571,10 @@ async def test_put_get_round_trip_secret_never_returned() -> None:
         assert lr.status_code == 200
         owner_token = lr.json()["access_token"]
 
+        # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+        # requires a verified claim first — precondition added, assertion intent unchanged.
+        await seed_verified_domain_claim(sessionmaker, tenant_id=tenant_id, domain="t12.test")
+
         # PUT with plaintext secret
         put_resp = await client.put(
             ADMIN_OIDC,
@@ -1568,10 +1623,7 @@ async def test_put_get_round_trip_secret_never_returned() -> None:
     async with sm() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT client_secret_enc FROM oidc_provider_configs"
-                    " WHERE tenant_id = :tid"
-                ),
+                text("SELECT client_secret_enc FROM oidc_provider_configs WHERE tenant_id = :tid"),
                 {"tid": uuid.UUID(tenant_id)},
             )
         ).fetchone()

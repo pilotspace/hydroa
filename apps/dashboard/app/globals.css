@@ -72,6 +72,10 @@
     /* radius (control = md 8px; card = lg 10px) */
     --radius: 0.5rem;
 
+    /* expanded primary-nav rail width — tokenized so the value lives here, not as a raw
+       Tailwind arbitrary literal in sidebar.tsx / app-shell.tsx (theme-independent). */
+    --sidebar-width: 264px;
+
     /* flat-recipe radius steps (platform-console-flat-redesign) — deliberately NOT
        given a Tailwind theme-bridge entry below: tailwind-merge (verified empirically)
        doesn't recognize a custom-named radius utility as conflicting with the native

@@ -70,7 +70,15 @@ SSO_PASSWORD_HASH_SENTINEL = "!sso-no-password"  # noqa: S105 — sentinel strin
 
 
 def _parse_domain_mappings(domain_mapping_json: str) -> list[DomainMapping]:
-    """Parse GATEWAY_OIDC_DOMAIN_MAPPING JSON into DomainMapping objects."""
+    """Parse GATEWAY_OIDC_DOMAIN_MAPPING JSON into DomainMapping objects.
+
+    domain-routing-unification TASK.md §3 M4 (FROZEN @ v2/CR-v2): this env
+    fallback is RETAINED — a verified tenant_domain_claims row always takes
+    precedence (enforced structurally: /login resolves via the claim FIRST,
+    per-tenant DB config second, and only pins the "env-config" cookie
+    sentinel when NEITHER exists — see oidc_router.py). This parse helper
+    feeds ONLY the callback's Step 6 `else:` fallback below.
+    """
     from gateway.auth.domain.entities import DomainMapping
 
     try:
@@ -117,6 +125,18 @@ def _decode_id_token_claims(id_token: str) -> dict[str, Any]:
 class OidcLoginUseCase:
     """Orchestrates the OIDC server-side authorization-code callback flow."""
 
+    # domain-auto-assign-login TASK.md §3 M1/M2 — the §3-sanctioned TRANSIENT-
+    # ATTRIBUTE carrier ("Build MAY instead carry the bit as a transient
+    # attribute... the observable contract is the ?joined param, not the
+    # tuple"): True IFF the LAST successful execute() JIT-provisioned a brand-
+    # new user. execute()'s (jwt_token, expires_in) return shape stays byte-
+    # identical because the FROZEN superadmin-audit suite
+    # (tests/superadmin_audit_foundation/test_part_c_oidc_login_audit.py)
+    # unpacks it as a 2-tuple at four sites. Read by oidc_router.oidc_callback
+    # AFTER execute() returns; class-level default False so a pre-execute read
+    # can never AttributeError.
+    newly_provisioned: bool = False
+
     def __init__(
         self,
         exchanger: OidcTokenExchanger,
@@ -155,6 +175,12 @@ class OidcLoginUseCase:
 
             jwks_key_cache = _Cache()
         self._jwks_key_cache = jwks_key_cache
+        # domain-routing-unification §3 M4 (FROZEN @ v2/CR-v2): env
+        # GATEWAY_OIDC_DOMAIN_MAPPING is a trusted OPERATOR-set fallback —
+        # RETAINED, not deleted (v1 wholesale-deleted this and broke ~23
+        # legacy env-routing tests). A verified tenant_domain_claims row
+        # always takes precedence over it; Step 6 below only reaches this
+        # fallback when no per-tenant DB config is pinned.
         self._domain_mappings = _parse_domain_mappings(settings.oidc_domain_mapping)
 
         # Log signature skip warning in non-dev environments ONLY when verification
@@ -193,6 +219,11 @@ class OidcLoginUseCase:
         cookie_nonce: str | None,
     ) -> tuple[str, int]:
         """Execute OIDC callback flow; returns (jwt_token, expires_in).
+
+        Side signal: sets self.newly_provisioned (True IFF this call JIT-
+        provisioned the user) for the router's ?joined=1 redirect param —
+        see the class-attribute note above for why it is not a third tuple
+        element.
 
         Raises:
             OidcInvalidCallbackError  — code or state param missing
@@ -316,10 +347,14 @@ class OidcLoginUseCase:
             raise OidcTokenInvalidError("ID token email claim absent or empty")
         email = email_raw.lower()
 
-        # Step 6: domain mapping
-        # When a per-tenant OidcProviderConfig is active, the tenant_id is already
-        # resolved from the oidc_tenant_id cookie — use it directly.
-        # For the env-Settings path, use the GATEWAY_OIDC_DOMAIN_MAPPING fallback.
+        # Step 6: tenant binding (domain-routing-unification TASK.md §3 M4 —
+        # FROZEN @ v2/CR-v2). Precedence: a per-tenant DB config pinned at
+        # /login (itself resolved claim-FIRST — see oidc_router.py M2) always
+        # wins; ONLY when no per-tenant config is pinned does this fall back
+        # to the operator-set GATEWAY_OIDC_DOMAIN_MAPPING env table. v1
+        # deleted this fallback branch outright; CR-v2 restores it — a
+        # verified claim still always wins because it is what produced the
+        # pinned per-tenant config in the first place.
         domain = email.split("@", 1)[-1] if "@" in email else ""
         mapped_tenant_id: uuid.UUID | None = None
 
@@ -327,7 +362,7 @@ class OidcLoginUseCase:
             # Per-tenant DB path: tenant_id is pinned by the per-tenant config.
             mapped_tenant_id = self._oidc_config.tenant_id
         else:
-            # Env-Settings path: use GATEWAY_OIDC_DOMAIN_MAPPING
+            # Env-Settings path: use GATEWAY_OIDC_DOMAIN_MAPPING (fallback only)
             for mapping in self._domain_mappings:
                 if mapping.email_domain == domain:
                     mapped_tenant_id = mapping.tenant_id
@@ -337,8 +372,11 @@ class OidcLoginUseCase:
                     f"Email domain {domain!r} not in GATEWAY_OIDC_DOMAIN_MAPPING"
                 )
 
-        # Step 7: provision or look up user (ALWAYS role=member)
-        user = await self._repository.get_or_provision_oidc_user(
+        # Step 7: provision or look up user (ALWAYS role=member).
+        # domain-auto-assign-login TASK.md §3 M1: newly_provisioned is True IFF
+        # this call INSERTed the user — carried to the router (for ?joined=1)
+        # via the transient attribute, never the return tuple (frozen 2-tuple).
+        user, self.newly_provisioned = await self._repository.get_or_provision_oidc_user(
             email=email,
             tenant_id=mapped_tenant_id,
             password_hash=SSO_PASSWORD_HASH_SENTINEL,

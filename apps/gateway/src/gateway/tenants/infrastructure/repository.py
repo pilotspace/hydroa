@@ -198,8 +198,11 @@ class SqlAlchemyIdentityRepository:
         email: str,
         tenant_id: uuid.UUID,
         password_hash: str,
-    ) -> User:
+    ) -> tuple[User, bool]:
         """Get existing user by email OR create with role=member if absent.
+
+        Returns (user, newly_provisioned) — newly_provisioned is True IFF this
+        call INSERTed the user (domain-auto-assign-login TASK.md §3 M1).
 
         Raises OidcTenantConflictError if user exists bound to a different tenant_id.
         The provisioned role is ALWAYS member — never from any claim.
@@ -218,8 +221,11 @@ class SqlAlchemyIdentityRepository:
         email: str,
         tenant_id: uuid.UUID,
         password_hash: str,
-    ) -> User:
+    ) -> tuple[User, bool]:
         """Get existing user by email OR create with role=member if absent.
+
+        Returns (user, newly_provisioned) — newly_provisioned is True IFF this
+        call INSERTed the user (domain-auto-assign-login TASK.md §3 M1).
 
         ADDITIVE (saml-sso TASK.md §3 Part E — FROZEN @ v1): byte-identical
         shape to get_or_provision_oidc_user, delegating to the same shared
@@ -245,11 +251,15 @@ class SqlAlchemyIdentityRepository:
         password_hash: str,
         auth_method: str,
         conflict_error_cls: type[Exception],
-    ) -> User:
+    ) -> tuple[User, bool]:
         """Shared JIT-provisioning helper for every federated-identity method
         (OIDC, SAML, ...) — get existing user by email OR create with
         role=member if absent; role is ALWAYS member for NEW rows, an
         EXISTING user's stored role is preserved (never downgraded).
+
+        Returns (user, newly_provisioned) — True IFF this call INSERTed the
+        user (the new-user branch), False when it matched an existing row
+        (domain-auto-assign-login TASK.md §3 M1).
         """
         row = (
             await self._session.execute(select(UserRow).where(UserRow.email == email))
@@ -262,13 +272,16 @@ class SqlAlchemyIdentityRepository:
                     f"User {email!r} exists in tenant {row.tenant_id} but "
                     f"domain mapping targets tenant {tenant_id}"
                 )
-            return User(
-                id=row.id,
-                tenant_id=row.tenant_id,
-                email=row.email,
-                password_hash=row.password_hash,
-                role=Role(row.role),
-                deactivated_at=row.deactivated_at,
+            return (
+                User(
+                    id=row.id,
+                    tenant_id=row.tenant_id,
+                    email=row.email,
+                    password_hash=row.password_hash,
+                    role=Role(row.role),
+                    deactivated_at=row.deactivated_at,
+                ),
+                False,
             )
 
         # Provision new user — role is ALWAYS member (never from claims)
@@ -320,10 +333,13 @@ class SqlAlchemyIdentityRepository:
         await self._session.flush()
         await self._session.commit()
 
-        return User(
-            id=new_user.id,
-            tenant_id=new_user.tenant_id,
-            email=new_user.email,
-            password_hash=new_user.password_hash,
-            role=Role.MEMBER,
+        return (
+            User(
+                id=new_user.id,
+                tenant_id=new_user.tenant_id,
+                email=new_user.email,
+                password_hash=new_user.password_hash,
+                role=Role.MEMBER,
+            ),
+            True,
         )

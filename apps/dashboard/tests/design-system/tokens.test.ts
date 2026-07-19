@@ -43,22 +43,24 @@ describe("M1 · token set shape + identity", () => {
     expect(t).toHaveProperty("component");
   });
 
-  it("semantic.color.accent resolves to Pantone Classic Blue #0F4C81", () => {
-    // v54 aurora-polish: the brand accent moved indigo-600 → Classic Blue (the "blue of the
-    // year", luxury/trust) at Tin's approved rebrand. The identity pin is PRESERVED at the new
-    // value, not removed — accent still resolves to a single, asserted brand hex.
+  it("semantic.color.accent resolves to azure #2F6DF0", () => {
+    // Airier (dashboard-hallmark-restyle, Tin-locked 2026-07-17): the brand accent moved
+    // Classic Blue (#0F4C81, v54) → AZURE (#2F6DF0, the "azure signal"). The identity pin is
+    // PRESERVED at the new value, not removed — accent still resolves to a single, asserted
+    // brand hex (now aliased through primitive.color.azure.500).
     const t = readJson(resolve(DESIGN, "tokens.json"));
     const semantic = (t.semantic as Record<string, Record<string, TokenNode>>) ?? {};
     const accent = semantic?.color?.accent?.$value;
     const resolved = resolveAlias(t, accent);
-    expect(String(resolved).toUpperCase()).toBe("#0F4C81");
+    expect(String(resolved).toUpperCase()).toBe("#2F6DF0");
   });
 
-  it("the Inter typeface is the base sans family", () => {
+  it("the Geist typeface is the base sans family", () => {
+    // Airier: the base sans moved Inter → Geist (the anti-slop, off-Inter technical grotesque).
     const t = readJson(resolve(DESIGN, "tokens.json"));
     const prim = t.primitive as Record<string, Record<string, Record<string, TokenNode>>>;
     const sans = prim?.font?.family?.sans?.$value as unknown[];
-    expect(Array.isArray(sans) ? sans : []).toContain("Inter");
+    expect(Array.isArray(sans) ? sans : []).toContain("Geist");
   });
 });
 

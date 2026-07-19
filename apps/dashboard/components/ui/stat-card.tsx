@@ -74,7 +74,7 @@ export function StatCard({
         {delta && meta ? (
           <div
             className={cn(
-              // artifact `.delta`: mono figures, 12px, 6px radius (rounded-md) — "mono for all data".
+              // artifact `.delta`: mono figures, text-xs, control-radius (rounded-md) — "mono for all data".
               // Keeps the arrow + sr-only word so direction never rides on color alone (WCAG 1.4.1).
               "inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-xs font-mono font-semibold tabular-nums",
               meta.tone,

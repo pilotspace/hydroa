@@ -365,7 +365,24 @@ async def put_saml_config(
     idp_entity_id: str,
     idp_sso_url: str,
     email_domains: list[str],
+    db_session: AsyncSession | None = None,
 ) -> httpx.Response:
+    """
+    SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    requires a verified claim first — precondition added, assertion intent unchanged.
+    PUT /admin/saml now rejects an email_domains entry with no VERIFIED
+    tenant_domain_claims row for the calling tenant (M5/R3). When a db_session is
+    supplied, this helper direct-inserts a verified claim for every requested domain
+    BEFORE the PUT — mirrors tests/saml_sso/conftest.py's own seed_verified_domain_claim
+    pattern (this suite has its own local put_saml_config, not that module's).
+    """
+    if db_session is not None:
+        from tests.saml_sso.conftest import seed_verified_domain_claim
+
+        claims = pyjwt.decode(owner_token, options={"verify_signature": False})
+        tenant_id = claims["tenant_id"]
+        for d in email_domains:
+            await seed_verified_domain_claim(db_session, tenant_id=tenant_id, domain=d)
     return await client.put(
         "/admin/saml",
         json={

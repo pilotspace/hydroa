@@ -1,12 +1,14 @@
 /**
- * aurora-classic-blue (v54 · aurora-polish-tokens) — RED contract for the Hydroa
- * "Classic Blue" luxury rebrand: the brand accent moves indigo → Pantone Classic Blue
- * (#0F4C81, the "blue of the year"), a deep→bright blue brand gradient, and the gradient
- * wired into the shared SidebarBrand logo tile. Token-led: tokens.json (source) and
- * globals.css (realization) must stay in sync.
+ * airier-azure (was v54 "aurora-classic-blue") — the brand-accent identity contract.
  *
- * RED before build: globals.css still has indigo (#4f46e5), tokens.json still aliases
- * indigo-600, and SidebarBrand has no gradient tile.
+ * SUPERSEDED IDENTITY: this file originally pinned the v54 "Pantone Classic Blue"
+ * (#0F4C81) rebrand. The dashboard-hallmark-restyle "Airier" direction (Tin-locked
+ * 2026-07-17, shipped in the whole-dashboard restyle + re-frozen foundation) moved the
+ * brand accent to AZURE (#2F6DF0), renamed the primitive ramp blue→azure, and kept the
+ * deep→bright brand gradient. Retargeted to the shipped Airier values — the STRUCTURAL
+ * guards are unchanged (primary pinned to a single brand hex · deep→bright gradient wired
+ * to SidebarBrand · tokens.json ↔ globals.css in sync · no stale indigo/classic-blue).
+ * Token-led: tokens.json (source) and globals.css (realization) must stay in sync.
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
@@ -29,46 +31,47 @@ function rootBlock(): string {
   return s.slice(start, end);
 }
 
-describe("aurora Classic Blue — realized CSS (globals.css :root)", () => {
-  it("test_primary_is_classic_blue", () => {
-    expect(rootBlock()).toMatch(/--primary:\s*#0f4c81/i);
+describe("airier azure — realized CSS (globals.css :root)", () => {
+  it("test_primary_is_azure", () => {
+    expect(rootBlock()).toMatch(/--primary:\s*#2f6df0/i);
   });
 
-  it("test_brand_gradient_is_deep_to_bright_blue", () => {
+  it("test_brand_gradient_is_deep_to_bright_azure", () => {
     const root = rootBlock();
-    expect(root).toMatch(/--brand-from:\s*#0f4c81/i);
-    expect(root).toMatch(/--brand-to:\s*#2563eb/i);
+    expect(root).toMatch(/--brand-from:\s*#2f6df0/i);
+    expect(root).toMatch(/--brand-to:\s*#5b8cff/i);
   });
 
-  it("test_focus_ring_is_blue", () => {
-    expect(rootBlock()).toMatch(/--ring:\s*#2563eb/i);
+  it("test_focus_ring_is_azure", () => {
+    expect(rootBlock()).toMatch(/--ring:\s*#2f6df0/i);
   });
 
-  it("test_no_indigo_accent_remains_in_root", () => {
-    // the OLD indigo brand literal must be fully gone from the shipped :root — guards a partial
-    // migration where only --primary changed but --ring/--chart-1/etc. were left indigo.
+  it("test_no_indigo_or_classic_blue_accent_remains_in_root", () => {
+    // the OLD brand literals must be fully gone from the shipped :root — guards a partial
+    // migration where only --primary changed but --ring/--chart-1/etc. were left behind.
     const root = rootBlock();
-    expect(root).not.toMatch(/#4f46e5/i); // indigo-600
-    expect(root).not.toMatch(/#6366f1/i); // indigo-500 (old ring)
+    expect(root).not.toMatch(/#4f46e5/i); // indigo-600 (pre-v54)
+    expect(root).not.toMatch(/#6366f1/i); // indigo-500 (pre-v54 ring)
+    expect(root).not.toMatch(/#0f4c81/i); // Pantone Classic Blue (v54, superseded by Airier)
   });
 });
 
-describe("aurora Classic Blue — DTCG source (tokens.json) in sync", () => {
-  it("test_blue_primitive_ramp_added", () => {
+describe("airier azure — DTCG source (tokens.json) in sync", () => {
+  it("test_azure_primitive_ramp_added", () => {
     const t = JSON.parse(readFileSync(TOKENS, "utf8"));
-    const blue = t?.primitive?.color?.blue;
-    expect(blue).toBeTruthy();
-    expect(String(blue?.brand?.$value).toUpperCase()).toBe("#0F4C81");
+    const azure = t?.primitive?.color?.azure;
+    expect(azure).toBeTruthy();
+    expect(String(azure?.["500"]?.$value).toUpperCase()).toBe("#2F6DF0");
   });
 
-  it("test_accent_aliases_blue_ramp", () => {
+  it("test_accent_aliases_azure_ramp", () => {
     const t = JSON.parse(readFileSync(TOKENS, "utf8"));
     const accent = t?.semantic?.color?.accent?.$value;
-    expect(String(accent)).toMatch(/primitive\.color\.blue/);
+    expect(String(accent)).toMatch(/primitive\.color\.azure/);
   });
 });
 
-describe("aurora Classic Blue — gradient wired to the shared SidebarBrand", () => {
+describe("airier azure — gradient wired to the shared SidebarBrand", () => {
   it("test_sidebarbrand_logo_tile_uses_brand_gradient", () => {
     const { container } = render(
       React.createElement(SidebarBrand, { title: "Hydroa", icon: React.createElement("svg") }),

@@ -42,11 +42,17 @@ async def test_domain_collision_guarded_and_resolver_deterministic(
         client, tenant_name="CollideA", email="collidea@collide-test.com"
     )
     kp_a = generate_idp_keypair()
+    # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    # requires a verified claim first — precondition added, assertion intent unchanged.
+    # LAYER 1's guard used to be a sibling-provider-config comparison; it is now
+    # claims-based (M5) — tenant A must hold the verified claim BEFORE its PUT
+    # succeeds, so put_saml_config seeds it here (db_session=db_session).
     resp_a = await put_saml_config(
         client,
         owner_token=owner_a,
         idp_x509_cert=kp_a.cert_pem,
         email_domains=["shared-domain.example"],
+        db_session=db_session,
     )
     assert resp_a.status_code == 200, resp_a.text
 
@@ -54,6 +60,12 @@ async def test_domain_collision_guarded_and_resolver_deterministic(
         client, tenant_name="CollideB", email="collideb@collide-test2.com"
     )
     kp_b = generate_idp_keypair()
+    # Tenant B's PUT deliberately does NOT seed its own claim on this domain — the
+    # whole point of LAYER 1 is that tenant A already holds the ONE verified claim
+    # (the partial unique index forbids a second verified claim for the same
+    # domain), so tenant B's claim lookup resolves to A, not B, and the write-gate
+    # rejects it as cross-tenant-claimed — same 409 intent as the original
+    # sibling-config guard, now proven via a claim owned by the OTHER tenant.
     resp_b = await put_saml_config(
         client,
         owner_token=owner_b,

@@ -16,6 +16,13 @@ export interface CurrentUser {
   email: string | null;
   role: string | null;
   exp: number | null;
+  /**
+   * domain-claims-console M6 (additive): the caller's OWN tenant display name,
+   * relayed by /api/auth/me from the gateway's verified MeResponse. OPTIONAL —
+   * the BFF only forwards it when the verified upstream response carries it
+   * (older gateway → absent); consumers must fall back to generic copy.
+   */
+  tenant_name?: string | null;
 }
 
 function appBase(): string {

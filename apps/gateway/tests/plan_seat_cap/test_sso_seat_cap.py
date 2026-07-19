@@ -108,6 +108,8 @@ async def test_new_saml_login_at_seat_cap_is_rejected(
     assert await active_user_count(saml_db_session, tenant_id=owner["tenant_id"]) == 20
 
     keypair = generate_idp_keypair()
+    # SANCTIONED EDIT (domain-routing-unification CR-v2, 2026-07-18): write-gate now
+    # requires a verified claim first — precondition added, assertion intent unchanged.
     config_resp = await put_saml_config(
         saml_client,
         owner_token=owner["owner_token"],
@@ -115,6 +117,7 @@ async def test_new_saml_login_at_seat_cap_is_rejected(
         idp_entity_id="https://fake-idp.test/entity-seatcap",
         idp_sso_url="https://fake-idp.test/sso-seatcap",
         email_domains=["samlseatcap.example"],
+        db_session=saml_db_session,
     )
     assert config_resp.status_code == 200, config_resp.text
     config = config_resp.json()

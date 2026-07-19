@@ -39,8 +39,11 @@ class IdentityRepository(Protocol):
         email: str,
         tenant_id: uuid.UUID,
         password_hash: str,
-    ) -> User:
+    ) -> tuple[User, bool]:
         """Get existing user by email OR create with role=member if absent.
+
+        Returns (user, newly_provisioned) — newly_provisioned is True IFF this
+        call INSERTed the user (domain-auto-assign-login TASK.md §3 M1).
 
         Raises OidcTenantConflictError if the user exists bound to a different tenant_id.
         The provisioned user always has role=member regardless of any claims.
@@ -53,8 +56,11 @@ class IdentityRepository(Protocol):
         email: str,
         tenant_id: uuid.UUID,
         password_hash: str,
-    ) -> User:
+    ) -> tuple[User, bool]:
         """Get existing user by email OR create with role=member if absent.
+
+        Returns (user, newly_provisioned) — newly_provisioned is True IFF this
+        call INSERTed the user (domain-auto-assign-login TASK.md §3 M1).
 
         ADDITIVE (saml-sso TASK.md §3 Part E — FROZEN @ v1): mirrors
         get_or_provision_oidc_user byte-for-byte (existing method's signature

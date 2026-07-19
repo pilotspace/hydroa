@@ -29,6 +29,8 @@ interface MeResponse {
   tenant_id?: string | null;
   email?: string | null;
   role?: string | null;
+  /** domain-claims-console M6 (additive): the caller's own tenant display name. */
+  tenant_name?: string | null;
 }
 
 function gatewayUrl(): string {
@@ -85,11 +87,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   // Map the verified identity to the stable CurrentUser shape. exp is intentionally
   // null: the gateway already enforces expiry, so the numeric value is dead data and
   // no consumer reads it; the field is kept so the JSON shape stays byte-stable.
+  //
+  // tenant_name (domain-claims-console M6, additive): RELAYED only when the verified
+  // gateway response carries it — the BFF never fabricates an identity/claim field the
+  // authoritative verifier did not return (the v18 trust-boundary rule), and an older
+  // gateway without the field keeps this route's JSON shape byte-identical. Consumers
+  // (useCurrentUser) treat an absent name as "unknown" and fall back to generic copy.
   return NextResponse.json({
     user_id: claims.user_id ?? null,
     tenant_id: claims.tenant_id ?? null,
     email: claims.email ?? null,
     role: claims.role ?? null,
     exp: null,
+    ...(typeof claims.tenant_name === "string" ? { tenant_name: claims.tenant_name } : {}),
   });
 }

@@ -53,10 +53,16 @@ def get_saml_replay_cache(request: Request) -> SamlReplayCache:
 
 def get_saml_login_init_use_case(request: Request, session: AsyncSession) -> SamlLoginInitUseCase:
     from gateway.auth.application.saml_use_cases import SamlLoginInitUseCase
+    from gateway.domain_capture.infrastructure.repository import (
+        SqlAlchemyDomainClaimRepository,
+    )
 
     return SamlLoginInitUseCase(
         config_resolver=get_saml_config_resolver(request, session),
         request_store=get_saml_request_store(request),
+        # domain-routing-unification §3 M1/M3: login-init routes the tenant via
+        # the verified tenant_domain_claims source of truth (the one predicate).
+        claim_resolver=SqlAlchemyDomainClaimRepository(session),
     )
 
 

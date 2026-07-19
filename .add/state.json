@@ -1281,18 +1281,6 @@
         "source": "git"
       }
     },
-    "enterprise-domain-onboarding": {
-      "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
-      "goal": "A business's users are automatically routed into their company tenant by verified email domain across both signup and SSO login from one source of truth, with self-service domain management in the dashboard, while self-signup into a tenant stays invite-or-verified-domain only",
-      "stage": "production",
-      "status": "queued",
-      "created": "2026-07-16T03:12:06+00:00",
-      "updated": "2026-07-16T03:12:06+00:00",
-      "confirmed": false,
-      "confirmed_at": null,
-      "confirmed_by": null,
-      "await_confirm": true
-    },
     "platform-key-default": {
       "title": "Platform Key Default Credential",
       "goal": "A tenant with no configured BYOK key automatically uses the platform tenant credential by default, and a configured tenant key takes precedence once present",
@@ -1303,7 +1291,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-18T08:37:18+00:00",
+  "updated": "2026-07-19T14:50:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2312,6 +2300,17 @@
         "billing-owner-signup-population"
       ],
       "archived": "2026-07-18"
+    },
+    {
+      "slug": "enterprise-domain-onboarding",
+      "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
+      "tasks": 3,
+      "task_slugs": [
+        "domain-routing-unification",
+        "domain-auto-assign-login",
+        "domain-claims-console"
+      ],
+      "archived": "2026-07-19"
     }
   ],
   "active_milestones": [

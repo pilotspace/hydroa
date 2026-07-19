@@ -76,28 +76,32 @@ Out:
   existing workspace" onboarding confirmation.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A verified-domain email auto-joins the owning tenant as MEMBER on BOTH password signup AND SSO login   (← domain-auto-assign-login)
-- [ ] Email-domain→tenant routing resolves from ONE source of truth (verified `tenant_domain_claims`); the other 3 surfaces defer to it with no conflicting mapping   (← domain-routing-unification)
-- [ ] An unverified / unclaimed domain never auto-joins any tenant (still invite-or-blocked)   (← domain-routing-unification)
-- [ ] An admin can create, verify (via the shown DNS-TXT challenge), and revoke a domain claim entirely from the dashboard   (← domain-claims-console)
-- [ ] A user who joined an existing workspace sees that outcome in the UI (the BFF no longer drops `joined_existing_tenant`)   (← domain-auto-assign-login + domain-claims-console)
-- [ ] Self-signup into a tenant remains impossible except via invite or verified-domain match (invite-only preserved)   (← domain-auto-assign-login)
+- [x] A verified-domain email auto-joins the owning tenant as MEMBER on BOTH password signup AND SSO login   (← domain-auto-assign-login) — task-1 unified the resolver across signup+OIDC+SAML (158/158, dual opus verify CLEAR); task-2 wired login-time auto-join + the joined signal (189 gw green, dual verify CLEAR)
+- [x] Email-domain→tenant routing resolves from ONE source of truth (verified `tenant_domain_claims`); the other 3 surfaces defer to it with no conflicting mapping   (← domain-routing-unification) — `resolve_verified_tenant_for_raw_domain` shared predicate + claims write-gate on PUT /admin/{oidc,saml} (409/422) + backfill migration `e6a1d0f47b29`; precedence verified-claim > per-tenant config > env-mapping
+- [x] An unverified / unclaimed domain never auto-joins any tenant (still invite-or-blocked)   (← domain-routing-unification) — pending/expired/revoked/absent claim falls through byte-identically to the invite-only S1 path (fail-closed; dual adversarial verify)
+- [x] An admin can create, verify (via the shown DNS-TXT challenge), and revoke a domain claim entirely from the dashboard   (← domain-claims-console) — DomainClaimsSettings console over the frozen /admin/domain-claims API (create/list/verify-DNS-TXT/revoke, owner-403→ErrorState); 94 dash green; UDD wireframe confirmed by Tin (artifact 655ae92f)
+- [x] A user who joined an existing workspace sees that outcome in the UI (the BFF no longer drops `joined_existing_tenant`)   (← domain-auto-assign-login + domain-claims-console) — task-2 un-drops `joined_existing_tenant` + `?joined=1` redirect; task-3 JoinedWorkspaceCallout names the tenant from the M6 `/me` `tenant_name` field (gateway→BFF→useCurrentUser→callout, end-to-end verified)
+- [x] Self-signup into a tenant remains impossible except via invite or verified-domain match (invite-only preserved)   (← domain-auto-assign-login) — the `public_signup_enabled=false` gate is unchanged and checked before any further IO for every unclaimed domain (task-1 M8 amendment, Tin-confirmed at freeze)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- tooling : untouched — no add.py / state.json / template change (product-only milestone)
+- skill   : untouched
+- book    : untouched
+- gateway : `tenants/api` `MeResponse.tenant_name` (additive) + `me()` loads the caller's own tenant name; task-1's `domain_capture` resolver unification + claims write-gate on OIDC/SAML PUT + backfill migration `e6a1d0f47b29`; task-2's `(User, newly_provisioned)` SSO-provision signal
+- dashboard : NEW domain-claims console (DomainClaimsSettings + DomainStatusSeal, InvoiceStatusSeal idiom) under a new Settings "Domains" tab; NEW JoinedWorkspaceCallout on the keys landing; SAML dashboard relay (auth/saml/callback|login); signup/login form joined-workspace affordances; `/api/auth/me` relays tenant_name → useCurrentUser
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- domain-routing-unification : gate=PASS (Tin 2026-07-18, commit `4fd7ff5`) · tests=158/158 across 9 suites · residue=none — SECURITY, dual opus adversarial verify (tamper + routing lenses) both CLEAR; closed a live cross-tenant DoS (OIDC collision + non-deterministic resolver)
+- domain-auto-assign-login : gate=PASS (Tin 2026-07-19, commit `086b903`) · tests=189 gw + 35 dash green · residue=none — cross-component; DUAL opus verify (routing + earned-green) both CLEAR; signal is transport-only, cannot influence routing; zero tests/contract weakened
+- domain-claims-console : gate=PASS (Tin 2026-07-19) · tests=19 gw (/me-adjacent + tenants + superadmin) + 94 dash green, tsc clean · residue=none — cross-component after the M6 CR; opus adversarial verify: 6/7 attack surfaces CONFIRMED-SAFE, 1 cross-task-drift HARD-STOP (a frozen /me consumer test) found → healed additively → independently re-verified CLEAR; two sanctioned additive-only frozen-test reconciliations (tab list + /me shape), neither weakening
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which) — all 6 exit criteria checked above, each citing its delivering task's PASS row
+- goal: *business users auto-routed into their company tenant by verified email domain across signup AND SSO login from ONE source of truth, with self-serve dashboard domain management, invite-or-verified-domain-only preserved.* Proof: task-1 makes verified `tenant_domain_claims` the single authoritative resolver across all entry paths (158/158, dual-verify), task-2 lands login-time MEMBER auto-join + the joined signal (189 gw green), task-3 ships the create/verify/revoke console + names the joined workspace (94 dash green) — the invite-only default is provably unchanged (fail-closed fall-through). All three gate=PASS, no open residue.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one

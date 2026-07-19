@@ -65,6 +65,12 @@ from gateway.core.error_catalog import (
     OIDC_UPSTREAM_ERROR,
     PLAN_SEAT_CAP_EXCEEDED,
 )
+from gateway.domain_capture.application.verified_domain_resolution import (
+    resolve_verified_tenant_for_raw_domain,
+)
+from gateway.domain_capture.infrastructure.repository import (
+    SqlAlchemyDomainClaimRepository,
+)
 from gateway.tenants.domain.errors import SeatCapExceededError
 
 oidc_router = APIRouter(prefix="/auth/oidc", tags=["oidc"])
@@ -121,8 +127,23 @@ async def oidc_login(
     Accepts optional ?domain=<email_domain> query param to resolve per-tenant config.
     Sets oidc_tenant_id cookie (httpOnly) pinning the resolved config for /callback.
 
+    Routing (domain-routing-unification TASK.md §3 M1/M2/M8 — FROZEN @
+    v2/CR-v2): when ?domain= is present, the tenant is resolved CLAIM-FIRST
+    via the verified tenant_domain_claims source of truth (normalize_domain +
+    resolve_verified_tenant — the one shared predicate) and the OIDC config is
+    then loaded by tenant_id — NEVER by an email_domains containment match. A
+    verified claim whose tenant has no enabled config fails closed with 403
+    ERR_OIDC_DOMAIN_NOT_MAPPED — never a 500 (no oracle between "unclaimed"
+    and "claimed but unconfigured"). When NO verified claim exists, the
+    EXISTING pre-unification resolution (resolver.resolve(domain), then the
+    env-Settings fallback below) is retained AS A FALLBACK — CR-v2 narrowed
+    v1's claim-ONLY design after it broke legacy per-tenant-config-seam and
+    env-routing tests that never establish a domain_capture claim.
+
     Returns 302 redirect to IdP authorize endpoint with state + nonce + tenant cookies.
-    Returns 404 ERR_OIDC_NOT_CONFIGURED when no config matches and env OIDC is disabled.
+    Returns 404 ERR_OIDC_NOT_CONFIGURED when no domain is supplied (or the
+    fallback resolution above also comes up empty) and env OIDC is disabled
+    (the pre-existing no-domain env-Settings shape, unchanged).
     """
     settings = request.app.state.settings
     domain: str | None = request.query_params.get("domain")
@@ -136,7 +157,31 @@ async def oidc_login(
     oidc_config = None
     tenant_cookie_value: str
 
-    if resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
+    if domain is not None:
+        # M1/M2 (CR-v2): claim-first — the single canonical email-domain ->
+        # tenant router is tried BEFORE any email_domains containment match.
+        claim_repo = SqlAlchemyDomainClaimRepository(session)
+        mapped_tenant_id = await resolve_verified_tenant_for_raw_domain(claim_repo, domain)
+        if mapped_tenant_id is not None:
+            if resolver is not None and hasattr(resolver, "resolve_by_tenant_id"):  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
+                oidc_config = await resolver.resolve_by_tenant_id(  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete DbOidcConfigResolver has resolve_by_tenant_id, Protocol doesn't
+                    str(mapped_tenant_id)
+                )
+            if oidc_config is None:
+                # Claimed tenant has no enabled OIDC config — same fail-closed
+                # rejection as an unclaimed domain (M2: no oracle between the two).
+                raise OIDC_DOMAIN_NOT_MAPPED.exc()
+        elif resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
+            # CR-v2 fallback: no verified claim — retain the EXISTING
+            # domain-keyed resolution (deterministic DbOidcConfigResolver.resolve,
+            # M6) rather than failing closed immediately. A legacy/test-seam
+            # config with no verified claim can still route here; M5's
+            # write-time gate ensures no NEW config can reach this state.
+            oidc_config = await resolver.resolve(domain)
+    elif resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
+        # No-domain call shape (pre-existing): resolver.resolve(None) is None
+        # for the production DbOidcConfigResolver; test seams may inject a
+        # fake that answers regardless of domain.
         oidc_config = await resolver.resolve(domain)
 
     if oidc_config is not None:
@@ -308,6 +353,16 @@ async def oidc_callback(
 
     secure = settings.environment != "dev"
     post_login_redirect = settings.oidc_post_login_redirect
+
+    # domain-auto-assign-login TASK.md §3 M2: signal a FIRST login (this callback
+    # JIT-provisioned the user) via ?joined=1 on the redirect — success path only;
+    # every error branch above raises before reaching this line. The bit rides the
+    # use case's §3-sanctioned transient attribute (execute()'s 2-tuple return is
+    # pinned by the frozen superadmin-audit Part C suite). Query-safe append:
+    # respect any existing query string on the configured redirect.
+    if use_case.newly_provisioned:
+        separator = "&" if "?" in post_login_redirect else "?"
+        post_login_redirect = f"{post_login_redirect}{separator}joined=1"
 
     response = RedirectResponse(url=post_login_redirect, status_code=302)
 
