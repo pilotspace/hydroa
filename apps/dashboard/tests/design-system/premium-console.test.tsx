@@ -63,28 +63,34 @@ describe("modern light Aurora rail + modern-tech keepers", () => {
     expect(minChannel).toBeGreaterThan(0xe0); // near-white light rail, not near-black
   });
 
-  it("the canvas background is pure white (modern-tech luxury) — KEEPER", () => {
-    expect(rootBlock()).toMatch(/--background:\s*#ffffff/i);
+  it("the canvas background is a near-white cool canvas (Airier modern-tech luxury) — KEEPER", () => {
+    // Airier softened the pure-white (#ffffff) canvas to a near-white cool graphite tint.
+    expect(rootBlock()).toMatch(/--background:\s*#fbfcfd/i);
   });
 
   it("rail text clears WCAG AA (4.5:1) on the light rail", () => {
     expect(contrast(hexOf("sidebar-foreground"), hexOf("sidebar"))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it("the Classic-Blue active-item text clears AA on the accent-soft fill", () => {
-    expect(contrast(hexOf("primary"), hexOf("accent-soft"))).toBeGreaterThanOrEqual(4.5);
+  it("the azure active-item text clears AA on the accent-soft fill", () => {
+    // Airier: active-nav text uses --accent-soft-foreground (deep azure #1c4bb8), NOT plain
+    // --primary (#2f6df0), precisely because primary is only 4.1:1 on --accent-soft (fails AA).
+    // Assert the token the UI actually renders for that text clears AA (6.9:1).
+    expect(contrast(hexOf("accent-soft-foreground"), hexOf("accent-soft"))).toBeGreaterThanOrEqual(4.5);
   });
 
   it("a monospace token exists for tabular numerals + is bridged to font-mono — KEEPER", () => {
-    expect(css).toMatch(/--font-mono:\s*ui-monospace/i);
+    // Airier: --font-mono now leads with the self-hosted Geist Mono face, then the ui-monospace
+    // system fallback stack (was bare ui-monospace).
+    expect(css).toMatch(/--font-mono:\s*var\(--font-geist-mono\)[^;]*ui-monospace/i);
   });
 
   it("the dark-rail film-grain overlay is dropped (clean modern-tech surface)", () => {
     expect(css).not.toMatch(/\.app-grain\b/);
   });
 
-  it("Classic Blue identity is preserved (never reinvented)", () => {
-    expect(rootBlock()).toMatch(/--primary:\s*#0f4c81/i);
+  it("the azure brand identity is preserved (never reinvented)", () => {
+    expect(rootBlock()).toMatch(/--primary:\s*#2f6df0/i);
   });
 });
 

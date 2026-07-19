@@ -439,7 +439,7 @@ export function AppShell({ children, activePath, role, userEmail, banner, comman
             data-state={collapsed ? "collapsed" : "expanded"}
             className={cn(
               "hidden lg:flex lg:h-full",
-              collapsed ? "w-16" : "w-[264px]",
+              collapsed ? "w-16" : "w-[var(--sidebar-width)]",
             )}
           >
             <SidebarHeader className={collapsed ? "justify-center" : undefined}>

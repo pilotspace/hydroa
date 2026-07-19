@@ -135,12 +135,12 @@ describe("tokens — chart + sidebar extension resolves across the 3 layers", ()
   });
 
   it("test_v13_tokens_unchanged", () => {
-    // v54 aurora-polish rebrand: the brand-accent identity pin moved indigo-600 → Pantone
-    // Classic Blue (Tin's approved rebrand). The identity is still PINNED to a single brand
-    // hex (intent preserved) — see tokens.test M1. The rest of the v13 token graph is unchanged.
+    // Brand-accent identity pin history: indigo-600 → Pantone Classic Blue (v54) → AZURE #2F6DF0
+    // (Airier, dashboard-hallmark-restyle, Tin-locked 2026-07-17). The identity is still PINNED to
+    // a single brand hex (intent preserved) — see tokens.test M1. The rest of the v13 graph is unchanged.
     const t = readJson(resolve(DESIGN, "tokens.json"));
     const semantic = t.semantic as Record<string, Record<string, TokenNode>>;
-    expect(String(resolveAlias(t, semantic.color.accent?.$value)).toUpperCase()).toBe("#0F4C81");
+    expect(String(resolveAlias(t, semantic.color.accent?.$value)).toUpperCase()).toBe("#2F6DF0");
   });
 });
 

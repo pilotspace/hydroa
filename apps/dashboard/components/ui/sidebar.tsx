@@ -22,7 +22,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
       ref={ref}
       aria-label={ariaLabel}
       className={cn(
-        "flex h-full w-[264px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
+        "flex h-full w-[var(--sidebar-width)] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
         className,
       )}
       {...props}

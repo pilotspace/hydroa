@@ -12,9 +12,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-// app/layout imports next/font/google (Inter), which is unavailable in jsdom.
+// app/layout imports next/font/google (Geist + Geist Mono — the Airier typefaces), which
+// is unavailable in jsdom. Mock the loaders it actually calls.
 vi.mock("next/font/google", () => ({
-  Inter: () => ({ className: "font-inter", variable: "--font-inter" }),
+  Geist: () => ({ className: "font-geist-sans", variable: "--font-geist-sans" }),
+  Geist_Mono: () => ({ className: "font-geist-mono", variable: "--font-geist-mono" }),
 }));
 
 import { buildMetadata } from "@/lib/seo";
