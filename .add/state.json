@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "domain-auto-assign-login",
+  "active_task": "domain-claims-console",
   "active_milestone": "enterprise-domain-onboarding",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1308,6 +1308,58 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "domain-claims-console": {
+      "title": "Dashboard domain-claims console: create/list/verify(DNS-TXT)/revoke + joined-workspace onboarding confirmation",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "enterprise-domain-onboarding",
+      "depends_on": [],
+      "created": "2026-07-19T03:18:24+00:00",
+      "updated": "2026-07-19T14:44:58+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "a8c19bfcfa1e562b7b09e80cdbf496b3",
+        "tests": {
+          "apps/gateway/tests/domain_claims_console_me/test_me_tenant_name.py": "b279a7d189a9820836e99126fbad7619"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/settings/",
+          "apps/dashboard/components/onboarding/",
+          "apps/dashboard/app/(app)/app/keys/page.tsx",
+          "apps/dashboard/tests/",
+          "apps/dashboard/tests-bff/tenant-settings.test.tsx",
+          "apps/dashboard/app/api/auth/me/route.ts",
+          "apps/dashboard/lib/hooks/use-current-user.ts",
+          "apps/gateway/src/gateway/tenants/api/schemas.py",
+          "apps/gateway/src/gateway/tenants/api/router.py",
+          "apps/gateway/tests/domain_claims_console_me/",
+          "apps/gateway/tests/tenants/test_tenant_identity.py"
+        ],
+        "snapshot_md5": "9fb932d030f902ab56bbc998f726d43a"
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-07-19T13:57:47+00:00",
+        "from_phase": "build"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-19T14:40:44+00:00",
+            "reason": "scope_violation: task 'domain-claims-console' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (2 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1401,14 +1453,19 @@
       "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
       "goal": "A business's users are automatically routed into their company tenant by verified email domain across both signup and SSO login from one source of truth, with self-service domain management in the dashboard, while self-signup into a tenant stays invite-or-verified-domain only",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-16T03:12:06+00:00",
-      "updated": "2026-07-18T08:55:28+00:00",
+      "updated": "2026-07-19T14:48:26+00:00",
       "confirmed": true,
       "confirmed_at": "2026-07-18T08:55:28+00:00",
       "confirmed_by": "tindang",
       "await_confirm": true,
       "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "done_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
@@ -1424,7 +1481,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-19T03:14:20+00:00",
+  "updated": "2026-07-19T14:48:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2449,7 +2506,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "enterprise-domain-onboarding": "domain-auto-assign-login"
+    "enterprise-domain-onboarding": "domain-claims-console"
   },
   "todos": [
     {

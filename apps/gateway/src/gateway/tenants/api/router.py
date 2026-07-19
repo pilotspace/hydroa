@@ -40,6 +40,7 @@ from gateway.tenants.domain.errors import (
     SeatCapExceededError,
     WeakPasswordError,
 )
+from gateway.tenants.infrastructure.repository import get_tenant_by_id
 
 router = APIRouter(prefix="/admin/auth", tags=["tenant-identity"])
 
@@ -140,14 +141,20 @@ async def login(
 async def me(
     token: Annotated[str, Depends(get_bearer_token)],
     use_case: Annotated[GetIdentityUseCase, Depends(get_identity_use_case)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MeResponse:
     try:
         identity = await use_case.execute(token)
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
+    # domain-claims-console TASK.md §4 CR: expose the caller's OWN tenant name so the
+    # dashboard can name the joined workspace. Additive read (a valid session always has
+    # a tenant); fall back to "" rather than 500 if the row is missing — /me must not crash.
+    tenant = await get_tenant_by_id(session, identity.tenant_id)
     return MeResponse(
         user_id=identity.user_id,
         tenant_id=identity.tenant_id,
         email=identity.email,
         role=str(identity.role),
+        tenant_name=tenant.name if tenant is not None else "",
     )

@@ -29,6 +29,7 @@ import { ScimSettings } from "./ScimSettings";
 import { SamlSettings } from "./SamlSettings";
 import { RetentionZdrSettings } from "./RetentionZdrSettings";
 import { ComplianceReportCenter } from "@/components/compliance/ComplianceReportCenter";
+import { DomainClaimsSettings } from "./DomainClaimsSettings";
 
 const TAB_VALUES = [
   "cache",
@@ -39,6 +40,9 @@ const TAB_VALUES = [
   "saml",
   "retention",
   "compliance",
+  // domain-claims-console TASK.md §3 (M1) — a 9th, APPENDED tab; owner-scoped
+  // content (the gateway 403s non-owners), URL-controlled like every other tab.
+  "domains",
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -97,6 +101,7 @@ export function SettingsPage() {
           <TabsTrigger value="saml">SAML SSO</TabsTrigger>
           <TabsTrigger value="retention">Data & residency</TabsTrigger>
           <TabsTrigger value="compliance">Compliance</TabsTrigger>
+          <TabsTrigger value="domains">Domains</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cache">
@@ -129,6 +134,10 @@ export function SettingsPage() {
 
         <TabsContent value="compliance">
           <ComplianceReportCenter />
+        </TabsContent>
+
+        <TabsContent value="domains">
+          <DomainClaimsSettings />
         </TabsContent>
       </Tabs>
     </div>

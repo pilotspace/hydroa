@@ -1,0 +1,494 @@
+<title>Domain claims console — design wireframe</title>
+<style>
+  /* ============================================================
+     Airier token layer — mirrored from apps/dashboard/app/globals.css
+     (azure signal accent · cool-biased graphite neutrals · Geist / Geist Mono).
+     Webfonts are CSP-blocked in Artifacts, so Geist is approximated with the
+     same system-font stack globals.css declares as its fallback tier.
+     ============================================================ */
+  :root {
+    --background:#fbfcfd; --foreground:#101720;
+    --card:#ffffff; --card-muted:#f9fbfd;
+    --muted:#f4f6f9; --muted-foreground:#48525e;
+    --primary:#2f6df0; --primary-foreground:#ffffff; --primary-hover:#2a61d8;
+    --success:#16955f; --success-text:#0f7a4d;
+    --warning:#bd8410; --warning-foreground:#8a5a0a;
+    --destructive:#cc3d37; --destructive-text:#c0332e;
+    --border:#e7ebf0; --ring:#2f6df0;
+    --accent-soft:#eef3fe; --accent-soft-border:#d8e4fd; --accent-soft-foreground:#1c4bb8;
+    --seal-success-bg:rgba(22,149,95,.10);
+    --seal-warning-bg:rgba(189,132,16,.12);
+    --seal-destructive-bg:rgba(204,61,55,.10);
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --shadow:0 1px 2px rgba(16,23,32,.04),0 4px 16px rgba(16,23,32,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --background:#0c1015; --foreground:#eaeff5;
+      --card:#12181f; --card-muted:#0f151b;
+      --muted:#1b222b; --muted-foreground:#aeb9c5;
+      --primary:#5b8cff; --primary-foreground:#0c1015; --primary-hover:#7ba2ff;
+      --success:#34c07f; --success-text:#4fd196;
+      --warning:#e0a52b; --warning-foreground:#f2c661;
+      --destructive:#e5645f; --destructive-text:#f08a86;
+      --border:#232b34; --ring:#5b8cff;
+      --accent-soft:#16233d; --accent-soft-border:#24365c; --accent-soft-foreground:#8fb0ff;
+      --seal-success-bg:rgba(79,209,150,.12);
+      --seal-warning-bg:rgba(224,165,43,.15);
+      --seal-destructive-bg:rgba(229,100,95,.14);
+      --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  /* viewer toggle must win in both directions */
+  :root[data-theme="light"]{
+    --background:#fbfcfd; --foreground:#101720; --card:#ffffff; --card-muted:#f9fbfd;
+    --muted:#f4f6f9; --muted-foreground:#48525e; --primary:#2f6df0; --primary-foreground:#fff;
+    --primary-hover:#2a61d8; --success:#16955f; --success-text:#0f7a4d; --warning:#bd8410;
+    --warning-foreground:#8a5a0a; --destructive:#cc3d37; --destructive-text:#c0332e;
+    --border:#e7ebf0; --ring:#2f6df0; --accent-soft:#eef3fe; --accent-soft-border:#d8e4fd;
+    --accent-soft-foreground:#1c4bb8; --seal-success-bg:rgba(22,149,95,.10);
+    --seal-warning-bg:rgba(189,132,16,.12); --seal-destructive-bg:rgba(204,61,55,.10);
+    --shadow:0 1px 2px rgba(16,23,32,.04),0 4px 16px rgba(16,23,32,.05);
+  }
+  :root[data-theme="dark"]{
+    --background:#0c1015; --foreground:#eaeff5; --card:#12181f; --card-muted:#0f151b;
+    --muted:#1b222b; --muted-foreground:#aeb9c5; --primary:#5b8cff; --primary-foreground:#0c1015;
+    --primary-hover:#7ba2ff; --success:#34c07f; --success-text:#4fd196; --warning:#e0a52b;
+    --warning-foreground:#f2c661; --destructive:#e5645f; --destructive-text:#f08a86;
+    --border:#232b34; --ring:#5b8cff; --accent-soft:#16233d; --accent-soft-border:#24365c;
+    --accent-soft-foreground:#8fb0ff; --seal-success-bg:rgba(79,209,150,.12);
+    --seal-warning-bg:rgba(224,165,43,.15); --seal-destructive-bg:rgba(229,100,95,.14);
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--background);color:var(--foreground);
+    font-family:var(--font-sans);line-height:1.5;letter-spacing:-.006em;
+  }
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px 72px}
+
+  /* ---- top chrome ---- */
+  .topbar{
+    position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--background) 88%,transparent);
+    backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--border);
+  }
+  .topbar-inner{max-width:1060px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.02em}
+  .brand .glyph{width:22px;height:22px;border-radius:6px;
+    background:linear-gradient(135deg,var(--primary),#5b8cff);display:grid;place-items:center;
+    color:#fff;font-size:13px;font-weight:700}
+  .brand small{font-weight:500;color:var(--muted-foreground)}
+  .flag{margin-left:6px;font-size:11px;font-family:var(--font-mono);letter-spacing:.02em;
+    color:var(--accent-soft-foreground);background:var(--accent-soft);
+    border:1px solid var(--accent-soft-border);padding:2px 8px;border-radius:999px}
+  .spacer{flex:1}
+  .toggle{appearance:none;cursor:pointer;font:inherit;font-size:13px;color:var(--foreground);
+    background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px 12px;
+    display:inline-flex;align-items:center;gap:7px}
+  .toggle:hover{border-color:var(--ring)}
+  .toggle:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+
+  /* ---- page header ---- */
+  header.page{padding:34px 0 8px}
+  header.page h1{font-size:26px;line-height:1.15;margin:0 0 6px;letter-spacing:-.02em;text-wrap:balance}
+  header.page p{margin:0;color:var(--muted-foreground);max-width:62ch}
+
+  /* ---- tab rail (mirrors SettingsPage.tsx TabsList) ---- */
+  nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--border);
+    margin:22px 0 26px;scrollbar-width:none}
+  nav.tabs::-webkit-scrollbar{display:none}
+  nav.tabs a{white-space:nowrap;padding:10px 13px;font-size:13.5px;color:var(--muted-foreground);
+    border-bottom:2px solid transparent;text-decoration:none;margin-bottom:-1px}
+  nav.tabs a[aria-current="page"]{color:var(--foreground);border-bottom-color:var(--primary);font-weight:550}
+  nav.tabs a:hover:not([aria-current]){color:var(--foreground)}
+
+  /* ---- section ---- */
+  .section-head{display:flex;align-items:flex-start;gap:16px;margin:0 0 16px}
+  .section-head h2{font-size:16px;margin:0 0 3px;letter-spacing:-.01em}
+  .section-head p{margin:0;font-size:13px;color:var(--muted-foreground);max-width:56ch}
+  .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;
+    color:var(--muted-foreground);font-weight:600;margin:0 0 14px}
+
+  .btn{appearance:none;cursor:pointer;font:inherit;font-size:13.5px;font-weight:550;
+    border-radius:8px;padding:8px 14px;display:inline-flex;align-items:center;gap:7px;
+    border:1px solid transparent;transition:background .12s,border-color .12s}
+  .btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+  .btn-primary{background:var(--primary);color:var(--primary-foreground)}
+  .btn-primary:hover{background:var(--primary-hover)}
+  .btn-ghost{background:transparent;color:var(--foreground);border-color:var(--border)}
+  .btn-ghost:hover{border-color:var(--ring);background:var(--muted)}
+  .btn-danger{background:transparent;color:var(--destructive-text);border-color:transparent}
+  .btn-danger:hover{background:var(--seal-destructive-bg)}
+  .btn-sm{padding:5px 10px;font-size:12.5px}
+
+  /* ---- claims table ---- */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;
+    box-shadow:var(--shadow);overflow:hidden}
+  .table-scroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;min-width:640px}
+  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--muted-foreground);font-weight:600;padding:12px 18px;border-bottom:1px solid var(--border)}
+  tbody td{padding:15px 18px;border-bottom:1px solid var(--border);vertical-align:middle;font-size:14px}
+  tbody tr:last-child td{border-bottom:none}
+  tr.detail-row td{padding:0;border-bottom:1px solid var(--border)}
+  .domain{font-family:var(--font-mono);font-size:13.5px;letter-spacing:-.01em}
+  .meta{color:var(--muted-foreground);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .row-actions{display:flex;gap:4px;justify-content:flex-end}
+  td.actions{text-align:right}
+
+  /* ============================================================
+     STATUS SEAL — the signature element. Reuses InvoiceStatusSeal.tsx /
+     BundleEvidenceSeal.tsx idiom: rounded-full Badge + Lock/state icon +
+     sr-only assertion copy + font-mono tabular (badge.tsx semantic variants).
+     Verified = the "issued/sealed immutable" branch of that idiom.
+     ============================================================ */
+  .seal{display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+    border:1px solid transparent;padding:3px 10px 3px 8px;font-size:12px;font-weight:600;
+    font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.01em;white-space:nowrap}
+  .seal svg{width:13px;height:13px;flex:none}
+  .seal--verified{background:var(--seal-success-bg);color:var(--success-text);border-color:color-mix(in srgb,var(--success) 26%,transparent)}
+  .seal--pending{background:var(--seal-warning-bg);color:var(--warning-foreground);border-color:color-mix(in srgb,var(--warning) 30%,transparent)}
+  .seal--expired{background:var(--seal-destructive-bg);color:var(--destructive-text);border-color:color-mix(in srgb,var(--destructive) 26%,transparent)}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+  /* ---- DNS challenge panel (expanded row) ---- */
+  .challenge{background:var(--card-muted);padding:20px 18px 22px;border-top:1px dashed var(--border)}
+  .challenge h3{font-size:13.5px;margin:0 0 3px}
+  .challenge .hint{font-size:12.5px;color:var(--muted-foreground);margin:0 0 16px;max-width:64ch}
+  .dns-grid{display:grid;grid-template-columns:92px 1fr;gap:1px;background:var(--border);
+    border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .dns-grid .k,.dns-grid .v{background:var(--card);padding:10px 13px;display:flex;align-items:center;min-width:0}
+  .dns-grid .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground);font-weight:600}
+  .dns-grid .v{gap:10px}
+  .dns-grid code{font-family:var(--font-mono);font-size:12.5px;overflow-x:auto;white-space:nowrap;flex:1;min-width:0;padding-bottom:1px}
+  .copy{appearance:none;cursor:pointer;font:inherit;font-size:11.5px;color:var(--muted-foreground);
+    background:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px;flex:none;display:inline-flex;gap:5px;align-items:center}
+  .copy:hover{color:var(--foreground);border-color:var(--ring)}
+  .copy:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+  .challenge-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:16px}
+  .challenge-foot .note{font-size:12px;color:var(--muted-foreground);display:flex;gap:7px;align-items:center}
+
+  /* ---- inline verify-result alerts (ephemeral; not a persisted status) ---- */
+  .alert{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;padding:10px 13px;border-radius:9px;margin-top:14px;border:1px solid}
+  .alert svg{width:15px;height:15px;flex:none;margin-top:1px}
+  .alert--fail{background:var(--seal-destructive-bg);border-color:color-mix(in srgb,var(--destructive) 30%,transparent);color:var(--destructive-text)}
+  .alert strong{font-weight:650}
+  .alert .body{color:var(--foreground)}
+
+  /* ---- add-domain inline row ---- */
+  .add-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:16px 18px;background:var(--card-muted);border-top:1px solid var(--border)}
+  .add-bar input{font:inherit;font-size:14px;font-family:var(--font-mono);color:var(--foreground);
+    background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:220px;flex:1}
+  .add-bar input:focus-visible{outline:2px solid var(--ring);outline-offset:1px;border-color:var(--ring)}
+  .add-bar label{font-size:12.5px;color:var(--muted-foreground)}
+
+  /* ---- onboarding confirmation surface ---- */
+  .join-card{display:flex;gap:16px;padding:22px 22px;align-items:flex-start;
+    background:linear-gradient(180deg,var(--accent-soft),var(--card));border:1px solid var(--accent-soft-border)}
+  .join-card .badge-seal{margin-top:2px;width:40px;height:40px;border-radius:11px;flex:none;
+    display:grid;place-items:center;background:var(--seal-success-bg);color:var(--success-text);
+    border:1px solid color-mix(in srgb,var(--success) 28%,transparent)}
+  .join-card .badge-seal svg{width:20px;height:20px}
+  .join-card h2{font-size:17px;margin:0 0 4px;letter-spacing:-.01em}
+  .join-card h2 b{color:var(--foreground)}
+  .join-card p{margin:0 0 14px;font-size:13.5px;color:var(--muted-foreground);max-width:60ch}
+  .join-card .who{font-family:var(--font-mono);color:var(--foreground)}
+  .join-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .dismiss{position:absolute;top:14px;right:14px;appearance:none;cursor:pointer;border:none;background:transparent;
+    color:var(--muted-foreground);border-radius:6px;padding:4px;line-height:0}
+  .dismiss:hover{color:var(--foreground);background:var(--muted)}
+  .rel{position:relative}
+
+  .rule{height:1px;background:var(--border);border:0;margin:44px 0}
+
+  /* ---- design notes ---- */
+  .notes{font-size:12.5px;color:var(--muted-foreground);background:var(--card-muted);
+    border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .notes h4{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-foreground)}
+  .notes ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px}
+  .notes code{font-family:var(--font-mono);font-size:11.5px;background:var(--muted);padding:1px 5px;border-radius:4px;color:var(--foreground)}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+  @media (max-width:640px){
+    header.page h1{font-size:22px}
+    .section-head{flex-direction:column;gap:10px}
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="brand"><span class="glyph">H</span> Hydroa <small>· Settings</small></span>
+    <span class="flag">design wireframe — not built</span>
+    <span class="spacer"></span>
+    <button class="toggle" id="themeBtn" type="button" aria-label="Toggle color theme">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <span id="themeLabel">Theme</span>
+    </button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="page">
+    <h1>Settings</h1>
+    <p>Manage cache, guardrails, SSO, provider keys, and verified domains for your tenant.</p>
+  </header>
+
+  <nav class="tabs" aria-label="Settings sections">
+    <a href="#">Cache</a>
+    <a href="#">Guardrails</a>
+    <a href="#">SSO</a>
+    <a href="#">Provider Keys</a>
+    <a href="#">SCIM</a>
+    <a href="#">SAML SSO</a>
+    <a href="#">Data &amp; residency</a>
+    <a href="#">Compliance</a>
+    <a href="#" aria-current="page">Domains</a>
+  </nav>
+
+  <!-- ================= DOMAIN CLAIMS CONSOLE ================= -->
+  <div class="section-head">
+    <div style="flex:1">
+      <h2>Verified domains</h2>
+      <p>Verify a domain your company owns, and new members with an email on that domain
+         join this workspace automatically. Verification is by DNS TXT record.</p>
+    </div>
+    <button class="btn btn-primary" type="button" onclick="toggleAdd()">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add domain
+    </button>
+  </div>
+
+  <!-- state legend so a reviewer can read the chip language at a glance -->
+  <div class="legend">
+    <span class="seal seal--verified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>Verified</span>
+    <span class="seal seal--pending"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.5l3 1.8"/></svg>Pending DNS</span>
+    <span class="seal seal--expired"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Expired</span>
+  </div>
+
+  <div class="card">
+    <!-- inline add-domain bar (hidden by default) -->
+    <div class="add-bar" id="addBar" style="display:none">
+      <label for="newDomain">Domain</label>
+      <input id="newDomain" type="text" value="team.acme.com" spellcheck="false" aria-label="Domain to claim">
+      <button class="btn btn-primary btn-sm" type="button">Create claim</button>
+      <button class="btn btn-ghost btn-sm" type="button" onclick="toggleAdd()">Cancel</button>
+    </div>
+
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Domain</th><th>Status</th><th>Added</th><th>Expires</th><th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <!-- VERIFIED — the sealed / immutable-ownership branch -->
+        <tr>
+          <td><span class="domain">acme.com</span></td>
+          <td>
+            <span class="seal seal--verified">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
+              Verified
+              <span class="sr-only"> — domain ownership confirmed; members on this domain join automatically</span>
+            </span>
+          </td>
+          <td class="meta">Jul 12, 2026</td>
+          <td class="meta">—</td>
+          <td class="actions"><div class="row-actions">
+            <button class="btn btn-danger btn-sm" type="button">Revoke</button>
+          </div></td>
+        </tr>
+
+        <!-- PENDING — expanded to show the DNS-TXT challenge -->
+        <tr>
+          <td><span class="domain">acme.dev</span></td>
+          <td>
+            <span class="seal seal--pending">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.5l3 1.8"/></svg>
+              Pending DNS
+              <span class="sr-only"> — awaiting the DNS TXT record; not yet verified</span>
+            </span>
+          </td>
+          <td class="meta">Jul 18, 2026</td>
+          <td class="meta">in 6 days</td>
+          <td class="actions"><div class="row-actions">
+            <button class="btn btn-ghost btn-sm" type="button" aria-expanded="true">Hide setup</button>
+            <button class="btn btn-danger btn-sm" type="button">Revoke</button>
+          </div></td>
+        </tr>
+        <tr class="detail-row">
+          <td colspan="5">
+            <div class="challenge">
+              <h3>Add this DNS record at your domain registrar</h3>
+              <p class="hint">Create the TXT record below in <span class="domain">acme.dev</span>'s DNS zone, then choose
+                 <b>Verify now</b>. DNS changes can take a few minutes to propagate.</p>
+
+              <div class="dns-grid" role="group" aria-label="DNS TXT record to publish">
+                <div class="k">Type</div>
+                <div class="v"><code>TXT</code></div>
+                <div class="k">Name</div>
+                <div class="v">
+                  <code>_ai-proxy-challenge.acme.dev</code>
+                  <button class="copy" type="button" data-copy="_ai-proxy-challenge.acme.dev">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span class="copy-label">Copy</span></button>
+                </div>
+                <div class="k">Value</div>
+                <div class="v">
+                  <code>ai-proxy-domain-verification=vT7c9a1e4b2f8d60c3a5e9f1b7d84c206</code>
+                  <button class="copy" type="button" data-copy="ai-proxy-domain-verification=vT7c9a1e4b2f8d60c3a5e9f1b7d84c206">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span class="copy-label">Copy</span></button>
+                </div>
+              </div>
+
+              <div class="challenge-foot">
+                <button class="btn btn-primary" type="button">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>
+                  Verify now
+                </button>
+                <span class="note">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+                  We check the exact record above. Nothing else changes until it matches.
+                </span>
+              </div>
+            </div>
+          </td>
+        </tr>
+
+        <!-- PENDING with a failed LAST verify attempt (ephemeral result, still 'pending') -->
+        <tr>
+          <td><span class="domain">beta.acme.com</span></td>
+          <td>
+            <span class="seal seal--pending">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4.5l3 1.8"/></svg>
+              Pending DNS
+              <span class="sr-only"> — awaiting the DNS TXT record; last verification attempt did not match</span>
+            </span>
+          </td>
+          <td class="meta">Jul 19, 2026</td>
+          <td class="meta">in 7 days</td>
+          <td class="actions"><div class="row-actions">
+            <button class="btn btn-ghost btn-sm" type="button" aria-expanded="false">Show setup</button>
+            <button class="btn btn-danger btn-sm" type="button">Revoke</button>
+          </div></td>
+        </tr>
+        <tr class="detail-row">
+          <td colspan="5">
+            <div class="challenge" style="padding-top:16px">
+              <div class="alert alert--fail" role="status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                <span class="body"><strong>Record not found yet.</strong> We looked up
+                  <span class="domain">_ai-proxy-challenge.beta.acme.com</span> but didn't find the expected value.
+                  DNS can take time to propagate — confirm the record, then verify again.
+                  <span style="color:var(--muted-foreground)">(ERR_DOMAIN_VERIFICATION_FAILED)</span></span>
+              </div>
+            </div>
+          </td>
+        </tr>
+
+        <!-- EXPIRED (derived: pending + past expires_at) -->
+        <tr>
+          <td><span class="domain">staging.acme.io</span></td>
+          <td>
+            <span class="seal seal--expired">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+              Expired
+              <span class="sr-only"> — the verification window closed before the domain was verified</span>
+            </span>
+          </td>
+          <td class="meta">Jun 28, 2026</td>
+          <td class="meta">Jul 12, 2026</td>
+          <td class="actions"><div class="row-actions">
+            <button class="btn btn-ghost btn-sm" type="button">Reissue</button>
+            <button class="btn btn-danger btn-sm" type="button">Revoke</button>
+          </div></td>
+        </tr>
+
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <hr class="rule">
+
+  <!-- ================= ONBOARDING CONFIRMATION SURFACE ================= -->
+  <p class="eyebrow">Onboarding confirmation · shown on the post-login landing when <code style="font-family:var(--font-mono)">?joined=1</code></p>
+  <div class="card rel">
+    <button class="dismiss" type="button" aria-label="Dismiss">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="join-card">
+      <span class="badge-seal" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>
+      </span>
+      <div style="flex:1">
+        <h2>You joined the <b>Acme, Inc.</b> workspace</h2>
+        <p>Your email is on a verified company domain (<span class="who">acme.com</span>), so you were added
+           as a <b>member</b> of Acme's existing workspace instead of starting a new one. Your admin manages
+           billing, keys, and access.</p>
+        <div class="join-actions">
+          <button class="btn btn-primary" type="button">Go to your API keys</button>
+          <button class="btn btn-ghost" type="button">Explore the workspace</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="rule">
+
+  <div class="notes">
+    <h4>Grounding notes carried into this wireframe</h4>
+    <ul>
+      <li><b>Status chip = the immutability-marker idiom.</b> The <b>Verified</b> seal reuses
+        <code>InvoiceStatusSeal.tsx</code> / <code>BundleEvidenceSeal.tsx</code> verbatim — a
+        <code>Badge variant="success"</code> + lock + <code>sr-only</code> ownership assertion, mono/tabular per
+        <code>badge.tsx</code>. Verified reads as "sealed / final ownership".</li>
+      <li><b>Only two statuses are persisted:</b> <code>ClaimStatus = pending | verified</code>
+        (DB <code>CheckConstraint status IN ('pending','verified')</code>). <b>Expired</b> is derived
+        client-side (<code>pending &amp;&amp; expires_at &lt; now</code>); a failed <b>Verify now</b> is an
+        ephemeral result (claim stays <code>pending</code>), not a stored "failed" state; <b>revoke</b> is a
+        hard DELETE — the row simply disappears (no tombstone chip).</li>
+      <li><b>No new BFF route.</b> The console calls the existing authenticated proxy
+        (<code>/api/gw/[...path]</code> via <code>bffGet/bffPost/bffDelete</code>) against the frozen
+        gateway API; owner-only is enforced server-side (403 <code>ERR_AUTH_FORBIDDEN</code>).</li>
+      <li><b>Home:</b> a new "Domains" tab in the existing <code>SettingsPage.tsx</code> hub (URL-controlled
+        <code>?tab=domains</code>), alongside SSO / SAML — all owner-scoped surfaces.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+  // theme toggle — stamps data-theme so it overrides prefers-color-scheme both ways
+  (function(){
+    var btn=document.getElementById("themeBtn"),label=document.getElementById("themeLabel");
+    function sysDark(){return window.matchMedia("(prefers-color-scheme:dark)").matches}
+    function cur(){var t=document.documentElement.getAttribute("data-theme");return t||(sysDark()?"dark":"light")}
+    function apply(t){document.documentElement.setAttribute("data-theme",t);label.textContent=(t==="dark"?"Light":"Dark")}
+    apply(cur());
+    btn.addEventListener("click",function(){apply(cur()==="dark"?"light":"dark")});
+  })();
+  // add-domain reveal
+  function toggleAdd(){var b=document.getElementById("addBar");b.style.display=(b.style.display==="none")?"flex":"none";}
+  // copy buttons — real clipboard, label swapped via textContent (no innerHTML)
+  document.querySelectorAll(".copy").forEach(function(b){
+    var label=b.querySelector(".copy-label");
+    b.addEventListener("click",function(){
+      var v=b.getAttribute("data-copy");
+      (navigator.clipboard?navigator.clipboard.writeText(v):Promise.resolve()).then(function(){
+        if(!label)return;
+        label.textContent="Copied";
+        setTimeout(function(){label.textContent="Copy";},1400);
+      });
+    });
+  });
+  // dismiss the confirmation card
+  document.querySelectorAll(".dismiss").forEach(function(x){
+    x.addEventListener("click",function(){var c=x.closest(".card");if(c)c.style.display="none";});
+  });
+</script>

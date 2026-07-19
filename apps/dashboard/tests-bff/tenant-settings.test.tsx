@@ -557,6 +557,10 @@ describe("SettingsPage — new tabs shell", () => {
       "SAML SSO",
       "Data & residency",
       "Compliance",
+      // domain-claims-console TASK.md §5 (sanctioned, additive-ONLY cross-task
+      // reconciliation): the new 9th "Domains" tab (M1) — the assertion still
+      // pins the COMPLETE ordered tab set, intent-preserving.
+      "Domains",
     ]);
 
     // Cache's GET fired (default tab); every OTHER tab's GETs must NOT have fired yet.

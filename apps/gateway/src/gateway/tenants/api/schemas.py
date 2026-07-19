@@ -40,3 +40,8 @@ class MeResponse(BaseModel):
     tenant_id: uuid.UUID
     email: str
     role: str
+    # NEW additive field (domain-claims-console TASK.md §4 CR 2026-07-19): the caller's
+    # OWN tenant display name, so the dashboard joined-workspace callout can name the
+    # workspace from session context. Empty string if the tenant row is somehow absent
+    # (a valid session always has one; /me must never 500 on this).
+    tenant_name: str = ""
