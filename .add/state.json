@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "agents-console",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "pricing-tier-ladder",
+  "active_milestone": "frontdoor-persona-routing",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,6 +1192,176 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "scoped-self-serve-signup": {
+      "title": "Personal-tier self-serve signup without re-opening account enumeration (SECURITY)",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [],
+      "created": "2026-07-20T15:18:08+00:00",
+      "updated": "2026-07-20T16:33:04+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-20T15:51:53+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "5559e02504be1e565649dab0f7c590a7",
+        "tests": {
+          "apps/gateway/tests/scoped_self_serve_signup/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/scoped_self_serve_signup/conftest.py": "2998bb6661a6ac63822f5c90008ee99f",
+          "apps/gateway/tests/scoped_self_serve_signup/test_scoped_self_serve_signup.py": "fd69063ea9adaa6f2015827d7842aa49"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/scoped-self-serve-signup/src/",
+          "apps/gateway/"
+        ],
+        "snapshot_md5": "af1a37bd9e72ca0c04807556c606e305"
+      }
+    },
+    "signup-refusal-router": {
+      "title": "Replace the invite-only dead end with three live routes (SSO / invite link / request access)",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [],
+      "created": "2026-07-20T15:18:08+00:00",
+      "updated": "2026-07-20T16:32:59+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-20T15:51:34+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "4e5e0435b53383229a7fe48c5ab1e76f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/signup-refusal-router/src/"
+        ],
+        "snapshot_md5": "af1a37bd9e72ca0c04807556c606e305"
+      }
+    },
+    "homepage-integration-proof": {
+      "title": "Show the base_url swap in the hero - prove drop-in compatibility",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [],
+      "created": "2026-07-20T15:18:08+00:00",
+      "updated": "2026-07-20T16:33:06+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-20T15:51:34+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "0a7230ec68bc77100d45557b44683d2f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/homepage-integration-proof/src/"
+        ],
+        "snapshot_md5": "af1a37bd9e72ca0c04807556c606e305"
+      }
+    },
+    "homepage-price-anchor": {
+      "title": "Anchor the homepage pricing section with a real number",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [
+        "pricing-tier-ladder"
+      ],
+      "created": "2026-07-20T15:18:08+00:00",
+      "updated": "2026-07-20T15:46:56+00:00"
+    },
+    "homepage-cta-intent-split": {
+      "title": "Split the homepage CTA by visitor intent",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [
+        "scoped-self-serve-signup"
+      ],
+      "created": "2026-07-20T15:18:19+00:00",
+      "updated": "2026-07-20T15:18:19+00:00"
+    },
+    "domain-aware-auth-routing": {
+      "title": "Route on work-email domain before the password field, without leaking customer identity (SECURITY)",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [
+        "signup-refusal-router"
+      ],
+      "created": "2026-07-20T15:18:19+00:00",
+      "updated": "2026-07-20T15:18:19+00:00"
+    },
+    "unified-signin-entry": {
+      "title": "Collapse password/SSO/SAML into one routed Continue-with-email step",
+      "phase": "ground",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [
+        "domain-aware-auth-routing"
+      ],
+      "created": "2026-07-20T15:18:19+00:00",
+      "updated": "2026-07-20T15:18:19+00:00"
+    },
+    "pricing-tier-ladder": {
+      "title": "Render the real 5-tier plan ladder on /pricing (surface the hidden $1 Starter and $20 Pro)",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "frontdoor-persona-routing",
+      "depends_on": [],
+      "created": "2026-07-20T15:46:31+00:00",
+      "updated": "2026-07-20T16:33:07+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-20T16:18:14+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "f6439218b96e5b7acdbd4b329ca4b12f",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/pricing-tier-ladder/src/",
+          "apps/dashboard/"
+        ],
+        "snapshot_md5": "af1a37bd9e72ca0c04807556c606e305"
+      }
     }
   },
   "milestones": {
@@ -1288,10 +1458,18 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "frontdoor-persona-routing": {
+      "title": "Front-door persona routing",
+      "goal": "Every visitor who arrives at Hydroa's front door reaches a live next step: self-serve signup works, and a member of an existing tenant is routed to SSO, their invite link, or a request-access path instead of a dead end.",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-07-20T15:12:43+00:00",
+      "updated": "2026-07-20T15:12:43+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T11:18:07+00:00",
+  "updated": "2026-07-20T16:33:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2332,7 +2510,8 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "frontdoor-persona-routing"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2340,7 +2519,8 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "agent-gateway-v1": "agents-console",
+    "frontdoor-persona-routing": "pricing-tier-ladder"
   },
   "todos": [
     {
