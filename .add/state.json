@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "member-verified-recognition",
+  "active_task": "member-verified-code-entry",
   "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1313,6 +1313,35 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-verified-code-entry": {
+      "title": "Dashboard: member-verified 6-digit code-entry screen + rung-aware climb seal (D1)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-20T06:42:23+00:00",
+      "updated": "2026-07-20T07:38:34+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "4257430a1b529ff05b025257cf2dcb80",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/components/settings/",
+          "apps/dashboard/components/overview/",
+          "apps/dashboard/tests/member-verified-code-entry.test.tsx",
+          "apps/dashboard/tests-bff/",
+          "apps/dashboard/"
+        ],
+        "snapshot_md5": "2ac0b1904f79403be82bfeceab87141e"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1429,7 +1458,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T06:40:02+00:00",
+  "updated": "2026-07-20T07:38:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2465,7 +2494,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "domain-onboarding-softening": "member-verified-recognition"
+    "domain-onboarding-softening": "member-verified-code-entry"
   },
   "todos": [
     {

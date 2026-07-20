@@ -214,24 +214,38 @@ describe("OnboardingChecklist — dismiss persists per-tenant (M7)", () => {
 
 describe("OnboardingChecklist — auto-hides on full completion (M7)", () => {
   it("test_checklist_auto_hides_on_completion", async () => {
-    // Control: with 3/4 steps done (invite still missing), the checklist DOES
+    // Control: with 4/5 steps done (invite still missing), the checklist DOES
     // render — proves this is a real completion check, not absence-by-default.
+    // (member-verified-code-entry added a 5th owner step "confirm_domain"; complete
+    // it here so invite is the single missing step — the assertion INTENT is unchanged.)
     server.use(meHandler("owner"));
     mockCoreMetrics({ totalRequests: 5 });
     mockKeys([{ key_id: "k1", name: "prod" }]);
     mockProviderKeys([{ provider: "openai", enabled: true }]);
     mockInvites([]);
+    server.use(
+      http.get(`${APP}/api/gw/admin/domain-claims`, () =>
+        HttpResponse.json({ claims: [{ status: "verified", member_verified_at: null }] }),
+      ),
+    );
     const { unmount } = render(<OverviewPage />, { wrapper: Wrapper });
     await screen.findByText("Total Requests");
     expect(await screen.findByTestId("onboarding-checklist")).toBeInTheDocument();
     unmount();
 
-    // Now all 4 steps complete -> auto-hides, with no dismiss click and no write.
+    // Now all 5 steps complete -> auto-hides, with no dismiss click and no write.
+    // (confirm_domain completes when a claim is verified OR member_verified — added
+    // by member-verified-code-entry; the "full completion -> hide" intent is unchanged.)
     server.use(meHandler("owner"));
     mockCoreMetrics({ totalRequests: 5 });
     mockKeys([{ key_id: "k1", name: "prod" }]);
     mockProviderKeys([{ provider: "openai", enabled: true }]);
     mockInvites([{ id: "inv-1", email: "x@acme.io", status: "pending" }]);
+    server.use(
+      http.get(`${APP}/api/gw/admin/domain-claims`, () =>
+        HttpResponse.json({ claims: [{ status: "verified", member_verified_at: null }] }),
+      ),
+    );
 
     render(<OverviewPage />, { wrapper: Wrapper });
     await screen.findByText("Total Requests");

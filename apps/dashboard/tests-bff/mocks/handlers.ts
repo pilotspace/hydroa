@@ -223,6 +223,18 @@ export const bffHandlers = [
   // above. Tests asserting checklist step-completion behavior override with their own server.use(...).
   http.get(`${APP}/api/gw/admin/provider-keys`, () => HttpResponse.json({ keys: [] })),
   http.get(`${APP}/api/gw/admin/invites`, () => HttpResponse.json({ invites: [] })),
+
+  // member-verified-code-entry (M13): OnboardingChecklist now ALSO fires GET
+  // /admin/domain-claims (role==="owner" only) unconditionally — same reason and
+  // same idiom as provider-keys/invites directly above. Default = empty (the
+  // confirm_domain step reads as incomplete) so every pre-existing owner-role
+  // OverviewPage render stays green without a per-test edit. A frozen sibling
+  // conflict this default does NOT resolve: tests-bff/onboarding-checklist.test.tsx
+  // "test_checklist_auto_hides_on_completion" asserts full-hide once its 4 known
+  // steps complete; with a 5th (confirm_domain) step now always present for an
+  // owner and always incomplete by this default, that assertion regresses — a
+  // genuine cross-task conflict flagged at BUILD (reported, not silently patched).
+  http.get(`${APP}/api/gw/admin/domain-claims`, () => HttpResponse.json({ claims: [] })),
 ];
 
 export const defaultHandlers = [...gatewayHandlers, ...bffHandlers];

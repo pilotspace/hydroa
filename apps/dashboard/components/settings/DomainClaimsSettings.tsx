@@ -56,8 +56,9 @@ import {
   DEFAULT_VERIFY_POLL,
   type VerifyOutcome,
 } from "./useVerifyPoll";
+import { MemberVerifyCodeEntry, type MemberVerifyClaim } from "./MemberVerifyCodeEntry";
 
-interface DomainClaimListItem {
+export interface DomainClaimListItem {
   claim_id: string;
   domain: string;
   status: "pending" | "verified";
@@ -68,6 +69,9 @@ interface DomainClaimListItem {
   // ADDITIVE (domain-verify-notify §3, FROZEN): the "email me when it's live" state.
   notify_requested_at: string | null;
   notified_at: string | null;
+  // ADDITIVE (member-verified-code-entry §3, FROZEN): the rung-1 member trust marker;
+  // consumed VERBATIM from the frozen member-verified-recognition backend (6a75579).
+  member_verified_at?: string | null;
 }
 
 interface DomainClaimListResponse {
@@ -303,6 +307,23 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
     );
   };
 
+  /** The member-verify single seal-flip site (member-verified-code-entry §3 item 6,
+   * FROZEN) — parallels applyVerified: patches ONLY member_verified_at from the 200
+   * body into the cached claim; `status` is left untouched (stays "pending", M9). */
+  const applyMemberVerified = (item: MemberVerifyClaim) => {
+    queryClient.setQueryData<DomainClaimListResponse>(CLAIMS_KEY, (prev) =>
+      prev
+        ? {
+            claims: prev.claims.map((c) =>
+              c.claim_id === item.claim_id
+                ? { ...c, member_verified_at: item.member_verified_at }
+                : c,
+            ),
+          }
+        : prev,
+    );
+  };
+
   const createClaim = useMutation({
     mutationFn: (domain: string) => bffPost<DomainClaimCreateResponse>(CLAIMS_PATH, { domain }),
     onSuccess: (resp) => {
@@ -468,11 +489,23 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
         </p>
       )}
 
-      {challenge && (
-        <div
-          data-slot="dns-challenge"
-          className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4"
-        >
+      {challenge && (() => {
+        const activeClaim = claims.find((c) => c.claim_id === challenge.claim_id);
+        // M4/§3 item 8: EXPANDED while not-yet-verified/member-verified (or the
+        // claim hasn't landed in the list yet — fail-open to the action-needed
+        // display, never a falsely-reassuring collapse); COLLAPSED once
+        // member_verified_at is set OR the claim is Owner-verified.
+        const showCodeEntry =
+          !activeClaim || (activeClaim.member_verified_at == null && activeClaim.status !== "verified");
+        return (
+          <>
+            {showCodeEntry && (
+              <MemberVerifyCodeEntry claimId={challenge.claim_id} onVerified={applyMemberVerified} />
+            )}
+            <div
+              data-slot="dns-challenge"
+              className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4"
+            >
           <p className="text-sm text-muted-foreground">
             Publish this DNS record for{" "}
             <span className="font-medium text-foreground">{challenge.domain}</span>. We&apos;ll check
@@ -522,8 +555,10 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
               </span>
             )}
           </div>
-        </div>
-      )}
+            </div>
+          </>
+        );
+      })()}
 
       {claims.length === 0 ? (
         <Empty
