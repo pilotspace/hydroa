@@ -479,7 +479,7 @@ SAFETY RULES (security task — binding):
 
 Glossary deltas: member-verified: a rung-1 trust marker (`member_verified_at` on a domain claim) proving
 the admin controls their signup MAILBOX (6-digit code), distinct from "verified" (DNS-TXT-proven domain
-control, status='verified'). member-verified unlocks invite-by-domain; it NEVER enables stranger auto-join.
+control, status='verified'). member-verified unlocks invite-by-domain; it NEVER enables stranger auto-join. [folded foundation-version 54]
 Status: FROZEN @ v1 — approved by Tin Dang, 2026-07-20. DECIDED at freeze: hash-at-rest = Option A —
 HMAC-SHA256(code, key = HMAC(jwt_secret, "member-verify-code")), constant-time `hmac.compare_digest`; NO new
 config secret (reuses the existing required, dev-default-guarded `jwt_secret` with domain separation).

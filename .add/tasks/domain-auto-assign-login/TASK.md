@@ -161,7 +161,7 @@ app/auth/oidc/callback/route.ts   # forwards Location verbatim → ?joined=1 sur
 Schema: NO DB schema change. Reads/writes are the existing UserRow / SeatMembershipEventRow provisioning (unchanged); the signal is transport-only (query param + BFF body field).
 ```
 
-Glossary deltas: domain auto-join (SSO): a MEMBER auto-provisioned into the verified/operator-mapped tenant on SSO first-login; the `?joined=1` redirect param is its client signal (mirrors password-signup `joined_existing_tenant`).
+Glossary deltas: domain auto-join (SSO): a MEMBER auto-provisioned into the verified/operator-mapped tenant on SSO first-login; the `?joined=1` redirect param is its client signal (mirrors password-signup `joined_existing_tenant`). [folded foundation-version 54]
 Least-sure flag surfaced at freeze: [contract] (M2/M7 redirect signal transport) — that a `?joined=1` query param appended to the gateway's post-login redirect Location survives the OIDC dashboard relay intact. Lowest confidence because a relay that RECONSTRUCTS (rather than forwards) the URL would silently drop it → the OIDC join signal is lost. Mitigation: M7 pins it with a dedicated test; the frozen `oidc-callback-relay.test.tsx` shows Location is forwarded verbatim today, so the risk is regression, not first-build.
 Status: FROZEN @ v1 — approved by Tin Dang 2026-07-19
 Reported: yes — freeze report (banner/ARC/SHAPE/FLAGS) rendered before this froze

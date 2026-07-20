@@ -305,7 +305,7 @@ Schema (additive; migration off head c2e5a9d1b7f4):
 
 Glossary deltas:
   - Domain invite link: a tenant-scoped, reusable, revocable, 30-day shareable secret (SHA256-hashed at rest) that an admin — member/owner-verified on that domain — mints so any holder of an @domain mailbox may redeem it (after proving that mailbox via a 6-digit code) to join the tenant as a MEMBER. Never enables stranger auto-join.
-  - Redemption: the ephemeral per-(link, email) 6-digit-code challenge that proves an individual mailbox before a domain-link join is provisioned; consumed on success, capped and expiring like the member-verify code.
+  - Redemption: the ephemeral per-(link, email) 6-digit-code challenge that proves an individual mailbox before a domain-link join is provisioned; consumed on success, capped and expiring like the member-verify code. [folded foundation-version 54]
 Least-sure flag surfaced at freeze: [contract] POST re-create for an already-active (tenant, domain) SUPERSEDES the old link (rotates the token; the previously-shared link stops working) rather than returning the existing link or 409 — see §1 ⚠. Tin CONFIRMED supersede/rotate at freeze (2026-07-20); the dashboard (6b) must show a "this replaces the old link" hint.
 Status: FROZEN @ v1 — approved by Tin 2026-07-20
 Reported: yes — the freeze report (banner/ARC/SHAPE/FLAG/DECIDED/EVIDENCE) rendered before this froze

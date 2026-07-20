@@ -335,7 +335,7 @@ export interface InviteCreateResponse {
 #   nothing else in the dialog changes (byte-identical copy-link block, Copy/Done buttons).
 ```
 
-Glossary deltas: **EmailSender** (NEW term): a gateway-owned port (`typing.Protocol`, `async def send(message: EmailMessage) -> None`) for ancillary, fire-and-forget outbound email — fail-open like the existing audit-writer seam (a send failure never fails the primary request). Two adapters: `console` (default, logs the rendered mail, never a real delivery) and `smtp` (config-gated, stdlib `smtplib` + an isolated `CircuitBreaker` + bounded tenacity retry + explicit timeout). Wired to exactly one caller this milestone (`POST /admin/invites`'s accept-link email); designed to be reused unchanged by a future alerts/invoices caller (out of this milestone's scope).
+Glossary deltas: **EmailSender** (NEW term): a gateway-owned port (`typing.Protocol`, `async def send(message: EmailMessage) -> None`) for ancillary, fire-and-forget outbound email — fail-open like the existing audit-writer seam (a send failure never fails the primary request). Two adapters: `console` (default, logs the rendered mail, never a real delivery) and `smtp` (config-gated, stdlib `smtplib` + an isolated `CircuitBreaker` + bounded tenacity retry + explicit timeout). Wired to exactly one caller this milestone (`POST /admin/invites`'s accept-link email); designed to be reused unchanged by a future alerts/invoices caller (out of this milestone's scope). [folded foundation-version 54]
 Least-sure flag surfaced at freeze: [contract] `email_delivery_channel` reports the channel DISPATCHED-TO, never confirmed-delivered (fire-and-forget returns 201 before the send starts); overclaim risk is bounded by the dispatch-honest FE copy ruling (#2). [spec] v1 body omits the tenant display name (Invite/Identity carry none) — enrichment is an additive follow-up.
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive (2026-07-17).
 Reported: yes — flags #1–#5 triaged in-session; rulings below.
@@ -521,16 +521,16 @@ One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence �
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
 
-- [TDD · open] a RED suite that asserts the EXACT non-retry behavior (not just "eventually
+- [TDD · folded] a RED suite that asserts the EXACT non-retry behavior (not just "eventually [folded foundation-version 54]
   succeeds") caught a real stdlib exception-hierarchy trap (SMTPException IS-A OSError since
   Python 3.4) that a shape-only test would have missed entirely (evidence: R4 test failed with
   3 attempts against the contract's literal retry-predicate tuple).
-- [ADD · open] a later task's frozen contract legitimately extending an EARLIER task's response
+- [ADD · folded] a later task's frozen contract legitimately extending an EARLIER task's response [folded foundation-version 54]
   shape requires updating that earlier task's own exact-shape test (in-scope per this task's §5
   Scope line) rather than treating it as an untouchable frozen artifact forever — the update is
   additive-only (one new key) and superseded-not-silent (evidence: tests/member_invite_issuance
   test_owner_invites_co_owner comment cites both task IDs).
-- [ADD · open] a fixed `asyncio.sleep(0.05)` after a fire-and-forget dispatch flakes under a
+- [ADD · folded] a fixed `asyncio.sleep(0.05)` after a fire-and-forget dispatch flakes under a [folded foundation-version 54]
   load-shared multi-agent host even for a BRAND NEW test — poll-until-present from the first
   draft, not just as a post-hoc fix (evidence: [[fire-and-forget-audit-test-flake]] recurred in
   this task's own first draft before being fixed with `_poll_until`).
