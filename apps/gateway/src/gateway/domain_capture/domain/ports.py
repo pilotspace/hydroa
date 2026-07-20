@@ -73,3 +73,14 @@ class DnsTxtResolver(Protocol):
         ANY resolver error, NXDOMAIN, empty answer, or timeout — fails CLOSED, never
         returns a partial/best-effort result (M13, R8). No internal retry."""
         ...
+
+
+class DnsNsResolver(Protocol):
+    async def lookup_ns(self, name: str, *, timeout: float) -> list[str]:  # noqa: ASYNC109 — mirrors DnsTxtResolver's own forwarded `lifetime=` deadline parameter
+        """ONE bounded-timeout DNS NS-record lookup for `name` (registrar-hint TASK.md §3
+        M3 — FROZEN @ v1). Raises NsLookupFailedError on ANY resolver error, NXDOMAIN,
+        empty answer, or timeout. Deliberately mirrors DnsTxtResolver's shape (bounded
+        timeout, no retry, one Protocol method) WITHOUT its fail-CLOSED discipline — the
+        CALLER (GetRegistrarHintUseCase) is responsible for catching NsLookupFailedError
+        into a graceful fallback (M4); this port itself still just raises on failure."""
+        ...

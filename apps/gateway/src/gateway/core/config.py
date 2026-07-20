@@ -1445,6 +1445,31 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Registrar-hint (registrar-hint TASK.md §3 M3/M7, FROZEN @ v1) ───────────
+    # GATEWAY_REGISTRAR_HINT_DNS_TIMEOUT_SECONDS — bounds the single best-effort NS
+    # lookup behind GET /admin/domain-claims/registrar-hint. Deliberately its OWN,
+    # SHORTER-lived knob than domain_verification_dns_timeout_seconds: this is a UI-
+    # convenience call that must never stall a render, not a verification-blocking one —
+    # a slow/non-responding nameserver simply falls open to the generic fallback (M4).
+    registrar_hint_dns_timeout_seconds: float = Field(
+        default=2.0, gt=0
+    )  # GATEWAY_REGISTRAR_HINT_DNS_TIMEOUT_SECONDS
+    # GATEWAY_DOMAIN_CLAIM_REGISTRAR_HINT_RPM — per-tenant fixed-window rate limit for the
+    # same endpoint (M7), reusing DomainClaimRateLimiter with a new action="registrar_hint"
+    # bucket key. Own dedicated positive-knob validator below, mirroring the scim_write_rpm
+    # precedent immediately above (not folded into _validate_domain_claim_positive_knobs).
+    domain_claim_registrar_hint_rpm: int = 30  # GATEWAY_DOMAIN_CLAIM_REGISTRAR_HINT_RPM
+
+    @field_validator("domain_claim_registrar_hint_rpm")
+    @classmethod
+    def _validate_domain_claim_registrar_hint_rpm(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_CLAIM_KNOB: domain_claim_registrar_hint_rpm must be a "
+                f"positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @model_validator(mode="after")
     def _validate_oidc_config(self) -> "Settings":
         """If OIDC is enabled, required fields must be non-empty and domain_mapping valid JSON."""

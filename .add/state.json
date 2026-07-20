@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "agents-console",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "registrar-hint",
+  "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,6 +1192,54 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "dns-verify-softeners": {
+      "title": "Soften the DNS-TXT verify flow: auto-poll + auto-flip, verify-later/notify, not-the-DNS-owner hand-off, registrar deep-link, one-block copy",
+      "phase": "tests",
+      "gate": "none",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-19T16:19:46+00:00",
+      "updated": "2026-07-20T02:43:44+00:00"
+    },
+    "domain-verify-notify": {
+      "title": "Email-me-when-it's-live: opt-in + background scheduler auto-verify + transactional email (backend, SECURITY)",
+      "phase": "tests",
+      "gate": "none",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-19T16:54:08+00:00",
+      "updated": "2026-07-20T02:40:04+00:00"
+    },
+    "registrar-hint": {
+      "title": "Nameserver-inferred registrar deep-link hint endpoint (backend)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-19T16:54:09+00:00",
+      "updated": "2026-07-20T03:01:40+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "adb5e81b8bc2be9d078147cf04ee90ff",
+        "tests": {
+          "apps/gateway/tests/domain_capture/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/domain_capture/conftest.py": "2d122f7b8bb173abf6814958a95e3e00",
+          "apps/gateway/tests/domain_capture/test_domain_capture.py": "ec861c592f9f3b384c332aed9f412112",
+          "apps/gateway/tests/domain_capture/test_registrar_hint.py": "cee3dc08294d750ec5a1946bc64d011a"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/"
+        ],
+        "snapshot_md5": "997708def2d841f91cbd2196deb3f898"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1288,10 +1336,27 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "domain-onboarding-softening": {
+      "title": "Domain onboarding softening: progressive trust ladder (soft member-verified rung + invite-by-domain + DNS-flow softeners)",
+      "goal": "A new admin can start using their workspace and invite their team by verified email domain the moment they sign up \u2014 without first completing DNS-TXT \u2014 while automatic stranger-join stays strictly gated on DNS-verified domain ownership",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-07-19T16:18:08+00:00",
+      "updated": "2026-07-19T16:19:46+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-19T16:19:46+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-19T14:50:23+00:00",
+  "updated": "2026-07-20T03:01:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2317,7 +2382,8 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "domain-onboarding-softening"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2325,7 +2391,8 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "agent-gateway-v1": "agents-console",
+    "domain-onboarding-softening": "registrar-hint"
   },
   "todos": [
     {

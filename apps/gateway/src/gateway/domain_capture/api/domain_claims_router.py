@@ -38,6 +38,7 @@ from gateway.domain_capture.api.deps import (
     get_create_claim_use_case,
     get_domain_claim_rate_limiter,
     get_domain_claim_repository,
+    get_registrar_hint_use_case,
     get_revoke_claim_use_case,
     get_verify_claim_use_case,
 )
@@ -46,8 +47,10 @@ from gateway.domain_capture.api.schemas import (
     DomainClaimCreateResponse,
     DomainClaimListResponse,
     DomainClaimVerifyResponse,
+    RegistrarHintResponse,
     to_create_response,
     to_list_item,
+    to_registrar_hint_response,
     to_verify_response,
 )
 from gateway.domain_capture.domain.errors import (
@@ -137,6 +140,35 @@ async def list_domain_claims(
     repository = get_domain_claim_repository(request, session)
     claims = await repository.list_for_tenant(identity.tenant_id)
     return DomainClaimListResponse(claims=[to_list_item(c) for c in claims])
+
+
+@domain_claims_router.get("/registrar-hint", response_model=RegistrarHintResponse)
+async def get_registrar_hint(
+    request: Request,
+    domain: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RegistrarHintResponse:
+    """Nameserver-inferred registrar deep-link hint (registrar-hint TASK.md §3 — FROZEN
+    @ v1). OWNER-only (M8), rate-limited BEFORE any DNS IO (M7), ZERO database IO (M12) —
+    `session` is only threaded through to `_get_owner_identity`'s verbatim-reused shape
+    (an ordinary, non-impersonating identity's resolution never touches the DB, per
+    `ensure_impersonation_session_live`'s own zero-overhead guarantee). Never a 5xx: the
+    use case itself absorbs every DNS-lookup failure/miss into a graceful fallback (M4/M6)."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="registrar_hint",
+        tenant_id=identity.tenant_id,
+        limit=settings.domain_claim_registrar_hint_rpm,
+    )
+
+    use_case = get_registrar_hint_use_case(request)
+    try:
+        result = await use_case.execute(domain)
+    except DomainInvalidError:
+        raise DOMAIN_INVALID.exc() from None
+    return to_registrar_hint_response(result)
 
 
 @domain_claims_router.post("/{claim_id}/verify", response_model=DomainClaimVerifyResponse)

@@ -43,3 +43,12 @@ class DomainClaimRateLimitedError(DomainCaptureError):
     def __init__(self, retry_after: int) -> None:
         super().__init__(f"domain claim rate limited; retry after {retry_after}s")
         self.retry_after = retry_after
+
+
+class NsLookupFailedError(DomainCaptureError):
+    """NS-record resolver error, NXDOMAIN, empty answer, or timeout for the registrar-hint
+    endpoint (registrar-hint TASK.md §3 M4 — FROZEN @ v1). Deliberately a DISTINCT class
+    from DnsLookupFailedError: THIS error fails OPEN — GetRegistrarHintUseCase catches it
+    into a graceful `fallback: true` response, never a 5xx — the opposite discipline from
+    DnsLookupFailedError's fail-CLOSED contract, kept as a separate class so the two
+    handling rules can never be confused at some future call site."""

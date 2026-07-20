@@ -21,10 +21,14 @@ if TYPE_CHECKING:
     from gateway.domain_capture.application.revoke_claim_use_case import (
         RevokeDomainClaimUseCase,
     )
+    from gateway.domain_capture.application.registrar_hint_use_case import (
+        GetRegistrarHintUseCase,
+    )
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,
     )
     from gateway.domain_capture.domain.ports import (
+        DnsNsResolver,
         DnsTxtResolver,
         DomainClaimRepository,
         DomainClaimResolver,
@@ -113,6 +117,28 @@ def get_revoke_claim_use_case(request: Request, session: AsyncSession) -> Revoke
     )
 
     return RevokeDomainClaimUseCase(get_domain_claim_repository(request, session))
+
+
+def get_dns_ns_resolver(request: Request) -> DnsNsResolver:
+    injected: DnsNsResolver | None = getattr(request.app.state, "dns_ns_resolver", None)
+    if injected is not None:
+        return injected
+
+    from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonNsResolver
+
+    return DnsPythonNsResolver()
+
+
+def get_registrar_hint_use_case(request: Request) -> GetRegistrarHintUseCase:
+    from gateway.domain_capture.application.registrar_hint_use_case import (
+        GetRegistrarHintUseCase,
+    )
+
+    settings = request.app.state.settings
+    return GetRegistrarHintUseCase(
+        get_dns_ns_resolver(request),
+        dns_timeout_seconds=settings.registrar_hint_dns_timeout_seconds,
+    )
 
 
 def get_join_tenant_use_case(request: Request, session: AsyncSession) -> JoinTenantByDomainUseCase:

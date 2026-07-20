@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from gateway.domain_capture.domain.entities import DomainClaim
+
+if TYPE_CHECKING:
+    from gateway.domain_capture.application.registrar_hint_use_case import RegistrarHintResult
 
 
 class DomainClaimCreateRequest(BaseModel):
@@ -89,4 +93,25 @@ def to_verify_response(claim: DomainClaim) -> DomainClaimVerifyResponse:
         domain=claim.domain,
         status=claim.status.value,
         verified_at=claim.verified_at,
+    )
+
+
+class RegistrarHintResponse(BaseModel):
+    """GET /admin/domain-claims/registrar-hint (registrar-hint TASK.md §3 — FROZEN @ v1).
+
+    Its OWN shape (per this file's own convention, §0 GROUND) — deliberately NOT reusing
+    any existing DomainClaim* schema, since this endpoint returns zero claim state."""
+
+    domain: str
+    registrar: str | None
+    deep_link_url: str | None
+    fallback: bool
+
+
+def to_registrar_hint_response(result: "RegistrarHintResult") -> RegistrarHintResponse:
+    return RegistrarHintResponse(
+        domain=result.domain,
+        registrar=result.registrar,
+        deep_link_url=result.deep_link_url,
+        fallback=result.fallback,
     )
