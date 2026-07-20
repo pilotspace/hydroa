@@ -27,7 +27,7 @@
  * All authorization + DNS verification stays SERVER-side (R4).
  */
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, Copy, Mail } from "lucide-react";
 import { bffGet, bffPost, bffDelete, BffError } from "@/lib/bff-client";
@@ -57,6 +57,7 @@ import {
   type VerifyOutcome,
 } from "./useVerifyPoll";
 import { MemberVerifyCodeEntry, type MemberVerifyClaim } from "./MemberVerifyCodeEntry";
+import { DomainInviteLinkSection, type ActiveInviteLink } from "./DomainInviteLinkSection";
 
 export interface DomainClaimListItem {
   claim_id: string;
@@ -105,6 +106,16 @@ interface RegistrarHintResponse {
 
 const CLAIMS_KEY = ["admin-domain-claims"] as const;
 const CLAIMS_PATH = "/admin/domain-claims";
+
+/** invite-by-domain-ui (FROZEN §3): the admin invite-link list — read here (once,
+ * parent-owned) and matched per-domain into <DomainInviteLinkSection>'s
+ * `activeLink` prop; the list NEVER carries a token (M2/R9). */
+const INVITE_LINKS_KEY = ["admin-domain-invite-links"] as const;
+const INVITE_LINKS_PATH = "/admin/domain-invite-links";
+
+interface DomainInviteLinkListResponse {
+  links: ActiveInviteLink[];
+}
 
 /** Static common-registrar landing pages — the graceful fallback when the
  * NS-inferred deep link is unavailable (registrar-hint returns fallback:true or
@@ -279,6 +290,18 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
   const [notifyOptedIn, setNotifyOptedIn] = useState(false);
 
   const claims = data?.claims ?? [];
+
+  // ── invite-by-domain-ui (M1/M2, FROZEN): the admin invite-link list, read once
+  // and matched per-domain below. Renders <DomainInviteLinkSection> ONLY under a
+  // member/owner-verified row (M1); the list never carries a token (R9).
+  const { data: inviteLinksData } = useQuery<DomainInviteLinkListResponse>({
+    queryKey: INVITE_LINKS_KEY,
+    queryFn: () => bffGet<DomainInviteLinkListResponse>(INVITE_LINKS_PATH),
+    retry: false,
+  });
+  const inviteLinksByDomain = new Map(
+    (inviteLinksData?.links ?? []).map((link) => [link.domain, link] as const),
+  );
 
   // ── registrar-hint (M8): DISPLAY the NS-inferred deep-link for the fresh claim ──
   const { data: registrarHint } = useQuery<RegistrarHintResponse>({
@@ -580,8 +603,11 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
           <TableBody>
             {claims.map((claim) => {
               const rowPoll = pollStatus[claim.claim_id];
+              const seal = sealState(claim);
+              const showInviteLinkSection = seal === "verified" || seal === "member-verified";
               return (
-                <TableRow key={claim.claim_id}>
+                <Fragment key={claim.claim_id}>
+                <TableRow>
                   <TableCell className="font-mono text-sm tabular-nums">{claim.domain}</TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">
@@ -629,6 +655,23 @@ export function DomainClaimsSettings({ poll }: DomainClaimsSettingsProps = {}) {
                     </div>
                   </TableCell>
                 </TableRow>
+                {showInviteLinkSection && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="border-t-0 pt-0">
+                      <DomainInviteLinkSection
+                        claim={claim}
+                        activeLink={inviteLinksByDomain.get(claim.domain) ?? null}
+                        onMinted={() => {
+                          void queryClient.invalidateQueries({ queryKey: INVITE_LINKS_KEY });
+                        }}
+                        onRevoked={() => {
+                          void queryClient.invalidateQueries({ queryKey: INVITE_LINKS_KEY });
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+                </Fragment>
               );
             })}
           </TableBody>
