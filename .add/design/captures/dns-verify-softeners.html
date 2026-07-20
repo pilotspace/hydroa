@@ -1,0 +1,366 @@
+<style>
+  :root {
+    --bg: #fbfcfd;
+    --panel: #ffffff;
+    --panel-2: #f6f8fa;
+    --ink: #0f1729;
+    --ink-2: #475069;
+    --ink-3: #6b7488;
+    --line: #e4e8ee;
+    --line-2: #eef1f5;
+    --primary: #2f6df0;
+    --primary-ink: #1c4bb8;
+    --brand-from: #2f6df0;
+    --brand-to: #5b8cff;
+    --accent-soft: #eef3fe;
+    --success: #1f9d57;
+    --success-soft: #e7f6ee;
+    --warning: #b7791f;
+    --warning-soft: #fdf3e2;
+    --danger: #d1435b;
+    --danger-soft: #fdecef;
+    --azure-soft: #eaf1fe;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --shadow: 0 1px 2px rgba(16,23,41,.04), 0 8px 24px -12px rgba(16,23,41,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0e14;
+      --panel: #12161f;
+      --panel-2: #171c27;
+      --ink: #eef1f6;
+      --ink-2: #b3bccd;
+      --ink-3: #8a93a6;
+      --line: #232a37;
+      --line-2: #1c222d;
+      --primary: #5b8cff;
+      --primary-ink: #9db9ff;
+      --accent-soft: #16233f;
+      --success: #4ac585;
+      --success-soft: #12271c;
+      --warning: #e0a94a;
+      --warning-soft: #2a2113;
+      --danger: #f0728a;
+      --danger-soft: #2a151a;
+      --azure-soft: #14203a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:#fbfcfd;--panel:#fff;--panel-2:#f6f8fa;--ink:#0f1729;--ink-2:#475069;--ink-3:#6b7488;--line:#e4e8ee;--line-2:#eef1f5;--primary:#2f6df0;--primary-ink:#1c4bb8;--accent-soft:#eef3fe;--success:#1f9d57;--success-soft:#e7f6ee;--warning:#b7791f;--warning-soft:#fdf3e2;--danger:#d1435b;--danger-soft:#fdecef;--azure-soft:#eaf1fe;
+  }
+  :root[data-theme="dark"] {
+    --bg:#0b0e14;--panel:#12161f;--panel-2:#171c27;--ink:#eef1f6;--ink-2:#b3bccd;--ink-3:#8a93a6;--line:#232a37;--line-2:#1c222d;--primary:#5b8cff;--primary-ink:#9db9ff;--accent-soft:#16233f;--success:#4ac585;--success-soft:#12271c;--warning:#e0a94a;--warning-soft:#2a2113;--danger:#f0728a;--danger-soft:#2a151a;--azure-soft:#14203a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .wrap {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 40px 24px 72px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1120px; margin: 0 auto; }
+  .doc-head { margin-bottom: 28px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--primary-ink); margin: 0 0 8px;
+  }
+  .doc-head h1 { font-size: 26px; font-weight: 650; letter-spacing: -.02em; margin: 0 0 8px; text-wrap: balance; }
+  .doc-head p { margin: 0; color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; font-size: 12.5px; color: var(--ink-3); }
+  .legend b { color: var(--ink-2); font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 22px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .panel-head { padding: 18px 20px; border-bottom: 1px solid var(--line-2); display:flex; align-items:center; gap:10px; }
+  .panel-head h2 { font-size: 15px; font-weight: 620; margin: 0; }
+  .panel-head .sub { font-size: 12.5px; color: var(--ink-3); margin-left: auto; }
+  .panel-body { padding: 8px 20px 20px; }
+
+  .addform { display: flex; gap: 10px; align-items: flex-end; padding: 16px 0 8px; }
+  .field { flex: 1; }
+  .field label { display:block; font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+  .input {
+    width: 100%; height: 38px; border: 1px solid var(--line); background: var(--panel-2);
+    border-radius: var(--radius-sm); padding: 0 12px; font-family: var(--font-mono); font-size: 13.5px; color: var(--ink);
+  }
+  .btn {
+    height: 38px; padding: 0 16px; border-radius: var(--radius-sm); font-family: var(--font-sans);
+    font-size: 13.5px; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  :root[data-theme="dark"] .btn-primary, .btn-primary { color: #fff; }
+  @media (prefers-color-scheme: dark) { .btn-primary { color: #08122a; } }
+  :root[data-theme="dark"] .btn-primary { color: #08122a; }
+  :root[data-theme="light"] .btn-primary { color: #fff; }
+  .btn-outline { background: var(--panel); color: var(--ink); border-color: var(--line); }
+  .btn-ghost { background: transparent; color: var(--ink-2); }
+  .btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--ink-3); padding: 10px 6px; border-bottom: 1px solid var(--line-2);
+  }
+  tbody td { padding: 14px 6px; border-bottom: 1px solid var(--line-2); vertical-align: middle; font-size: 13.5px; }
+  tbody tr:last-child td { border-bottom: none; }
+  .dom { font-family: var(--font-mono); font-size: 13.5px; color: var(--ink); }
+  .muted { color: var(--ink-3); font-family: var(--font-mono); font-size: 12.5px; }
+  .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+  .seal {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .seal svg { width: 13px; height: 13px; flex: none; }
+  .seal-verified { background: var(--success-soft); color: var(--success); border-color: color-mix(in srgb, var(--success) 26%, transparent); }
+  .seal-checking { background: var(--azure-soft); color: var(--primary-ink); border-color: color-mix(in srgb, var(--primary) 28%, transparent); }
+  .seal-pending  { background: var(--warning-soft); color: var(--warning); border-color: color-mix(in srgb, var(--warning) 30%, transparent); }
+  .seal-expired  { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); position: relative; }
+  .pulse::after { content:""; position:absolute; inset:-3px; border-radius:50%; border:1px solid var(--primary); opacity:.5; animation: ring 1.8s ease-out infinite; }
+  @keyframes ring { 0%{transform:scale(.7);opacity:.6} 100%{transform:scale(1.8);opacity:0} }
+  @media (prefers-reduced-motion: reduce) { .pulse::after { animation: none; } }
+
+  /* expanded challenge card */
+  .challenge {
+    margin: 4px 6px 8px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    overflow: hidden;
+  }
+  .ch-top { padding: 16px 18px; border-bottom: 1px dashed var(--line); }
+  .ch-top .lead { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+  .ch-top .lead b { color: var(--ink); font-family: var(--font-mono); }
+  .record {
+    margin: 14px 18px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel);
+    overflow: hidden;
+  }
+  .rec-head { display:flex; align-items:center; padding: 9px 12px; border-bottom: 1px solid var(--line-2); }
+  .rec-head span { font-size: 11.5px; font-weight: 600; letter-spacing:.04em; text-transform: uppercase; color: var(--ink-3); }
+  .rec-head .copyall { margin-left:auto; }
+  .rec-row { display: grid; grid-template-columns: 92px 1fr; gap: 8px; padding: 8px 12px; align-items:center; }
+  .rec-row + .rec-row { border-top: 1px solid var(--line-2); }
+  .rec-k { font-size: 12px; color: var(--ink-3); font-weight: 600; }
+  .rec-v { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); word-break: break-all; }
+  .ch-tools { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 18px 16px; }
+  .tool {
+    flex: 1 1 220px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--panel);
+    display:flex; gap: 11px; align-items:flex-start;
+  }
+  .tool .ic { width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--primary-ink); display:grid; place-items:center; flex:none; }
+  .tool .ic svg { width: 16px; height: 16px; }
+  .tool h4 { margin: 0 0 3px; font-size: 13px; font-weight: 620; }
+  .tool p { margin: 0 0 7px; font-size: 12px; color: var(--ink-3); }
+  .link { color: var(--primary-ink); font-weight: 600; font-size: 12.5px; text-decoration: none; display:inline-flex; align-items:center; gap:4px; }
+  .link svg { width: 12px; height: 12px; }
+  .toggle { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600; color: var(--ink-2); }
+  .sw { width: 34px; height: 20px; border-radius: 999px; background: var(--primary); position: relative; flex:none; }
+  .sw::after { content:""; position:absolute; top:2px; left:16px; width:16px; height:16px; border-radius:50%; background:#fff; }
+  .ch-foot { display:flex; align-items:center; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--panel-2); }
+  .ch-foot .spacer { flex: 1; }
+
+  .note { font-size: 12px; color: var(--ink-3); display:flex; gap:7px; align-items:flex-start; }
+  .note svg { width: 14px; height: 14px; color: var(--primary); flex:none; margin-top:1px; }
+
+  /* annotations sidebar */
+  .ann { position: sticky; top: 24px; display: grid; gap: 12px; }
+  .ann-card { border: 1px solid var(--line); border-left: 3px solid var(--primary); border-radius: var(--radius-sm); background: var(--panel); padding: 12px 14px; box-shadow: var(--shadow); }
+  .ann-card h3 { margin: 0 0 5px; font-size: 12.5px; font-weight: 650; display:flex; align-items:center; gap:7px; }
+  .ann-card .tag { font-size: 10px; font-weight: 700; letter-spacing:.05em; padding: 2px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--primary-ink); }
+  .ann-card p { margin: 0; font-size: 12px; color: var(--ink-2); }
+  .ann-card p b { color: var(--ink); }
+  .ann-card.sec { border-left-color: var(--success); }
+  .ann-card.sec .tag { background: var(--success-soft); color: var(--success); }
+
+  .foot-meta { margin-top: 26px; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--line-2); padding-top: 14px; }
+  .foot-meta code { font-family: var(--font-mono); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; }
+</style>
+
+<div class="wrap">
+  <div class="container">
+    <div class="doc-head">
+      <p class="eyebrow">UDD wireframe · dns-verify-softeners</p>
+      <h1>Softened DNS-TXT verification — the challenge that verifies itself</h1>
+      <p>The domain-claims console, reworked so a slow DNS change never reads as a failure. Auto-poll flips the seal on its own, a not-yet-live record shows a calm “still checking”, and the admin can copy the whole record, hand it to whoever owns DNS, jump to their registrar, or just ask to be emailed when it goes live. Verification semantics are unchanged — the seal still flips only on a real DNS match.</p>
+      <div class="legend">
+        <span><b>State as form, not just color:</b> every status carries an icon + label (WCAG 1.4.1)</span>
+        <span>·&nbsp; <b>Red is reserved</b> for terminal errors only</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- MAIN PANEL -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Domains</h2>
+          <span class="sub">Owner-only · route signups &amp; SSO by verified domain</span>
+        </div>
+        <div class="panel-body">
+          <p style="font-size:13px;color:var(--ink-2);margin:12px 0 0">Prove your tenant owns an email domain by publishing a DNS TXT record. We check automatically — you don’t have to keep clicking.</p>
+
+          <div class="addform">
+            <div class="field">
+              <label for="d">Domain</label>
+              <div class="input" id="d" aria-label="domain input">acme.com</div>
+            </div>
+            <button class="btn btn-primary">Add domain</button>
+          </div>
+
+          <table>
+            <thead>
+              <tr><th>Domain</th><th>Status</th><th>Expires</th><th><span style="position:absolute;left:-9999px">Actions</span></th></tr>
+            </thead>
+            <tbody>
+              <!-- VERIFIED / SEALED -->
+              <tr>
+                <td class="dom">beta.io</td>
+                <td>
+                  <span class="seal seal-verified">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>
+                    Owner-verified
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  </span>
+                </td>
+                <td class="muted">—</td>
+                <td><div class="row-actions"><button class="btn btn-ghost btn-sm">Revoke</button></div></td>
+              </tr>
+
+              <!-- PENDING / AUTO-CHECKING  (expanded) -->
+              <tr>
+                <td class="dom">acme.com</td>
+                <td>
+                  <span class="seal seal-checking">
+                    <span class="pulse" aria-hidden="true"></span>
+                    Checking automatically…
+                  </span>
+                </td>
+                <td class="muted">in 6 days</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn btn-outline btn-sm">Check now</button>
+                    <button class="btn btn-ghost btn-sm">Revoke</button>
+                  </div>
+                </td>
+              </tr>
+              <tr><td colspan="4" style="padding:0;border:none">
+                <div class="challenge" data-slot="dns-challenge">
+                  <div class="ch-top">
+                    <p class="lead">Publish this DNS record for <b>acme.com</b>. You can close this — we’ll keep checking and update the status here automatically. Propagation can take a few minutes.</p>
+                  </div>
+
+                  <div class="record">
+                    <div class="rec-head">
+                      <span>DNS TXT record</span>
+                      <button class="btn btn-outline btn-sm copyall">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                        Copy record
+                      </button>
+                    </div>
+                    <div class="rec-row"><span class="rec-k">Type</span><span class="rec-v">TXT</span></div>
+                    <div class="rec-row"><span class="rec-k">Name</span><span class="rec-v">_ai-proxy-challenge.acme.com</span></div>
+                    <div class="rec-row"><span class="rec-k">Value</span><span class="rec-v">ai-proxy-domain-verification=k7f2a9c3e1b8d5</span></div>
+                  </div>
+
+                  <div class="ch-tools">
+                    <div class="tool" data-slot="registrar-links">
+                      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+                      <div>
+                        <h4>Open your DNS provider</h4>
+                        <p>We detected <b>Cloudflare</b> from your nameservers.</p>
+                        <a class="link" href="#">Open Cloudflare DNS <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8"/></svg></a>
+                      </div>
+                    </div>
+                    <div class="tool" data-slot="dns-handoff">
+                      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H8l-4 4z"/></svg></div>
+                      <div>
+                        <h4>Not the DNS owner?</h4>
+                        <p>Send the record + steps to whoever manages your DNS.</p>
+                        <a class="link" href="#">Send instructions <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+                      </div>
+                    </div>
+                    <div class="tool" data-slot="notify-optin">
+                      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg></div>
+                      <div>
+                        <h4>Email me when it’s live</h4>
+                        <p>Walk away — we’ll email <b>you</b> the moment it verifies.</p>
+                        <span class="toggle"><span class="sw" role="switch" aria-checked="true"></span> On — we’ll notify you</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="ch-foot">
+                    <span class="note">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 4v5h-5"/></svg>
+                      Auto-checking every ~30s. Nothing to click.
+                    </span>
+                    <span class="spacer"></span>
+                    <button class="btn btn-ghost btn-sm">Verify later</button>
+                    <button class="btn btn-outline btn-sm">Check now</button>
+                  </div>
+                </div>
+              </td></tr>
+
+              <!-- EXPIRED / TERMINAL -->
+              <tr>
+                <td class="dom">gamma.co</td>
+                <td>
+                  <span class="seal seal-expired">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+                    Challenge expired
+                  </span>
+                </td>
+                <td class="muted">expired</td>
+                <td><div class="row-actions"><button class="btn btn-outline btn-sm">Reissue</button><button class="btn btn-ghost btn-sm">Revoke</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ANNOTATIONS -->
+      <aside class="ann">
+        <div class="ann-card">
+          <h3><span class="tag">M3</span> Calm, not alarming</h3>
+          <p>A not-yet-propagated record (<b>400/503</b>) now reads <b>“Checking automatically…”</b> — the old red “verify failed” error is gone. It only ever appears while we’re actively polling.</p>
+        </div>
+        <div class="ann-card sec">
+          <h3><span class="tag">R2 KEPT</span> Seal flips only on success</h3>
+          <p>The verified seal still flips <b>only</b> on a real 200 DNS match. The calm state keeps the claim <b>pending</b> — frozen verification semantics are untouched.</p>
+        </div>
+        <div class="ann-card">
+          <h3><span class="tag">M1·M5</span> Verifies itself</h3>
+          <p>Auto-poll re-checks every ~30s (pauses when the tab is hidden, stops after ~15 min). A manual <b>Check now</b> forces an immediate tick.</p>
+        </div>
+        <div class="ann-card sec">
+          <h3><span class="tag">M10 · security</span> “Email me” is safe</h3>
+          <p>Opting in sends <b>no email address</b> — the backend emails <b>your own</b> account only. No spam vector.</p>
+        </div>
+        <div class="ann-card">
+          <h3><span class="tag">M4</span> Terminal errors still shout</h3>
+          <p>Expired / already-claimed <b>do</b> get a loud, actionable state (see <code>gamma.co</code>) — the alarm is reserved for what you must act on.</p>
+        </div>
+        <div class="ann-card">
+          <h3><span class="tag">M8</span> Graceful registrar link</h3>
+          <p>The deep-link comes from a nameserver lookup; if we can’t tell, it degrades to a generic “Open your DNS provider” list.</p>
+        </div>
+      </aside>
+    </div>
+
+    <p class="foot-meta">
+      Wireframe for design confirmation · milestone <code>domain-onboarding-softening</code> · consumes the frozen backend contracts <code>domain-verify-notify</code> + <code>registrar-hint</code> · Airier tokens (azure <code>#2f6df0</code>, Geist / Geist&nbsp;Mono). Not the shipped build — a direction to confirm before the contract freezes.
+    </p>
+  </div>
+</div>

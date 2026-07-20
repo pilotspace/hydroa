@@ -756,6 +756,12 @@ DOMAIN_CLAIM_EXPIRED = ErrorSpec(
 #: indistinguishable (R9), mirrors InviteNotFoundError's own precedent.
 DOMAIN_CLAIM_NOT_FOUND = ErrorSpec(404, "ERR_DOMAIN_CLAIM_NOT_FOUND", "Domain claim not found")
 
+#: POST .../notify opt-in on a claim that is not status='pending' — already verified,
+#: nothing left to watch (domain-verify-notify TASK.md §3 R2, FROZEN @ v1).
+DOMAIN_CLAIM_NOT_PENDING = ErrorSpec(
+    409, "ERR_DOMAIN_CLAIM_NOT_PENDING", "This domain claim is not pending"
+)
+
 #: DNS resolver error/NXDOMAIN/empty-answer/timeout — fail CLOSED, never a verified match (M13, R8).
 DNS_LOOKUP_FAILED = ErrorSpec(
     503, "ERR_DNS_LOOKUP_FAILED", "DNS lookup failed or timed out; try again"
@@ -769,6 +775,81 @@ DOMAIN_NOT_VERIFIED = ErrorSpec(
     422,
     "ERR_DOMAIN_NOT_VERIFIED",
     "One or more email_domains have no verified domain claim for this tenant",
+)
+
+# ---------------------------------------------------------------------------
+# Member-verified recognition (member-verified-recognition TASK.md §3, FROZEN @ v1, SECURITY)
+# ---------------------------------------------------------------------------
+
+#: POST .../member-verify with a wrong 6-digit code, still under the attempt-cap (R3) —
+#: the attempt counter is incremented; member_verified_at unchanged.
+MEMBER_VERIFY_CODE_INVALID = ErrorSpec(
+    400, "ERR_MEMBER_VERIFY_CODE_INVALID", "The verification code is incorrect"
+)
+
+#: POST .../member-verify after the in-flight code's expiry (R4) — the code is cleared;
+#: the caller must resend.
+MEMBER_VERIFY_CODE_EXPIRED = ErrorSpec(
+    410, "ERR_MEMBER_VERIFY_CODE_EXPIRED", "The verification code has expired; request a new one"
+)
+
+#: POST .../member-verify once the ≤5 attempt-cap is reached (R5) — the code is invalidated;
+#: the caller must resend.
+MEMBER_VERIFY_TOO_MANY_ATTEMPTS = ErrorSpec(
+    429,
+    "ERR_MEMBER_VERIFY_TOO_MANY_ATTEMPTS",
+    "Too many incorrect attempts; request a new verification code",
+)
+
+#: POST .../member-verify or .../resend when the claim's domain != the authenticated
+#: caller's OWN email domain (M6b, R10) — a code proves control of the mailbox it was sent
+#: to and nothing else.
+MEMBER_VERIFY_DOMAIN_MISMATCH = ErrorSpec(
+    403,
+    "ERR_MEMBER_VERIFY_DOMAIN_MISMATCH",
+    "This domain does not match your account's email domain",
+)
+
+#: POST .../member-verify/resend on a generic/public email domain (R6, R-sec-5).
+DOMAIN_GENERIC = ErrorSpec(
+    422, "ERR_DOMAIN_GENERIC", "Member verification is not available for generic email domains"
+)
+
+#: POST .../member-verify/resend on a personal (account_type='personal') account (R7,
+#: R-sec-5) — personal accounts never get member-verified.
+MEMBER_VERIFY_NOT_ELIGIBLE = ErrorSpec(
+    403,
+    "ERR_MEMBER_VERIFY_NOT_ELIGIBLE",
+    "This account is not eligible for member verification",
+)
+
+# ---------------------------------------------------------------------------
+# Domain-restricted shareable invite link (invite-by-domain TASK.md §3, FROZEN @ v1, SECURITY)
+# ---------------------------------------------------------------------------
+
+#: POST /admin/domain-invite-links for a domain the caller's tenant is NOT member/owner-
+#: verified on (M1/R2) — no link is minted. Tenant-scoped (anti-confused-deputy).
+DOMAIN_INVITE_NOT_ELIGIBLE = ErrorSpec(
+    403,
+    "ERR_DOMAIN_INVITE_NOT_ELIGIBLE",
+    "Your tenant is not verified for this domain",
+)
+
+#: POST /domain-invite-links/{token}/redeem[/verify] with an email whose domain != the
+#: link's domain (M6/R3) — no code is emailed at step-1. A code proves control of the
+#: mailbox it was sent to and nothing else.
+DOMAIN_INVITE_DOMAIN_MISMATCH = ErrorSpec(
+    403,
+    "ERR_DOMAIN_INVITE_DOMAIN_MISMATCH",
+    "The email domain does not match this invite link's domain",
+)
+
+#: POST /domain-invite-links/{token}/redeem[/verify] against a link whose status is not
+#: 'active' — revoked or superseded (M5/R9). A revoked link can never again be redeemed.
+DOMAIN_INVITE_LINK_INACTIVE = ErrorSpec(
+    409,
+    "ERR_DOMAIN_INVITE_LINK_INACTIVE",
+    "This invite link is no longer active",
 )
 
 # ---------------------------------------------------------------------------

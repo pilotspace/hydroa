@@ -1415,6 +1415,83 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Member-verified recognition (member-verified-recognition TASK.md §3, FROZEN @ v1,
+    # SECURITY) ────────────────────────────────────────────────────────────────────────
+    # A 6-digit mailbox-confirmation code emailed to a business admin's OWN signup address
+    # grants rung-1 member-verified (member_verified_at on the domain claim; status stays
+    # 'pending', auto-join UNTOUCHED). Brute-force bound: ~15-min TTL + ≤5-attempt hard cap
+    # (then invalidate) + per-tenant rate-limit on BOTH member-verify and its resend. The
+    # hash-at-rest is Option A: HMAC-SHA256(code, HMAC(jwt_secret,'member-verify-code')) —
+    # NO new secret (reuses the existing required, dev-default-guarded jwt_secret).
+    member_verify_code_ttl_seconds: int = 900  # GATEWAY_MEMBER_VERIFY_CODE_TTL_SECONDS
+    member_verify_max_attempts: int = 5  # GATEWAY_MEMBER_VERIFY_MAX_ATTEMPTS
+    member_verify_rpm: int = 30  # GATEWAY_MEMBER_VERIFY_RPM
+    member_verify_resend_rpm: int = 10  # GATEWAY_MEMBER_VERIFY_RESEND_RPM
+
+    # ── Domain-restricted shareable invite link (invite-by-domain TASK.md §3, FROZEN @ v1,
+    # SECURITY) ─────────────────────────────────────────────────────────────────────────
+    # An eligible admin (member/owner-verified on a domain + MEMBERS_MANAGE) mints a 30-day
+    # reusable, revocable link; any @domain mailbox redeems it via a 6-digit code (reusing
+    # the member-verify code primitives) to join as a MEMBER. The two PUBLIC redeem steps
+    # are per-IP rate-limited (own knobs, fail-open); the per-(link,email) attempt cap bounds
+    # code brute-force. All hardcoded-constant TTLs mirror the invite/member-verify defaults.
+    domain_invite_link_ttl_days: int = 30  # GATEWAY_DOMAIN_INVITE_LINK_TTL_DAYS
+    domain_invite_code_ttl_minutes: int = 15  # GATEWAY_DOMAIN_INVITE_CODE_TTL_MINUTES
+    domain_invite_code_max_attempts: int = 5  # GATEWAY_DOMAIN_INVITE_CODE_MAX_ATTEMPTS
+    domain_invite_redeem_rpm: int = 30  # GATEWAY_DOMAIN_INVITE_REDEEM_RPM
+    domain_invite_verify_rpm: int = 10  # GATEWAY_DOMAIN_INVITE_VERIFY_RPM
+
+    @field_validator(
+        "domain_invite_link_ttl_days",
+        "domain_invite_code_ttl_minutes",
+        "domain_invite_code_max_attempts",
+        "domain_invite_redeem_rpm",
+        "domain_invite_verify_rpm",
+    )
+    @classmethod
+    def _validate_domain_invite_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive domain-invite knob (invite-by-domain). A zero or
+        negative TTL/cap/rpm is a misconfiguration, not a disable signal — mirrors
+        invite_preview_rpm's own positive-knob validator."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_INVITE_KNOB: domain_invite_link_ttl_days, "
+                "domain_invite_code_ttl_minutes, domain_invite_code_max_attempts, "
+                "domain_invite_redeem_rpm and domain_invite_verify_rpm must each be a "
+                f"positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator(
+        "member_verify_code_ttl_seconds",
+        "member_verify_max_attempts",
+        "member_verify_rpm",
+        "member_verify_resend_rpm",
+    )
+    @classmethod
+    def _validate_member_verify_positive_knobs(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_MEMBER_VERIFY_KNOB: member_verify_code_ttl_seconds, "
+                "member_verify_max_attempts, member_verify_rpm, and member_verify_resend_rpm "
+                f"must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Domain verify-notify scheduler (domain-verify-notify TASK.md §3, FROZEN @ v1,
+    # SECURITY) ──────────────────────────────────────────────────────────────────────
+    # GATEWAY_DOMAIN_VERIFY_NOTIFY_INTERVAL_SECONDS — an asyncio background sweeper
+    # started in the FastAPI lifespan (mirrors CatalogRefreshScheduler / RetentionSweeper)
+    # that periodically re-checks opted-in pending domain claims via the FROZEN
+    # VerifyDomainClaimUseCase DNS-TXT proof (reused verbatim, fail-closed) and emails the
+    # owner exactly once on the first match. Default 300 (5 min, default-ON) — DNS TXT
+    # propagation is typically minutes, not hours; 0 disables the sweeper entirely
+    # (opt-OUT, no task started), mirroring catalog_refresh_interval_seconds's own
+    # interval-sentinel convention (no separate *_ENABLED bool).
+    domain_verify_notify_interval_seconds: int = Field(
+        default=300, ge=0
+    )  # GATEWAY_DOMAIN_VERIFY_NOTIFY_INTERVAL_SECONDS
+
     # ── Catalog refresh scheduler (catalog-refresh-scheduler — asyncio sweeper) ──
     # GATEWAY_CATALOG_REFRESH_INTERVAL_SECONDS — an asyncio background sweeper started in
     # the FastAPI lifespan (mirrors RetentionSweeper / OpenRouterRecoverySweeper) that
@@ -1442,6 +1519,31 @@ class Settings(BaseSettings):
         if v <= 0:
             raise ValueError(
                 f"INVALID_SCIM_KNOB: scim_write_rpm must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Registrar-hint (registrar-hint TASK.md §3 M3/M7, FROZEN @ v1) ───────────
+    # GATEWAY_REGISTRAR_HINT_DNS_TIMEOUT_SECONDS — bounds the single best-effort NS
+    # lookup behind GET /admin/domain-claims/registrar-hint. Deliberately its OWN,
+    # SHORTER-lived knob than domain_verification_dns_timeout_seconds: this is a UI-
+    # convenience call that must never stall a render, not a verification-blocking one —
+    # a slow/non-responding nameserver simply falls open to the generic fallback (M4).
+    registrar_hint_dns_timeout_seconds: float = Field(
+        default=2.0, gt=0
+    )  # GATEWAY_REGISTRAR_HINT_DNS_TIMEOUT_SECONDS
+    # GATEWAY_DOMAIN_CLAIM_REGISTRAR_HINT_RPM — per-tenant fixed-window rate limit for the
+    # same endpoint (M7), reusing DomainClaimRateLimiter with a new action="registrar_hint"
+    # bucket key. Own dedicated positive-knob validator below, mirroring the scim_write_rpm
+    # precedent immediately above (not folded into _validate_domain_claim_positive_knobs).
+    domain_claim_registrar_hint_rpm: int = 30  # GATEWAY_DOMAIN_CLAIM_REGISTRAR_HINT_RPM
+
+    @field_validator("domain_claim_registrar_hint_rpm")
+    @classmethod
+    def _validate_domain_claim_registrar_hint_rpm(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_CLAIM_KNOB: domain_claim_registrar_hint_rpm must be a "
+                f"positive integer (> 0); got {v!r}"
             )
         return v
 

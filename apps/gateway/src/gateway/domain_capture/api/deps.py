@@ -21,10 +21,23 @@ if TYPE_CHECKING:
     from gateway.domain_capture.application.revoke_claim_use_case import (
         RevokeDomainClaimUseCase,
     )
+    from gateway.domain_capture.application.registrar_hint_use_case import (
+        GetRegistrarHintUseCase,
+    )
+    from gateway.domain_capture.application.notify_use_cases import (
+        NotifyOptInUseCase,
+        NotifyOptOutUseCase,
+    )
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        IssueMemberVerifyCodeUseCase,
+        ResendMemberVerifyCodeUseCase,
+        VerifyMemberCodeUseCase,
+    )
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,
     )
     from gateway.domain_capture.domain.ports import (
+        DnsNsResolver,
         DnsTxtResolver,
         DomainClaimRepository,
         DomainClaimResolver,
@@ -113,6 +126,88 @@ def get_revoke_claim_use_case(request: Request, session: AsyncSession) -> Revoke
     )
 
     return RevokeDomainClaimUseCase(get_domain_claim_repository(request, session))
+
+
+def get_dns_ns_resolver(request: Request) -> DnsNsResolver:
+    injected: DnsNsResolver | None = getattr(request.app.state, "dns_ns_resolver", None)
+    if injected is not None:
+        return injected
+
+    from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonNsResolver
+
+    return DnsPythonNsResolver()
+
+
+def get_registrar_hint_use_case(request: Request) -> GetRegistrarHintUseCase:
+    from gateway.domain_capture.application.registrar_hint_use_case import (
+        GetRegistrarHintUseCase,
+    )
+
+    settings = request.app.state.settings
+    return GetRegistrarHintUseCase(
+        get_dns_ns_resolver(request),
+        dns_timeout_seconds=settings.registrar_hint_dns_timeout_seconds,
+    )
+
+
+def get_notify_optin_use_case(request: Request, session: AsyncSession) -> NotifyOptInUseCase:
+    from gateway.domain_capture.application.notify_use_cases import NotifyOptInUseCase
+
+    return NotifyOptInUseCase(get_domain_claim_repository(request, session))
+
+
+def get_notify_optout_use_case(request: Request, session: AsyncSession) -> NotifyOptOutUseCase:
+    from gateway.domain_capture.application.notify_use_cases import NotifyOptOutUseCase
+
+    return NotifyOptOutUseCase(get_domain_claim_repository(request, session))
+
+
+def get_member_verify_use_case(request: Request, session: AsyncSession) -> VerifyMemberCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        VerifyMemberCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return VerifyMemberCodeUseCase(
+        get_domain_claim_repository(request, session),
+        jwt_secret=settings.jwt_secret,
+        max_attempts=settings.member_verify_max_attempts,
+    )
+
+
+def get_member_verify_resend_use_case(
+    request: Request, session: AsyncSession
+) -> ResendMemberVerifyCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        ResendMemberVerifyCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return ResendMemberVerifyCodeUseCase(
+        get_domain_claim_repository(request, session),
+        request.app.state.email_sender,
+        jwt_secret=settings.jwt_secret,
+        code_ttl_seconds=settings.member_verify_code_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
+
+
+def get_issue_member_verify_code_use_case(
+    request: Request, session: AsyncSession
+) -> IssueMemberVerifyCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        IssueMemberVerifyCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return IssueMemberVerifyCodeUseCase(
+        get_create_claim_use_case(request, session),
+        get_domain_claim_repository(request, session),
+        request.app.state.email_sender,
+        jwt_secret=settings.jwt_secret,
+        code_ttl_seconds=settings.member_verify_code_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
 
 
 def get_join_tenant_use_case(request: Request, session: AsyncSession) -> JoinTenantByDomainUseCase:

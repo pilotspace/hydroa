@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -13,7 +14,11 @@ from gateway.core.error_catalog import (
     SIGNUP_INVITE_ONLY,
     SIGNUP_PLAN_UNPROVISIONED,
 )
-from gateway.domain_capture.api.deps import get_domain_claim_resolver, get_join_tenant_use_case
+from gateway.domain_capture.api.deps import (
+    get_domain_claim_resolver,
+    get_issue_member_verify_code_use_case,
+    get_join_tenant_use_case,
+)
 from gateway.tenants.api.deps import (
     get_bearer_token,
     get_identity_use_case,
@@ -43,6 +48,8 @@ from gateway.tenants.domain.errors import (
 from gateway.tenants.infrastructure.repository import get_tenant_by_id
 
 router = APIRouter(prefix="/admin/auth", tags=["tenant-identity"])
+
+_log = logging.getLogger(__name__)
 
 
 @router.post("/signup", status_code=201, response_model=SignupResponse)
@@ -122,6 +129,28 @@ async def signup(
         # plan absent is a server misconfiguration — fail loud (500), never a personal
         # tenant silently left unplanned.
         raise SIGNUP_PLAN_UNPROVISIONED.exc() from None
+
+    # member-verified-recognition TASK.md §3 (FROZEN @ v1, SECURITY) — issuance hook on the
+    # NEW-tenant BUSINESS branch ONLY. Best-effort / fail-OPEN: any failure (email down,
+    # domain already verified by another tenant, DB hiccup) is logged + swallowed so signup
+    # ALWAYS returns 201 (M2, R-fail-open). Personal accounts and generic/public domains are
+    # never issued a code (the use case silently skips generic; personal is gated here).
+    if body.account_type == "business":
+        try:
+            issue_use_case = get_issue_member_verify_code_use_case(request, session)
+            await issue_use_case.execute(
+                tenant_id=tenant_id,
+                domain=domain,
+                created_by_user_id=user_id,
+                recipient_email=body.email.lower(),
+            )
+        except Exception:  # noqa: BLE001 — fail-OPEN: issuance is a convenience, never a signup gate.
+            _log.warning(
+                "member_verify_issuance_failed (swallowed — fail-open); signup still 201",
+                exc_info=True,
+                extra={"tenant_id": str(tenant_id)},
+            )
+
     return SignupResponse(tenant_id=tenant_id, user_id=user_id)
 
 

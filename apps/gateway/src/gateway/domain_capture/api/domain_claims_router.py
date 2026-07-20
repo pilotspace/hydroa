@@ -30,24 +30,40 @@ from gateway.core.error_catalog import (
     DOMAIN_ALREADY_VERIFIED,
     DOMAIN_CLAIM_EXPIRED,
     DOMAIN_CLAIM_NOT_FOUND,
+    DOMAIN_CLAIM_NOT_PENDING,
+    DOMAIN_GENERIC,
     DOMAIN_INVALID,
     DOMAIN_VERIFICATION_FAILED,
+    MEMBER_VERIFY_CODE_EXPIRED,
+    MEMBER_VERIFY_CODE_INVALID,
+    MEMBER_VERIFY_DOMAIN_MISMATCH,
+    MEMBER_VERIFY_NOT_ELIGIBLE,
+    MEMBER_VERIFY_TOO_MANY_ATTEMPTS,
     RATE_LIMITED,
 )
 from gateway.domain_capture.api.deps import (
     get_create_claim_use_case,
     get_domain_claim_rate_limiter,
     get_domain_claim_repository,
+    get_member_verify_resend_use_case,
+    get_member_verify_use_case,
+    get_notify_optin_use_case,
+    get_notify_optout_use_case,
+    get_registrar_hint_use_case,
     get_revoke_claim_use_case,
     get_verify_claim_use_case,
 )
 from gateway.domain_capture.api.schemas import (
     DomainClaimCreateRequest,
     DomainClaimCreateResponse,
+    DomainClaimListItem,
     DomainClaimListResponse,
     DomainClaimVerifyResponse,
+    MemberVerifyRequest,
+    RegistrarHintResponse,
     to_create_response,
     to_list_item,
+    to_registrar_hint_response,
     to_verify_response,
 )
 from gateway.domain_capture.domain.errors import (
@@ -55,13 +71,21 @@ from gateway.domain_capture.domain.errors import (
     DomainAlreadyVerifiedError,
     DomainClaimExpiredError,
     DomainClaimNotFoundError,
+    DomainClaimNotPendingError,
     DomainClaimRateLimitedError,
+    DomainGenericError,
     DomainInvalidError,
     DomainVerificationFailedError,
+    MemberVerifyCodeExpiredError,
+    MemberVerifyCodeInvalidError,
+    MemberVerifyDomainMismatchError,
+    MemberVerifyNotEligibleError,
+    MemberVerifyTooManyAttemptsError,
 )
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity, Role
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
+from gateway.tenants.infrastructure.repository import get_tenant_by_id
 
 domain_claims_router = APIRouter(prefix="/admin/domain-claims", tags=["domain-claims-admin"])
 
@@ -139,6 +163,35 @@ async def list_domain_claims(
     return DomainClaimListResponse(claims=[to_list_item(c) for c in claims])
 
 
+@domain_claims_router.get("/registrar-hint", response_model=RegistrarHintResponse)
+async def get_registrar_hint(
+    request: Request,
+    domain: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RegistrarHintResponse:
+    """Nameserver-inferred registrar deep-link hint (registrar-hint TASK.md §3 — FROZEN
+    @ v1). OWNER-only (M8), rate-limited BEFORE any DNS IO (M7), ZERO database IO (M12) —
+    `session` is only threaded through to `_get_owner_identity`'s verbatim-reused shape
+    (an ordinary, non-impersonating identity's resolution never touches the DB, per
+    `ensure_impersonation_session_live`'s own zero-overhead guarantee). Never a 5xx: the
+    use case itself absorbs every DNS-lookup failure/miss into a graceful fallback (M4/M6)."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="registrar_hint",
+        tenant_id=identity.tenant_id,
+        limit=settings.domain_claim_registrar_hint_rpm,
+    )
+
+    use_case = get_registrar_hint_use_case(request)
+    try:
+        result = await use_case.execute(domain)
+    except DomainInvalidError:
+        raise DOMAIN_INVALID.exc() from None
+    return to_registrar_hint_response(result)
+
+
 @domain_claims_router.post("/{claim_id}/verify", response_model=DomainClaimVerifyResponse)
 async def verify_domain_claim(
     request: Request,
@@ -178,6 +231,137 @@ async def revoke_domain_claim(
 ) -> None:
     identity = await _get_owner_identity(request, session)
     use_case = get_revoke_claim_use_case(request, session)
+    try:
+        await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+
+
+@domain_claims_router.post("/{claim_id}/notify", response_model=DomainClaimListItem)
+async def opt_in_domain_claim_notify(
+    request: Request,
+    claim_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DomainClaimListItem:
+    """domain-verify-notify TASK.md §3 M1 (FROZEN @ v1, SECURITY) — body is intentionally
+    unread: NO email field exists on this route at all (R-sec-1, the anti-spam guard).
+    The recipient is decided later, server-side, by DomainVerifyNotifyScheduler."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="notify",
+        tenant_id=identity.tenant_id,
+        limit=settings.domain_claim_create_rpm,
+    )
+
+    use_case = get_notify_optin_use_case(request, session)
+    try:
+        claim = await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    except DomainClaimNotPendingError:
+        raise DOMAIN_CLAIM_NOT_PENDING.exc() from None
+    except DomainClaimExpiredError:
+        raise DOMAIN_CLAIM_EXPIRED.exc() from None
+    return to_list_item(claim)
+
+
+@domain_claims_router.post("/{claim_id}/member-verify", response_model=DomainClaimListItem)
+async def member_verify_domain_claim(
+    request: Request,
+    claim_id: uuid.UUID,
+    body: MemberVerifyRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DomainClaimListItem:
+    """member-verified-recognition TASK.md §3 M3 (FROZEN @ v1, SECURITY) — OWNER-only,
+    per-tenant rate-limited. Body is ONLY the 6-digit code; the recipient/domain are
+    server-derived (the caller's own account email), never request-supplied (R-sec-3)."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="member_verify",
+        tenant_id=identity.tenant_id,
+        limit=settings.member_verify_rpm,
+    )
+
+    use_case = get_member_verify_use_case(request, session)
+    try:
+        claim = await use_case.execute(
+            claim_id=claim_id,
+            tenant_id=identity.tenant_id,
+            code=body.code,
+            caller_email=identity.email,
+        )
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    except DomainClaimNotPendingError:
+        raise DOMAIN_CLAIM_NOT_PENDING.exc() from None
+    except MemberVerifyDomainMismatchError:
+        raise MEMBER_VERIFY_DOMAIN_MISMATCH.exc() from None
+    except MemberVerifyCodeExpiredError:
+        raise MEMBER_VERIFY_CODE_EXPIRED.exc() from None
+    except MemberVerifyTooManyAttemptsError:
+        raise MEMBER_VERIFY_TOO_MANY_ATTEMPTS.exc() from None
+    except MemberVerifyCodeInvalidError:
+        raise MEMBER_VERIFY_CODE_INVALID.exc() from None
+    return to_list_item(claim)
+
+
+@domain_claims_router.post("/{claim_id}/member-verify/resend", response_model=DomainClaimListItem)
+async def resend_member_verify_domain_claim(
+    request: Request,
+    claim_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DomainClaimListItem:
+    """member-verified-recognition TASK.md §3 M5 (FROZEN @ v1, SECURITY) — OWNER-only,
+    per-tenant rate-limited (distinct action). Body is intentionally unread: the recipient
+    is the caller's own server-derived account email (R-sec-3); a fresh code is issued for a
+    pending, non-generic, business claim whose domain matches the caller's own email domain."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="member_verify_resend",
+        tenant_id=identity.tenant_id,
+        limit=settings.member_verify_resend_rpm,
+    )
+
+    tenant = await get_tenant_by_id(session, identity.tenant_id)
+    account_type = tenant.account_type if tenant is not None else None
+
+    use_case = get_member_verify_resend_use_case(request, session)
+    try:
+        claim = await use_case.execute(
+            claim_id=claim_id,
+            tenant_id=identity.tenant_id,
+            caller_email=identity.email,
+            account_type=account_type,
+        )
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    except DomainClaimNotPendingError:
+        raise DOMAIN_CLAIM_NOT_PENDING.exc() from None
+    except MemberVerifyDomainMismatchError:
+        raise MEMBER_VERIFY_DOMAIN_MISMATCH.exc() from None
+    except DomainGenericError:
+        raise DOMAIN_GENERIC.exc() from None
+    except MemberVerifyNotEligibleError:
+        raise MEMBER_VERIFY_NOT_ELIGIBLE.exc() from None
+    return to_list_item(claim)
+
+
+@domain_claims_router.delete("/{claim_id}/notify", status_code=204)
+async def opt_out_domain_claim_notify(
+    request: Request,
+    claim_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """domain-verify-notify TASK.md §3 M2 (FROZEN @ v1) — clears notify_requested_at;
+    idempotent (opting out when not opted in is a no-op success)."""
+    identity = await _get_owner_identity(request, session)
+    use_case = get_notify_optout_use_case(request, session)
     try:
         await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
     except DomainClaimNotFoundError:

@@ -415,6 +415,83 @@ class InviteRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DomainInviteLinkRow(Base):
+    """domain_invite_links — a tenant-scoped, reusable, revocable, 30-day shareable secret
+    (invite-by-domain TASK.md §3, FROZEN @ v1, SECURITY). Purely additive: no existing
+    table is altered. `token_hash` is INFRA-ONLY (SHA256 hex); the plaintext is returned
+    once at creation and NEVER persisted (mirrors InviteRow's token_hash discipline).
+
+    At most ONE active link per (tenant_id, domain) via a partial unique index
+    WHERE status='active' — re-create atomically supersedes (revokes) the old row (M2).
+    Both timestamp columns are explicit TIMESTAMPTZ (mirrors InviteRow's convention).
+    """
+
+    __tablename__ = "domain_invite_links"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'revoked')", name="ck_domain_invite_links_status"
+        ),
+        CheckConstraint("domain = lower(domain)", name="ck_domain_invite_links_domain_lower"),
+        Index("uq_domain_invite_links_token_hash", "token_hash", unique=True),
+        Index(
+            "uq_domain_invite_links_active_domain",
+            "tenant_id",
+            "domain",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE")
+    )
+    domain: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class DomainInviteRedemptionRow(Base):
+    """domain_invite_redemptions — the ephemeral per-(link, email) 6-digit-code challenge
+    that proves an individual mailbox before a domain-link join is provisioned
+    (invite-by-domain TASK.md §3, FROZEN @ v1, SECURITY). `code_hash` is the Option-A keyed
+    HMAC at rest (never plaintext); the row is consumed (deleted) on successful provision.
+
+    UNIQUE (link_id, email) is the UPSERT target: re-issuing a code for the same
+    (link, email) supersedes the hash + refreshes expiry + resets attempt_count. ON DELETE
+    CASCADE off the parent link so revoking/superseding a link cleans up its in-flight codes.
+    """
+
+    __tablename__ = "domain_invite_redemptions"
+    __table_args__ = (
+        CheckConstraint("email = lower(email)", name="ck_domain_invite_redemptions_email_lower"),
+        Index(
+            "uq_domain_invite_redemptions_link_email",
+            "link_id",
+            "email",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    link_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("domain_invite_links.id", ondelete="CASCADE")
+    )
+    email: Mapped[str] = mapped_column(Text)
+    code_hash: Mapped[str] = mapped_column(Text)
+    code_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ImpersonationSessionRow(Base):
     """impersonation_sessions — a time-boxed, revocable superadmin impersonation session
     (impersonation-session-lifecycle TASK.md §3 Part D, FROZEN @ v1). Mirrors AgentTokenRow's

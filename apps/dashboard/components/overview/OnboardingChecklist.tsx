@@ -26,6 +26,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { bffGet } from "@/lib/bff-client";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
 import { Button } from "@/components/ui";
@@ -42,11 +43,23 @@ interface ProviderKeysResponse {
 interface InvitesResponse {
   invites: unknown[];
 }
+// ADDITIVE (member-verified-code-entry §3, FROZEN): only the fields this step's
+// completion rule needs — the console's own DomainClaimListItem is the full shape.
+interface DomainClaimCheckItem {
+  status: string;
+  member_verified_at: string | null;
+}
+interface DomainClaimsResponse {
+  claims: DomainClaimCheckItem[];
+}
 
 interface Step {
-  id: "create_key" | "first_call" | "byok" | "invite";
+  id: "create_key" | "first_call" | "byok" | "invite" | "confirm_domain";
   label: string;
   complete: boolean;
+  // ADDITIVE (member-verified-code-entry §3, FROZEN): a deep-link target — a step
+  // without one renders as plain text, unchanged from every existing step.
+  href?: string;
 }
 
 function dismissKey(tenantId: string): string {
@@ -94,11 +107,19 @@ export function OnboardingChecklist() {
     queryFn: () => bffGet<InvitesResponse>("/admin/invites"),
     enabled: role === "owner" || role === "admin",
   });
+  // ADDITIVE (member-verified-code-entry §3 item 7, FROZEN): "claims query enabled
+  // only for owner" — role-gated identically to byok, never issued for a non-owner.
+  const domainClaimsQuery = useQuery<DomainClaimsResponse>({
+    queryKey: ["onboarding-domain-claims"],
+    queryFn: () => bffGet<DomainClaimsResponse>("/admin/domain-claims"),
+    enabled: role === "owner",
+  });
 
   if (userLoading || !currentUser || !tenantId) return null;
 
   const byokVisible = role === "owner";
   const inviteVisible = role === "owner" || role === "admin";
+  const confirmDomainVisible = role === "owner";
 
   // Wait for every VISIBLE-and-enabled query before rendering anything — an
   // honest degrade (never a wrong/half-known checklist), matching the
@@ -106,9 +127,11 @@ export function OnboardingChecklist() {
   if (keysQuery.isLoading || usageQuery.isLoading) return null;
   if (byokVisible && providerKeysQuery.isLoading) return null;
   if (inviteVisible && invitesQuery.isLoading) return null;
+  if (confirmDomainVisible && domainClaimsQuery.isLoading) return null;
   if (keysQuery.isError || usageQuery.isError) return null;
   if (byokVisible && providerKeysQuery.isError) return null;
   if (inviteVisible && invitesQuery.isError) return null;
+  if (confirmDomainVisible && domainClaimsQuery.isError) return null;
 
   const steps: Step[] = [
     {
@@ -134,6 +157,16 @@ export function OnboardingChecklist() {
       id: "invite",
       label: "Invite a teammate",
       complete: (invitesQuery.data?.invites.length ?? 0) > 0,
+    });
+  }
+  if (confirmDomainVisible) {
+    steps.push({
+      id: "confirm_domain",
+      label: "Confirm your work email domain",
+      href: "/app/settings?tab=domains",
+      complete: (domainClaimsQuery.data?.claims ?? []).some(
+        (c) => c.member_verified_at != null || c.status === "verified",
+      ),
     });
   }
 
@@ -178,7 +211,13 @@ export function OnboardingChecklist() {
             >
               {step.complete ? "✓" : ""}
             </span>
-            <span>{step.label}</span>
+            {step.href ? (
+              <Link href={step.href} className="font-medium text-accent-soft-foreground underline underline-offset-2">
+                {step.label}
+              </Link>
+            ) : (
+              <span>{step.label}</span>
+            )}
             <span className="sr-only">{step.complete ? " — complete" : " — incomplete"}</span>
           </li>
         ))}

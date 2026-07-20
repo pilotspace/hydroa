@@ -86,6 +86,24 @@ def fake_dns(app: Any) -> FakeDnsResolver:
     return resolver
 
 
+class FakeEmailSender:
+    """In-process EmailSender test double for domain-verify-notify (TASK.md §4) — captures
+    dispatched messages, never touches a real socket. Mirrors
+    tests/transactional_email/conftest.py's own FakeEmailSender shape exactly.
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[Any] = []
+
+    async def send(self, message: Any) -> None:
+        self.sent.append(message)
+
+
+@pytest.fixture
+def fake_email_sender() -> FakeEmailSender:
+    return FakeEmailSender()
+
+
 async def signup_and_login(
     client: httpx.AsyncClient,
     *,

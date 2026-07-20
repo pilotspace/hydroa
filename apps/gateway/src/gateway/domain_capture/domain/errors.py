@@ -28,6 +28,11 @@ class DomainClaimExpiredError(DomainCaptureError):
     """now > claim.expires_at at verify time (R6) — caller must re-POST to reissue."""
 
 
+class DomainClaimNotPendingError(DomainCaptureError):
+    """domain-verify-notify TASK.md §3 (FROZEN @ v1) — opt-in was attempted on a claim
+    that is not status='pending' (already verified — nothing left to watch, R2)."""
+
+
 class DomainVerificationFailedError(DomainCaptureError):
     """DNS TXT record missing or did not match this claim's own stored token (R5)."""
 
@@ -43,3 +48,42 @@ class DomainClaimRateLimitedError(DomainCaptureError):
     def __init__(self, retry_after: int) -> None:
         super().__init__(f"domain claim rate limited; retry after {retry_after}s")
         self.retry_after = retry_after
+
+
+class MemberVerifyCodeInvalidError(DomainCaptureError):
+    """A wrong 6-digit code, still under the attempt-cap (member-verified-recognition
+    TASK.md §3 R3) — the attempt counter is incremented; member_verified_at unchanged."""
+
+
+class MemberVerifyCodeExpiredError(DomainCaptureError):
+    """The in-flight code's member_verify_code_expires_at has passed (R4) — the code is
+    cleared (single-use); the caller must resend."""
+
+
+class MemberVerifyTooManyAttemptsError(DomainCaptureError):
+    """The attempt-cap (≤5) was reached — the code is invalidated (hash cleared); the
+    caller must resend (member-verified-recognition TASK.md §3 R5)."""
+
+
+class MemberVerifyDomainMismatchError(DomainCaptureError):
+    """The claim's domain != the authenticated caller's OWN email domain (M6b, R10) — a
+    code proves control of the mailbox it was sent to and NOTHING else."""
+
+
+class DomainGenericError(DomainCaptureError):
+    """member-verify/resend on a generic/public email domain (R6, R-sec-5) — one user
+    would otherwise invite-by-domain the whole provider population."""
+
+
+class MemberVerifyNotEligibleError(DomainCaptureError):
+    """member-verify/resend on a personal (account_type='personal') account (R7,
+    R-sec-5) — personal accounts never get member-verified."""
+
+
+class NsLookupFailedError(DomainCaptureError):
+    """NS-record resolver error, NXDOMAIN, empty answer, or timeout for the registrar-hint
+    endpoint (registrar-hint TASK.md §3 M4 — FROZEN @ v1). Deliberately a DISTINCT class
+    from DnsLookupFailedError: THIS error fails OPEN — GetRegistrarHintUseCase catches it
+    into a graceful `fallback: true` response, never a 5xx — the opposite discipline from
+    DnsLookupFailedError's fail-CLOSED contract, kept as a separate class so the two
+    handling rules can never be confused at some future call site."""

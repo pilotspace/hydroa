@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Text, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -55,4 +55,28 @@ class TenantDomainClaimRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id")
+    )
+    # ADDITIVE (domain-verify-notify TASK.md §3 — FROZEN @ v1, SECURITY): opt-in +
+    # auto-verify-notify tracking. NULL = not opted in / not yet notified respectively —
+    # byte-identical default state for every pre-existing row (migration 0f1648b174a2).
+    notify_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    # ADDITIVE (member-verified-recognition TASK.md §3 — FROZEN @ v1, SECURITY): the rung-1
+    # mailbox-confirmation marker + the 3 in-flight code columns. NULL = never
+    # member-verified / no in-flight code; member_verify_attempt_count defaults 0 —
+    # byte-identical default state for every pre-existing row (migration c2e5a9d1b7f4).
+    # FROZEN and UNTOUCHED: the ClaimStatus CheckConstraint + both unique indexes above.
+    member_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    member_verify_code_hash: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    member_verify_code_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    member_verify_attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
     )

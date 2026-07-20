@@ -515,6 +515,12 @@ async def test_response_reports_smtp_channel_when_enabled(
 ) -> None:
     smtp_app, smtp_client, fake = smtp_app_client
     tenant = await seed_tenant(smtp_client, smtp_app, suffix="smtp")
+    # ADDITIVE reconciliation (member-verified-recognition TASK.md §3 M1 — signup-issuance
+    # drift): seed_tenant's BUSINESS signup now also emits one member-verify code email, so
+    # isolate the invite-email count under test by discarding the seed-time capture. The
+    # frozen INTENT — the invite endpoint dispatches EXACTLY one (invite) email — is
+    # unchanged; this only removes an unrelated seed-time email from the shared spy.
+    fake.sent.clear()
     headers = _bearer(tenant["owner_token"])
 
     r = await smtp_client.post(

@@ -90,6 +90,31 @@ class BillingOwnerIneligibleError(IdentityError):
     pass
 
 
+class DomainInviteNotEligibleError(IdentityError):
+    """POST /admin/domain-invite-links for a domain the caller's tenant is NOT member/owner-
+    verified on (invite-by-domain TASK.md §3 M1/R2) — no link is minted. Tenant-scoped:
+    eligibility is only ever read for the caller's OWN tenant (anti-confused-deputy)."""
+
+    pass
+
+
+class DomainInviteDomainMismatchError(IdentityError):
+    """The redeemer-supplied email's domain != the link's domain (invite-by-domain TASK.md
+    §3 M6/R3), normalized identically to task-4's `_caller_email_domain` (subdomain/unicode/
+    IP fail-closed). At step-1 no code is emailed; a code proves control of a mailbox and
+    nothing else."""
+
+    pass
+
+
+class DomainInviteLinkInactiveError(IdentityError):
+    """The domain invite link resolved but its status is not 'active' — revoked (or
+    superseded) mid-flight (invite-by-domain TASK.md §3 M5/R9). A revoked link can never
+    again be redeemed."""
+
+    pass
+
+
 class SeatCapExceededError(IdentityError):
     """Admitting one more active member would meet-or-exceed the tenant's effective seat
     cap (plan-seat-cap TASK.md §3 M2, FROZEN @ v1). Carries structured data — unlike every

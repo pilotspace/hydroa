@@ -538,6 +538,8 @@ async def seed_verified_domain_claim(sessionmaker: Any, *, tenant_id: str, domai
     POST /admin/domain-claims + /verify — the write-gate only cares that a
     verified row exists, not how it got there.
     """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     from gateway.domain_capture.infrastructure.orm import TenantDomainClaimRow
 
     async with sessionmaker() as session:
@@ -547,8 +549,15 @@ async def seed_verified_domain_claim(sessionmaker: Any, *, tenant_id: str, domai
                 {"tid": tenant_id},
             )
         ).scalar_one()
-        session.add(
-            TenantDomainClaimRow(
+        # ADDITIVE reconciliation (member-verified-recognition TASK.md §3 M1 — signup-issuance
+        # drift): a new-tenant BUSINESS signup now auto-issues a PENDING member-verify claim
+        # for the tenant's own signup domain, so a plain INSERT here can collide on
+        # uq_domain_claims_tenant_domain when (tenant_id, domain) matches. Upsert — promote
+        # any existing pending row to verified — so the helper still guarantees a VERIFIED
+        # claim exists for (tenant_id, domain) (its only intent).
+        await session.execute(
+            pg_insert(TenantDomainClaimRow)
+            .values(
                 id=uuid.uuid4(),
                 tenant_id=uuid.UUID(str(tenant_id)),
                 domain=domain,
@@ -557,6 +566,14 @@ async def seed_verified_domain_claim(sessionmaker: Any, *, tenant_id: str, domai
                 verified_at=datetime.now(UTC),
                 expires_at=datetime.now(UTC) + timedelta(days=365),
                 created_by_user_id=owner_row,
+            )
+            .on_conflict_do_update(
+                index_elements=["tenant_id", "domain"],
+                set_={
+                    "status": "verified",
+                    "verified_at": datetime.now(UTC),
+                    "expires_at": datetime.now(UTC) + timedelta(days=365),
+                },
             )
         )
         await session.commit()

@@ -123,6 +123,10 @@ from gateway.credits.infrastructure.orm import (  # noqa: F401 — registers Cre
 )
 from gateway.credits.infrastructure.postgres_guard import PostgresCreditGuard
 from gateway.domain_capture.api.domain_claims_router import domain_claims_router
+from gateway.domain_capture.application.notify_scheduler import (
+    DomainVerifyNotifyScheduler,
+    should_start_domain_verify_notify,
+)
 from gateway.domain_capture.infrastructure.dns_resolver import DnsPythonTxtResolver
 from gateway.domain_capture.infrastructure.orm import (  # noqa: F401 — registers TenantDomainClaimRow on Base.metadata
     TenantDomainClaimRow as _TenantDomainClaimRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -240,6 +244,8 @@ from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.billing_owner_router import billing_owner_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
+from gateway.tenants.api.domain_invite_links_router import domain_invite_links_router
+from gateway.tenants.api.domain_invite_redeem_router import domain_invite_redeem_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.plan_router import plan_router
@@ -726,6 +732,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # DomainVerifyNotifyScheduler — domain-verify-notify TASK.md §3 (FROZEN @ v1,
+        # SECURITY): periodically re-checks opted-in pending domain claims via the FROZEN
+        # VerifyDomainClaimUseCase DNS-TXT proof (reused verbatim, fail-closed) and emails
+        # the claim owner exactly once on the first match. Pure asyncio sweeper (mirrors
+        # CatalogRefreshScheduler) — NO celery. Reuses app.state.dns_resolver /
+        # app.state.email_sender (already wired above this lifespan runs) + the shared
+        # sessionmaker; started only when domain_verify_notify_interval_seconds>0.
+        app.state.domain_verify_notify_task = None
+        if should_start_domain_verify_notify(_settings.domain_verify_notify_interval_seconds):
+            domain_verify_notify_scheduler = DomainVerifyNotifyScheduler(
+                session_factory=_sessionmaker,
+                dns_resolver=app.state.dns_resolver,
+                email_sender=app.state.email_sender,
+                dns_timeout_seconds=_settings.domain_verification_dns_timeout_seconds,
+                origin=_settings.dashboard_public_origin,
+            )
+            app.state.domain_verify_notify_scheduler = domain_verify_notify_scheduler
+            app.state.domain_verify_notify_task = asyncio.create_task(
+                domain_verify_notify_scheduler.run_forever(
+                    interval_seconds=float(_settings.domain_verify_notify_interval_seconds)
+                )
+            )
+
         # VideoJobWorker — durable Redis-backed in-process worker (v48 durable-queue).
         # Default-OFF: started only when video_durable_queue_enabled=True.
         # recover_orphans() runs BEFORE run_forever so restart-orphaned rows are
@@ -874,6 +903,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             catalog_refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await catalog_refresh_task
+
+        domain_verify_notify_task: asyncio.Task[None] | None = getattr(
+            app.state, "domain_verify_notify_task", None
+        )
+        if domain_verify_notify_task is not None:
+            domain_verify_notify_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await domain_verify_notify_task
 
         video_worker_task: asyncio.Task[None] | None = getattr(app.state, "video_worker_task", None)
         if video_worker_task is not None:
@@ -1599,6 +1636,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(invites_router)
     app.include_router(invite_accept_router)
+    app.include_router(domain_invite_links_router)
+    app.include_router(domain_invite_redeem_router)
     app.include_router(scim_token_router)
     app.include_router(scim_router)
     app.include_router(platform_tenants_router)

@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Protocol
 
-from gateway.domain_capture.domain.entities import DomainClaim
+from gateway.domain_capture.domain.entities import DomainClaim, MemberVerifyState
 
 
 class DomainClaimRepository(Protocol):
@@ -58,6 +58,71 @@ class DomainClaimRepository(Protocol):
         just an early, friendlier 409 before any write is attempted."""
         ...
 
+    # ── domain-verify-notify TASK.md §3 (FROZEN @ v1, SECURITY) — additive ──────────
+
+    async def request_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainClaim:
+        """Set notify_requested_at (idempotent — a repeat opt-in preserves the ORIGINAL
+        timestamp, a true no-op). Tenant-scoped; raises DomainClaimNotFoundError if the
+        row does not exist for this tenant (defensive — the caller already checked via
+        get_own before calling this)."""
+        ...
+
+    async def clear_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """Clear notify_requested_at (idempotent — a repeat opt-out is a no-op).
+        Tenant-scoped."""
+        ...
+
+    async def mark_notified(self, *, claim_id: uuid.UUID) -> bool:
+        """Atomic conditional claim: ONE `UPDATE ... SET notified_at=now() WHERE id=:id
+        AND notified_at IS NULL RETURNING id`. Returns True iff THIS call won the claim
+        (the caller — and only the caller — that gets True may dispatch the email);
+        False means another caller already claimed it — the exactly-once-email guard
+        (R-sec-3), safe under overlapping ticks/replicas regardless of replica count."""
+        ...
+
+    async def list_notify_candidates(self, now: datetime) -> list[DomainClaim]:
+        """The bounded scheduler input: claims where notify_requested_at IS NOT NULL AND
+        status='pending' AND notified_at IS NULL AND expires_at > now. Naturally bounded
+        (R-sec-4) — no claim stays a candidate forever; expiry is the ceiling."""
+        ...
+
+    # ── member-verified-recognition TASK.md §3 (FROZEN @ v1, SECURITY) — additive ──────
+
+    async def issue_member_verify_code(
+        self,
+        *,
+        claim_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        code_hash: str,
+        expires_at: datetime,
+    ) -> DomainClaim:
+        """Store a fresh keyed code hash + expiry and RESET member_verify_attempt_count=0
+        (tenant-scoped). Never touches status/verified_at/member_verified_at. Raises
+        DomainClaimNotFoundError if the row does not exist for this tenant."""
+        ...
+
+    async def load_member_verify_row_for_update(
+        self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> MemberVerifyState | None:
+        """SELECT … FOR UPDATE the tenant-scoped claim row (serializes concurrent guesses so
+        the ≤5 cap holds EXACTLY) and return its in-flight code state, or None if the row
+        does not exist for this tenant (unknown/cross-tenant, indistinguishable — R1). The
+        row-lock is held on the caller's session until it commits/rolls back."""
+        ...
+
+    async def mark_member_verified(self, *, claim_id: uuid.UUID) -> DomainClaim:
+        """SET member_verified_at=now() and CLEAR the 3 code columns (single-use). status,
+        verified_at, and both unique indexes are UNTOUCHED — member-verify never writes the
+        DNS auto-join gate (M7). Returns the updated claim."""
+        ...
+
+    async def bump_member_verify_attempt(self, *, claim_id: uuid.UUID, invalidate: bool) -> int:
+        """Atomically increment member_verify_attempt_count by 1; when `invalidate` is True
+        also CLEAR the code (hash+expiry NULL) — single-use invalidation at the cap/expiry.
+        Returns the new attempt count. Must run in the SAME transaction as the preceding
+        load_member_verify_row_for_update so the cap is exact under concurrency."""
+        ...
+
 
 class DomainClaimResolver(Protocol):
     async def resolve_verified_tenant(self, domain: str) -> uuid.UUID | None:
@@ -72,4 +137,15 @@ class DnsTxtResolver(Protocol):
         """ONE bounded-timeout DNS TXT lookup for `name`. Raises DnsLookupFailedError on
         ANY resolver error, NXDOMAIN, empty answer, or timeout — fails CLOSED, never
         returns a partial/best-effort result (M13, R8). No internal retry."""
+        ...
+
+
+class DnsNsResolver(Protocol):
+    async def lookup_ns(self, name: str, *, timeout: float) -> list[str]:  # noqa: ASYNC109 — mirrors DnsTxtResolver's own forwarded `lifetime=` deadline parameter
+        """ONE bounded-timeout DNS NS-record lookup for `name` (registrar-hint TASK.md §3
+        M3 — FROZEN @ v1). Raises NsLookupFailedError on ANY resolver error, NXDOMAIN,
+        empty answer, or timeout. Deliberately mirrors DnsTxtResolver's shape (bounded
+        timeout, no retry, one Protocol method) WITHOUT its fail-CLOSED discipline — the
+        CALLER (GetRegistrarHintUseCase) is responsible for catching NsLookupFailedError
+        into a graceful fallback (M4); this port itself still just raises on failure."""
         ...

@@ -1,0 +1,230 @@
+<title>Domain onboarding — progressive trust wireframe</title>
+<style>
+  :root {
+    --canvas:#eef1f5; --surface:#ffffff; --ink:#101720; --muted:#5b6675; --faint:#8a94a2;
+    --azure:#2f6df0; --azure-deep:#1c4bb8; --azure-soft:#eef3fe; --azure-border:#d8e4fd;
+    --border:#e5e9ef; --hair:#eef1f5; --field:#f7f9fb;
+    --success:#16955f; --success-text:#0f7a4d; --success-soft:#e7f5ee; --success-border:#bfe6d2;
+    --warning:#bd8410; --warning-soft:#fbf2df; --warning-border:#f0dfb0;
+    --danger:#cc3d37; --danger-soft:#fbeceb;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --shadow:0 1px 2px rgba(16,23,32,.05),0 10px 30px -16px rgba(16,23,32,.18);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --canvas:#0a0e13; --surface:#121924; --ink:#eaeff5; --muted:#9aa7b5; --faint:#6b7787;
+    --azure:#5b8cff; --azure-deep:#8fb0ff; --azure-soft:#16233d; --azure-border:#24365c;
+    --border:#232e3b; --hair:#1a2430; --field:#0f151d;
+    --success:#4cc38a; --success-text:#6fd3a5; --success-soft:#12281f; --success-border:#1f4535;
+    --warning:#e0a94a; --warning-soft:#2a2210; --warning-border:#463714;
+    --danger:#e06a63; --danger-soft:#2c1614;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px -18px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="light"]{--canvas:#eef1f5;--surface:#fff;--ink:#101720;--muted:#5b6675;--faint:#8a94a2;--azure:#2f6df0;--azure-deep:#1c4bb8;--azure-soft:#eef3fe;--azure-border:#d8e4fd;--border:#e5e9ef;--hair:#eef1f5;--field:#f7f9fb;--success:#16955f;--success-text:#0f7a4d;--success-soft:#e7f5ee;--success-border:#bfe6d2;--warning:#bd8410;--warning-soft:#fbf2df;--warning-border:#f0dfb0;--danger:#cc3d37;--danger-soft:#fbeceb;--shadow:0 1px 2px rgba(16,23,32,.05),0 10px 30px -16px rgba(16,23,32,.18);}
+  :root[data-theme="dark"]{--canvas:#0a0e13;--surface:#121924;--ink:#eaeff5;--muted:#9aa7b5;--faint:#6b7787;--azure:#5b8cff;--azure-deep:#8fb0ff;--azure-soft:#16233d;--azure-border:#24365c;--border:#232e3b;--hair:#1a2430;--field:#0f151d;--success:#4cc38a;--success-text:#6fd3a5;--success-soft:#12281f;--success-border:#1f4535;--warning:#e0a94a;--warning-soft:#2a2210;--warning-border:#463714;--danger:#e06a63;--danger-soft:#2c1614;--shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px -18px rgba(0,0,0,.7);}
+
+  *{box-sizing:border-box;}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--sans);line-height:1.55;margin:0;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:52px 24px 96px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--azure);font-weight:600;margin:0 0 12px;}
+  h1{font-size:clamp(28px,4.5vw,40px);line-height:1.12;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance;}
+  .lede{font-size:18px;color:var(--muted);margin:0;max-width:64ch;}
+  .meta{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;}
+  .meta span::before{content:"▸ ";color:var(--azure);}
+
+  h2{font-size:13px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.11em;color:var(--faint);font-weight:600;margin:0 0 6px;}
+  .sec-head{margin:58px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .sec-head h3{font-size:22px;letter-spacing:-.01em;margin:6px 0 4px;}
+  .sec-head p{margin:0;color:var(--muted);font-size:15px;max-width:70ch;}
+  .tag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--azure-deep);background:var(--azure-soft);border:1px solid var(--azure-border);padding:2px 8px;border-radius:999px;font-weight:600;margin-left:8px;vertical-align:middle;}
+
+  /* app chrome mock */
+  .app{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;}
+  .app-top{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--hair);background:var(--field);}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--border);}
+  .crumb{font-family:var(--mono);font-size:12px;color:var(--faint);margin-left:6px;}
+  .crumb b{color:var(--muted);font-weight:600;}
+  .app-body{padding:26px 28px;}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.02em;padding:3px 9px;border-radius:999px;line-height:1.4;white-space:nowrap;}
+  .b-success{background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border);}
+  .b-member{background:var(--azure-soft);color:var(--azure-deep);border:1px solid var(--azure-border);}
+  .b-warning{background:var(--warning-soft);color:var(--warning);border:1px solid var(--warning-border);}
+  .ic{width:12px;height:12px;display:inline-block;vertical-align:-1px;}
+
+  /* the rung seal showcase */
+  .rungrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+  @media (max-width:720px){.rungrow{grid-template-columns:1fr;}}
+  .rungcard{border:1px solid var(--border);border-radius:13px;padding:18px;background:var(--surface);position:relative;overflow:hidden;}
+  .rungcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .rungcard.m::before{background:var(--azure);}
+  .rungcard.o::before{background:var(--success);}
+  .rungcard.p::before{background:var(--warning);}
+  .rungcard .lvl{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
+  .rungcard .desc{font-size:12.5px;color:var(--muted);margin-top:12px;}
+  .rungcard .desc b{color:var(--ink);}
+
+  /* generic UI atoms */
+  .btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:1px solid transparent;cursor:default;}
+  .btn-primary{background:var(--azure);color:#fff;}
+  .btn-ghost{background:transparent;color:var(--muted);border-color:var(--border);}
+  .btn-sm{font-size:12px;padding:6px 11px;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--hair);}
+  .row:last-child{border-bottom:none;}
+  .row .dom{font-family:var(--mono);font-size:14px;font-weight:600;}
+  .muted{color:var(--muted);font-size:13px;}
+  .field{font-family:var(--mono);font-size:12.5px;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .field .v{color:var(--ink);overflow-x:auto;white-space:nowrap;}
+  .copybtn{font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--azure-deep);white-space:nowrap;display:inline-flex;gap:4px;align-items:center;}
+
+  .challenge{border:1px solid var(--azure-border);background:var(--azure-soft);border-radius:13px;padding:20px;margin-top:8px;}
+  .challenge h4{margin:0 0 4px;font-size:15px;}
+  .challenge .sub{font-size:13px;color:var(--muted);margin:0 0 16px;}
+  .polling{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--azure-deep);font-weight:600;background:var(--surface);border:1px dashed var(--azure-border);border-radius:9px;padding:10px 13px;margin-top:14px;}
+  .spinner{width:14px;height:14px;border:2px solid var(--azure-border);border-top-color:var(--azure);border-radius:50%;animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none;}}
+  .softlinks{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:16px;font-size:12.5px;}
+  .softlinks a{color:var(--azure-deep);font-weight:600;text-decoration:none;}
+  .softlinks a::after{content:" →";color:var(--faint);}
+
+  .callout{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--azure-border);background:var(--azure-soft);border-radius:14px;padding:20px 22px;}
+  .callout .glyph{flex:0 0 40px;height:40px;border-radius:10px;background:var(--surface);border:1px solid var(--azure-border);display:flex;align-items:center;justify-content:center;color:var(--azure);font-size:20px;}
+  .callout h4{margin:0 0 4px;font-size:16px;}
+  .callout p{margin:0 0 14px;font-size:14px;color:var(--muted);}
+  .callout .actions{display:flex;gap:10px;flex-wrap:wrap;}
+
+  .note{font-size:12.5px;color:var(--faint);margin-top:12px;font-style:italic;}
+  .anno{font-family:var(--mono);font-size:11.5px;color:var(--azure-deep);background:var(--azure-soft);border:1px solid var(--azure-border);border-radius:8px;padding:8px 12px;margin-top:14px;display:flex;gap:8px;}
+  .anno b{color:var(--ink);font-family:var(--sans);}
+
+  .decision{border:1px solid var(--border);border-radius:13px;padding:18px 20px;margin-bottom:14px;background:var(--surface);}
+  .decision .q{font-weight:650;margin:0 0 8px;font-size:15px;}
+  .decision .rec{font-size:13.5px;color:var(--muted);margin:0;}
+  .decision .rec b{color:var(--azure-deep);}
+  .link{color:var(--azure-deep);font-weight:600;text-decoration:none;}
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">UDD wireframe · for design confirmation</p>
+  <h1>Domain onboarding — the progressive trust ladder, realized</h1>
+  <p class="lede">One coherent flow across the three surfaces this milestone touches. Reuses the shipped Airier design system + the DomainStatusSeal idiom — the one new signature element is a <strong>rung-aware trust seal</strong> that shows the <em>climb</em>, not a flat badge.</p>
+  <div class="meta">
+    <span>Milestone: domain-onboarding-softening</span>
+    <span>Option A (invite-by-domain only)</span>
+    <span>Auto-join: DNS-gated, unchanged</span>
+  </div>
+
+  <!-- SIGNATURE ELEMENT -->
+  <div class="sec-head">
+    <h2>Signature element</h2>
+    <h3>The rung-aware trust seal</h3>
+    <p>Extends the frozen DomainStatusSeal (Badge + icon + sr-only) into a three-state climb. Member-verified is the NEW soft rung; owner-verified is the existing “sealed” state. Semantic color carries meaning; the icon + label never rely on color alone (WCAG 1.4.1).</p>
+  </div>
+  <div class="rungrow">
+    <div class="rungcard m">
+      <div class="lvl">Rung 1 · soft</div>
+      <span class="badge b-member"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>Member-verified</span>
+      <div class="desc">“You’re a confirmed member of <b>acme.com</b>.” Proven automatically by the signup email. Unlocks setup + invite-by-domain. <b>Does not</b> enable auto-join.</div>
+    </div>
+    <div class="rungcard o">
+      <div class="lvl">Rung 2 · strong · recommended</div>
+      <span class="badge b-success"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Owner-verified</span>
+      <div class="desc">DNS-TXT proven. The <b>sealed</b> state. The only rung that turns on automatic join for <b>acme.com</b> users.</div>
+    </div>
+    <div class="rungcard p">
+      <div class="lvl">Transient</div>
+      <span class="badge b-warning">Pending DNS</span>
+      <div class="desc">Record published, not yet detected. Now <b>self-resolving</b> — see surface A. No manual retry.</div>
+    </div>
+  </div>
+
+  <!-- SURFACE A -->
+  <div class="sec-head">
+    <h2>Surface A · task dns-verify-softeners</h2>
+    <h3>Settings › Domains — the softened DNS challenge</h3>
+    <p>The strong rung, made gentle. Auto-poll replaces the “click Verify now → fails on propagation” trap; escape hatches for the admin who isn’t the DNS owner.</p>
+  </div>
+  <div class="app">
+    <div class="app-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="crumb">Settings › <b>Domains</b></span></div>
+    <div class="app-body">
+      <div class="row">
+        <div><span class="dom">acme.com</span></div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="badge b-member">Member-verified</span>
+          <span class="btn btn-ghost btn-sm">Verify ownership</span>
+        </div>
+      </div>
+      <div class="challenge">
+        <h4>Verify you own acme.com</h4>
+        <p class="sub">Add this TXT record at your DNS provider. We’ll detect it automatically — no need to come back.</p>
+        <div class="field"><span class="v">_ai-proxy-challenge.acme.com&nbsp;&nbsp;TXT&nbsp;&nbsp;ai-proxy-domain-verification=8f3a…c1</span><span class="copybtn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy record</span></div>
+        <div class="polling"><span class="spinner"></span> Checking for the record… we’ll seal it the moment it’s live.</div>
+        <div class="softlinks">
+          <a>Add this at Cloudflare</a>
+          <a>Not the DNS owner? Send instructions</a>
+          <a>Verify later — email me when it’s live</a>
+        </div>
+      </div>
+      <div class="anno"><b>Behavior:</b> background poll every ~30s → auto-flip pending→verified (no button). “Verify now” stays as a manual fallback but is no longer the only path. Verification semantics unchanged — this is presentation + a client poll.</div>
+    </div>
+  </div>
+
+  <!-- SURFACE B -->
+  <div class="sec-head">
+    <h2>Surface B · task member-verified-recognition</h2>
+    <h3>First-run — the recognition moment</h3>
+    <p>On the post-signup landing (where the JoinedWorkspace callout already mounts), a new admin sees their domain is recognized and is routed to the highest-value next action: get their team in. Reuses the callout pattern.</p>
+  </div>
+  <div class="app">
+    <div class="app-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="crumb"><b>Get started</b> · API keys</span></div>
+    <div class="app-body">
+      <div class="callout">
+        <div class="glyph">✦</div>
+        <div style="flex:1;">
+          <h4>acme.com recognized <span class="badge b-member" style="margin-left:6px;">Member-verified</span></h4>
+          <p>You’re confirmed as a member of <b>acme.com</b>. Invite your teammates now — or verify domain ownership so they join automatically.</p>
+          <div class="actions">
+            <span class="btn btn-primary">Invite your team</span>
+            <span class="btn btn-ghost">Verify domain ownership <span class="muted" style="font-size:11px;">recommended</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="anno"><b>Derivation:</b> rung-1 is inferred from the signup email’s domain matching a tenant — no new persisted ClaimStatus (decision D2 below). Dismissible, inert; degrades to a generic prompt if the domain isn’t resolvable.</div>
+    </div>
+  </div>
+
+  <!-- SURFACE C -->
+  <div class="sec-head">
+    <h2>Surface C · task invite-by-domain</h2>
+    <h3>Invite by domain — a domain-restricted link</h3>
+    <p>“Invite your team” opens the existing InviteMemberDialog with a new mode. Because an admin can’t enumerate every mailbox at acme.com, the primitive is a <strong>shareable link scoped to @acme.com</strong>: admin-initiated (they create + share it) and domain-restricted (only @acme.com emails can redeem it) — so no stranger auto-joins.</p>
+  </div>
+  <div class="app">
+    <div class="app-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="crumb">Members › <b>Invite</b></span></div>
+    <div class="app-body">
+      <div style="display:flex;gap:10px;margin-bottom:18px;">
+        <span class="btn btn-ghost btn-sm">By email</span>
+        <span class="btn btn-primary btn-sm">By domain</span>
+      </div>
+      <p class="muted" style="margin:0 0 14px;">Anyone who opens this link and signs in with an <b>@acme.com</b> email joins <b>acme.com</b> as a Member. You can revoke it anytime.</p>
+      <div class="field"><span class="v">https://app.hydroa.io/invite/dom_acme_7Kx…</span><span class="copybtn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy link</span></div>
+      <div class="softlinks" style="margin-top:14px;"><a>Restrict to @acme.com only</a><a>Set an expiry</a></div>
+      <div class="anno"><b>Gate:</b> only offered at rung ≥ 1 (member-verified). Extends the frozen member-invite-issuance surface; each redemption becomes a normal Member (RBAC unchanged). Domain restriction enforced server-side, not client-side.</div>
+      <p class="note">Alternative shape (decision D3): plain multi-email invite prefilled with the domain, instead of a shareable link. Link scales better for “the whole team”; email is more controlled.</p>
+    </div>
+  </div>
+
+  <!-- DECISIONS -->
+  <div class="sec-head">
+    <h2>Before the contract freezes</h2>
+    <h3>Design decisions to confirm</h3>
+    <p>These shape the frozen contracts. My recommendation is marked; I’ll ask them as explicit choices after you’ve seen the mock.</p>
+  </div>
+  <div class="decision"><p class="q">D1 · Rung-seal visual</p><p class="rec">Three-state climb — Member-verified (azure, person) → Owner-verified (success, lock “sealed”) → Pending (warning). <b>Recommend: as shown.</b> Reuses the frozen seal idiom; adds only the azure member state.</p></div>
+  <div class="decision"><p class="q">D2 · Is “member-verified” persisted or derived?</p><p class="rec"><b>Recommend: derived</b> (signup-email domain ↔ tenant match at read time) — no `ClaimStatus` DB change, keeps the frozen pending|verified enum intact. Persist only if a task proves it load-bearing.</p></div>
+  <div class="decision"><p class="q">D3 · Invite-by-domain primitive</p><p class="rec"><b>Recommend: a domain-restricted shareable link</b> (admin-initiated, @domain-scoped, revocable) — scales to “the whole company” without enumerating mailboxes, and never auto-joins. Multi-email invite is the more-controlled alternative.</p></div>
+  <div class="decision"><p class="q">D4 · Auto-poll cadence &amp; ceiling</p><p class="rec"><b>Recommend: ~30s poll, stop after ~15 min</b> or on tab-blur, with a manual “Check now.” Bounds client cost; the “email me when live” path covers long propagation.</p></div>
+
+</div>

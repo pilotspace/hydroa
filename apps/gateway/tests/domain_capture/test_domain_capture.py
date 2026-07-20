@@ -232,8 +232,16 @@ async def test_owner_lists_only_own_tenant_claims(client: httpx.AsyncClient) -> 
     assert resp.status_code == 200, resp.text
     claims = resp.json()["claims"]
     domains = {c["domain"] for c in claims}
-    assert domains == {"list-acme-1.io", "list-acme-2.io"}
+    # ADDITIVE reconciliation (member-verified-recognition TASK.md §3 M1 — signup-issuance
+    # drift): a new-tenant BUSINESS signup now auto-issues a member-verify claim for the
+    # signup email's OWN domain (here list-acme.io), so Acme's own-tenant claim set includes
+    # it alongside the two explicitly created ones. The frozen INTENT — an owner lists ONLY
+    # their own tenant's claims, never a cross-tenant one — is UNCHANGED (Globex's claims
+    # still must not appear), so this only widens the expected own-tenant set, never weakens
+    # the cross-tenant isolation assertion below.
+    assert domains == {"list-acme.io", "list-acme-1.io", "list-acme-2.io"}
     assert "list-globex-1.io" not in domains
+    assert "list-globex.io" not in domains
 
 
 # ===========================================================================
