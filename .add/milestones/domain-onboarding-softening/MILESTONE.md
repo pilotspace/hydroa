@@ -122,33 +122,42 @@ Out:
   console affordance. UDD.
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] A new admin signing up with a work email sees their domain RECOGNIZED and can invite teammates WITHOUT first completing DNS-TXT   (← member-verified-recognition + invite-by-domain)
-- [ ] An admin can bulk invite-by-domain ("everyone @acme.com") from the dashboard; each becomes a normal pending invite   (← invite-by-domain)
-- [ ] The DNS-TXT challenge auto-polls and flips pending→verified with NO manual "verify now" retry; not-yet-propagated reads as a calm "still checking", never a red failure; a "verify later" and a "not the DNS owner?" hand-off path both exist   (← dns-verify-softeners)
-- [ ] An admin can opt in to "email me when it's live" and receive ONE email when a background re-check verifies the domain — with the DNS-TXT proof unchanged and the send idempotent   (← domain-verify-notify)
-- [ ] The challenge shows a registrar deep-link inferred from the domain's nameservers, degrading to a static provider list on lookup failure   (← registrar-hint + dns-verify-softeners display)
-- [ ] AUTO-JOIN is unchanged: an unverified (rung-0/rung-1) domain never auto-joins a stranger — only rung-2 (DNS-verified) does   (← all tasks preserve this; regression-guarded)
-- [ ] The console shows the rung CLIMB (member-verified → owner-verified) via the extended seal idiom, WCAG AA   (← member-verified-recognition)
+- [x] A new admin signing up with a work email sees their domain RECOGNIZED and can invite teammates WITHOUT first completing DNS-TXT   (← member-verified-recognition `6a75579` surfaces the recognition + persists `member_verified_at`; member-verified-code-entry `b1e4608` is the code-entry climb; invite-by-domain(-ui) `71641c5`/`9ee8198` is the DNS-free invite path — all gate PASS)
+- [x] An admin can invite-by-domain from the dashboard; each @domain holder joins as a normal member   (← invite-by-domain `71641c5` + invite-by-domain-ui `9ee8198`. **SPEC-DELTA (D3, Tin-confirmed at kickoff):** the mechanism shipped as a domain-restricted *shareable link* — an @domain holder redeems it via a 6-digit mailbox code and joins directly as MEMBER — NOT per-person "pending invites". The observable outcome (an admin invites a whole domain from the dashboard, no DNS) is met; the "each becomes a pending invite" wording is superseded by the link model Tin approved.)
+- [x] The DNS-TXT challenge auto-polls and flips pending→verified with NO manual "verify now" retry; not-yet-propagated reads as a calm "still checking", never a red failure; a "verify later" and a "not the DNS owner?" hand-off path both exist   (← dns-verify-softeners `04ed333`. Note v1→v2 narrowing: auto-poll softeners shipped; the manual loud alert was kept verbatim by design.)
+- [x] An admin can opt in to "email me when it's live" and receive ONE email when a background re-check verifies the domain — with the DNS-TXT proof unchanged and the send idempotent   (← domain-verify-notify `6fc4620`, SECURITY triple-verified — fail-closed DNS, idempotent single email)
+- [x] The challenge shows a registrar deep-link inferred from the domain's nameservers, degrading to a static provider list on lookup failure   (← registrar-hint `16d29f8` backend + dns-verify-softeners `04ed333` display)
+- [x] AUTO-JOIN is unchanged: an unverified (rung-0/rung-1) domain never auto-joins a stranger — only rung-2 (DNS-verified) does   (← all tasks preserve this; regression-guarded: invite-by-domain NEVER consults `resolve_verified_tenant`, provisions role FIXED MEMBER, and `resolve_verified_tenant`/ClaimStatus enum/indexes are byte-untouched — confirmed by empty git diff at 6a verify)
+- [x] The console shows the rung CLIMB (member-verified → owner-verified) via the extended seal idiom, WCAG AA   (← member-verified-recognition `6a75579` + member-verified-code-entry `b1e4608`; the DomainStatusSeal 3-state climb, icon+label per WCAG 1.4.1)
 
 ## Close — ship review   (AI fills when every task is done — the evidence behind the engine gate, read before the boxes are checked)
 > Whole-milestone, cross-task review the AI fills in. It is the evidence behind the EXISTING engine
 > gate (milestone-done / checking the Exit-criteria boxes) — NOT a new approval. Tool-agnostic.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway (source) : 4 tasks. domain-verify-notify (opt-in + background DNS re-check scheduler auto-verify + ONE transactional email); registrar-hint (NS-lookup → {registrar, deep_link_url}, static-list degrade); member-verified-recognition (additive nullable `member_verified_at` on `tenant_domain_claims`; rung-derivation; SECURITY); invite-by-domain (domain_invite_links + domain_invite_redemptions tables, migration a4f2d9c17b3e; admin mint/list/revoke + public two-step redeem→MEMBER; SECURITY).
+- dashboard (source) : 3 tasks. dns-verify-softeners (auto-poll+flip, calm still-checking, verify-later + not-the-DNS-owner hand-off, notify opt-in + registrar deep-link display); member-verified-code-entry (rung-aware seal climb + code-entry screen); invite-by-domain-ui (inline manage panel + public /join/[token] two-phase redeem + auto-login).
+- tooling : untouched (state.json is per-task engine bookkeeping only).
+- skill / book : untouched.
+- tests (drift reconciliation) : tests/guardrails/test_guardrails_core.py table manifest — additive append of the 2 invite-by-domain tables (`b697d58`); surfaced by the pre-close full gateway suite (per-task suites never ran the guardrails file). No assertion weakened.
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- registrar-hint (`16d29f8`)              : gate=PASS · architecture · NS-inferred deep-link + static-list degrade · residue=none
+- domain-verify-notify (`6fc4620`)         : gate=PASS · SECURITY (triple adversarial-verified) · fail-closed DNS re-check, idempotent single email · residue=none
+- dns-verify-softeners (`04ed333`)         : gate=PASS · dashboard · auto-poll softeners (v1→v2: soften auto-poll only, manual loud alert kept verbatim) · residue=none
+- member-verified-recognition (`6a75579`)  : gate=PASS · SECURITY · additive `member_verified_at`, HMAC hash-at-rest, SELECT…FOR UPDATE cap · residue=none
+- member-verified-code-entry (`b1e4608`)   : gate=PASS · dashboard · rung-aware seal climb + code-entry · residue=none
+- invite-by-domain (`71641c5`)             : gate=PASS · SECURITY (2 adversarial verifies + code-read; ONE finding — off-domain addr-spec — FIXED at source, not risk-accepted) · 38/38 · residue=none
+- invite-by-domain-ui (`9ee8198`)          : gate=PASS · architecture (refute-read EARNED; 3-lens CLEAR) · 43 new green · residue=none
+- Pre-merge full suite: gateway 4219 passed (5 fg chunks @-n5/6) + dashboard 1629 passed + 43 new — 1 cross-task-drift casualty (guardrails manifest) found & fixed additively; 1 known dns-verify-softeners tab-visibility timing flake (passes 14/14 in isolation).
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row (all 7 tasks gate=PASS; the EC↔task citations are inline in the Exit-criteria list above). One honest SPEC-DELTA: EC2's mechanism is the D3 shareable-link model (Tin-confirmed at kickoff), not per-person pending invites — surfaced explicitly in the push/PR ask.
+- goal: "A new admin can start using their workspace and invite their team by verified email domain the moment they sign up — without first completing DNS-TXT — while automatic stranger-join stays strictly gated on DNS-verified domain ownership." PROVEN: member-verified (rung 1, mailbox-proven at signup) unlocks invite-by-domain with NO DNS, while auto-join still fires ONLY on a rung-2 `status='verified'` claim (`resolve_verified_tenant` byte-untouched) — the whole security argument holds.
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > The AI writes the release steps for THIS milestone here (hints, not engine commands). MERGE is one
 > small step among them. These feed the release scope (release.md) when the cut is bundled.
-- [ ] <step — e.g. open a PR from the Close ship-review above; the human reviews + merges>
-- [ ] <step — e.g. export the ship-review to a hand-off doc, e.g. `pandoc CLOSE.md -o close.docx`>
-- [ ] <step — e.g. tag / publish / deploy  (human-run, per release.md)>
+- [ ] ASK Tin for push + PR authorization (the standing outward-facing gate) — surface the EC2 spec-delta + the drift fix + the known flake.
+- [ ] Push `feat/domain-onboarding-softening` and open a PR to `main` from this Close ship-review; Tin reviews + merges (admin-merge if the org-billing 0-step CI blocks — see [[org-billing-0step-ci]]).
+- [ ] Bundle into the next release cut with the other releasable milestone (release.md); tag/publish/deploy remain human-run.

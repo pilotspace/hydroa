@@ -1507,9 +1507,9 @@
       "title": "Domain onboarding softening: progressive trust ladder (soft member-verified rung + invite-by-domain + DNS-flow softeners)",
       "goal": "A new admin can start using their workspace and invite their team by verified email domain the moment they sign up \u2014 without first completing DNS-TXT \u2014 while automatic stranger-join stays strictly gated on DNS-verified domain ownership",
       "stage": "production",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-19T16:18:08+00:00",
-      "updated": "2026-07-19T16:19:46+00:00",
+      "updated": "2026-07-20T10:42:04+00:00",
       "confirmed": true,
       "confirmed_at": "2026-07-19T16:19:46+00:00",
       "confirmed_by": "tindang",
@@ -1518,11 +1518,16 @@
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T10:12:42+00:00",
+  "updated": "2026-07-20T10:42:04+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
