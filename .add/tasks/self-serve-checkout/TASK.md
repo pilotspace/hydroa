@@ -366,7 +366,7 @@ Glossary deltas:
 - **Checkout session**: a persisted `checkout_sessions` row representing one create→confirm attempt; carries `provider`, `intent_type`, `idempotency_key`, a one-way `status`, and NO card/PII data.
 - **Checkout intent**: the value object (`plan_upgrade` | `credit_topup`; `seat_change` reserved-deferred) whose `tenant_id` is server-set from the JWT, never a request field.
 - **Permission.BILLING_MANAGE**: the new capability held by exactly `{OWNER, BILLING_ADMIN}` (mirrors `BILLING_CAPABLE_ROLES`) gating every self-serve checkout write; distinct from `BUDGETS_MANAGE` (which admits ADMIN).
-- **plans.self_serve / plans.audience**: the two additive catalog signals that make "enterprise = contact sales" and "personal vs business tier" data-driven instead of price-ambiguous or name-magic.
+- **plans.self_serve / plans.audience**: the two additive catalog signals that make "enterprise = contact sales" and "personal vs business tier" data-driven instead of price-ambiguous or name-magic. [folded foundation-version 54]
 
 Least-sure flag surfaced at freeze: [contract] the personal/business↔plan gating exists only as seed convention — resolved by the additive `plans.audience` column + `plan_account_type_mismatch` reject (A1); if the audience mapping is ever wrong the cost is a mis-gated upgrade path (billing-correctness, not privilege). [spec] `Permission.BILLING_MANAGE` is a NEW member = {OWNER, BILLING_ADMIN} (A2) — a literal reuse of BUDGETS_MANAGE would have widened ADMIN onto money mutations.
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive ("kick off new milestone then implement all enhancement of it in parallel", 2026-07-17); the freeze also freezes §5 Scope + Strategy.

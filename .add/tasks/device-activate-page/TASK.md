@@ -222,7 +222,7 @@ Schema: NO migration, NO new table/column. Read-only reuse of repository.get_by_
 
 Glossary deltas:
 - device-authorization preview: a read-only, session-authed, rate-limited peek at a PENDING device-authorization grant's server-known facts (scope, time-to-expiry, default budget cap) shown to the human before approve/deny; returns one indistinguishable error for any non-pending state.
-- verification_uri (default + prod-guard): the RFC 8628 absolute page URL the human visits to approve; non-empty by default (dev), boot-refused if empty/localhost/non-https in a non-dev/test environment.
+- verification_uri (default + prod-guard): the RFC 8628 absolute page URL the human visits to approve; non-empty by default (dev), boot-refused if empty/localhost/non-https in a non-dev/test environment. [folded foundation-version 54]
 Least-sure flag surfaced at freeze: [spec] a pending grant carries NO per-agent identity/budget (only scope/expiry; budget shown is the system default cap) — the card is scope-cut to server-known facts; a richer identity requires extending the frozen authorize contract (spec delta), never a UI tweak. [contract] preview's single uniform 404 deliberately diverges from approve/deny's 404/409/410 — harmonizing it would reopen a validity oracle (appsec push-back, not a change).
 Status: FROZEN @ v1 — approved by orchestrator under Tin's standing full-auto directive (2026-07-17).
 Reported: yes — flags A1–A7 triaged in-session; rulings below.
