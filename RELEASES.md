@@ -1,5 +1,12 @@
 # Releases
 
+## 0.11.0 — 2026-07-20
+milestones: account-tiers-billing, enterprise-domain-onboarding, domain-onboarding-softening
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: recorded by add.py release
+
 ## 0.10.0 — 2026-07-18
 milestones: platform-admin-console, tenant-impersonation, platform-access-plan, team-member-invite, platform-key-default, model-catalog-db, dashboard-hallmark-restyle, commercial-self-serve
 loose tasks: none

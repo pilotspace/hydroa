@@ -12,7 +12,7 @@ rationale: sub-milestone (intake 2026-07-16) — commercial half of Tin's "paid-
   tenant model as a 1-member OWNER tenant via a new `account_type` discriminator (no separate Account
   entity — one identity/authz/billing pipeline for both flavors).
 stage: production · status: active · created: 2026-07-16T03:12:00+00:00
-release: pending
+release: 0.11.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

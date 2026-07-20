@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0 — 2026-07-20
+
+- Account tiers & billing: personal/individual + business/enterprise base fee + payer of record — 0 carried · 0 key decision(s)
+- Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console — 3 carried · 0 key decision(s)
+- Domain onboarding softening: progressive trust ladder (soft member-verified rung + invite-by-domain + DNS-flow softeners) — 0 carried · 0 key decision(s)
+
 ## 0.10.0 — 2026-07-18 — Self-serve commercial platform
 
 Bundles eight milestones closed since 0.9.0 — the tenant lifecycle goes fully
