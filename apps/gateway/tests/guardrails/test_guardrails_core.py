@@ -1417,6 +1417,14 @@ async def test_guardrails_core_migration_column_exists(
     # above). Guardrails-core still adds no tables of its own; invariant intent unchanged.
     # (Surfaced again by the commercial-self-serve pre-close full-suite cross-task-drift
     # check — the same M1/M2 cross-manifest lesson.)
+    # SANCTIONED EDIT (invite-by-domain / domain-onboarding-softening milestone-close
+    # manifest maintenance, 2026-07-20): added domain_invite_links + domain_invite_redemptions
+    # — additive migration a4f2d9c17b3e (FROZEN task invite-by-domain §3, 6a), NEW tables owned
+    # by that task's own tenants/ context, registered on Base.metadata via
+    # tenants/infrastructure/orm.py side-effect import (same precedent as every entry above).
+    # Guardrails-core still adds no tables of its own; invariant intent unchanged. (Surfaced by
+    # the domain-onboarding-softening pre-close full-suite cross-task-drift check — this manifest
+    # lives separately from tests/migrations EXPECTED_TABLES, which the 6a task already updated.)
     new_tables = (
         await db_session.execute(
             text(
@@ -1438,7 +1446,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'seat_membership_events','tenant_region_multiplier_overrides',"
                 " 'tenant_priority_markup_overrides',"
                 " 'agent_principals','tenant_report_schedules','compliance_report_runs',"
-                " 'checkout_sessions')"
+                " 'checkout_sessions',"
+                " 'domain_invite_links','domain_invite_redemptions')"
             )
         )
     ).fetchall()
