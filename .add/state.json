@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "registrar-hint",
+  "active_task": "domain-verify-notify",
   "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1204,12 +1204,34 @@
     },
     "domain-verify-notify": {
       "title": "Email-me-when-it's-live: opt-in + background scheduler auto-verify + transactional email (backend, SECURITY)",
-      "phase": "tests",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "domain-onboarding-softening",
       "depends_on": [],
       "created": "2026-07-19T16:54:08+00:00",
-      "updated": "2026-07-20T02:40:04+00:00"
+      "updated": "2026-07-20T03:32:27+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "26a5eadab1c7be42714ca3a7ec6165ab",
+        "tests": {
+          "apps/gateway/tests/domain_capture/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/domain_capture/conftest.py": "4cbaf153ee1075a583d202633261a905",
+          "apps/gateway/tests/domain_capture/test_domain_capture.py": "ec861c592f9f3b384c332aed9f412112",
+          "apps/gateway/tests/domain_capture/test_domain_verify_notify.py": "988a92f15cc051d50d4b7e2957b721d9",
+          "apps/gateway/tests/domain_capture/test_registrar_hint.py": "cee3dc08294d750ec5a1946bc64d011a"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/"
+        ],
+        "snapshot_md5": "12fde608a2dc5da23936284bdf338304"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "registrar-hint": {
       "title": "Nameserver-inferred registrar deep-link hint endpoint (backend)",
@@ -1356,7 +1378,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T03:01:40+00:00",
+  "updated": "2026-07-20T03:32:27+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2392,7 +2414,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "domain-onboarding-softening": "registrar-hint"
+    "domain-onboarding-softening": "domain-verify-notify"
   },
   "todos": [
     {

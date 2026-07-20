@@ -756,6 +756,12 @@ DOMAIN_CLAIM_EXPIRED = ErrorSpec(
 #: indistinguishable (R9), mirrors InviteNotFoundError's own precedent.
 DOMAIN_CLAIM_NOT_FOUND = ErrorSpec(404, "ERR_DOMAIN_CLAIM_NOT_FOUND", "Domain claim not found")
 
+#: POST .../notify opt-in on a claim that is not status='pending' — already verified,
+#: nothing left to watch (domain-verify-notify TASK.md §3 R2, FROZEN @ v1).
+DOMAIN_CLAIM_NOT_PENDING = ErrorSpec(
+    409, "ERR_DOMAIN_CLAIM_NOT_PENDING", "This domain claim is not pending"
+)
+
 #: DNS resolver error/NXDOMAIN/empty-answer/timeout — fail CLOSED, never a verified match (M13, R8).
 DNS_LOOKUP_FAILED = ErrorSpec(
     503, "ERR_DNS_LOOKUP_FAILED", "DNS lookup failed or timed out; try again"

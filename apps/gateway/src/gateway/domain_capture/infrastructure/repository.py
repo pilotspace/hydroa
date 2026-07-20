@@ -46,6 +46,8 @@ def _to_entity(row: TenantDomainClaimRow) -> DomainClaim:
         verified_at=row.verified_at,
         expires_at=row.expires_at,
         created_by_user_id=row.created_by_user_id,
+        notify_requested_at=row.notify_requested_at,
+        notified_at=row.notified_at,
     )
 
 
@@ -184,3 +186,72 @@ class SqlAlchemyDomainClaimRepository:
                 TenantDomainClaimRow.status == ClaimStatus.VERIFIED.value,
             )
         )
+
+    # ── domain-verify-notify TASK.md §3 (FROZEN @ v1, SECURITY) — additive ──────────
+
+    async def request_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainClaim:
+        """Idempotent opt-in: COALESCE preserves the ORIGINAL notify_requested_at on a
+        repeat call — a true no-op, not merely "still set" (M1)."""
+        stmt = (
+            update(TenantDomainClaimRow)
+            .where(
+                TenantDomainClaimRow.id == claim_id,
+                TenantDomainClaimRow.tenant_id == tenant_id,
+            )
+            .values(
+                notify_requested_at=func.coalesce(
+                    TenantDomainClaimRow.notify_requested_at, func.now()
+                )
+            )
+            .returning(TenantDomainClaimRow)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise DomainClaimNotFoundError
+        return _to_entity(row)
+
+    async def clear_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        await self._session.execute(
+            update(TenantDomainClaimRow)
+            .where(
+                TenantDomainClaimRow.id == claim_id,
+                TenantDomainClaimRow.tenant_id == tenant_id,
+            )
+            .values(notify_requested_at=None)
+        )
+        await self._session.commit()
+
+    async def mark_notified(self, *, claim_id: uuid.UUID) -> bool:
+        """Atomic conditional claim (R-sec-3) — the ONLY caller that gets True back may
+        dispatch the email; safe under overlapping ticks/replicas regardless of count."""
+        stmt = (
+            update(TenantDomainClaimRow)
+            .where(
+                TenantDomainClaimRow.id == claim_id,
+                TenantDomainClaimRow.notified_at.is_(None),
+            )
+            .values(notified_at=func.now())
+            .returning(TenantDomainClaimRow.id)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        return result.scalar_one_or_none() is not None
+
+    async def list_notify_candidates(self, now: datetime) -> list[DomainClaim]:
+        rows = (
+            (
+                await self._session.execute(
+                    select(TenantDomainClaimRow).where(
+                        TenantDomainClaimRow.notify_requested_at.is_not(None),
+                        TenantDomainClaimRow.status == ClaimStatus.PENDING.value,
+                        TenantDomainClaimRow.notified_at.is_(None),
+                        TenantDomainClaimRow.expires_at > now,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return [_to_entity(row) for row in rows]

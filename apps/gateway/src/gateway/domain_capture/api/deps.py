@@ -24,6 +24,10 @@ if TYPE_CHECKING:
     from gateway.domain_capture.application.registrar_hint_use_case import (
         GetRegistrarHintUseCase,
     )
+    from gateway.domain_capture.application.notify_use_cases import (
+        NotifyOptInUseCase,
+        NotifyOptOutUseCase,
+    )
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,
     )
@@ -139,6 +143,18 @@ def get_registrar_hint_use_case(request: Request) -> GetRegistrarHintUseCase:
         get_dns_ns_resolver(request),
         dns_timeout_seconds=settings.registrar_hint_dns_timeout_seconds,
     )
+
+
+def get_notify_optin_use_case(request: Request, session: AsyncSession) -> NotifyOptInUseCase:
+    from gateway.domain_capture.application.notify_use_cases import NotifyOptInUseCase
+
+    return NotifyOptInUseCase(get_domain_claim_repository(request, session))
+
+
+def get_notify_optout_use_case(request: Request, session: AsyncSession) -> NotifyOptOutUseCase:
+    from gateway.domain_capture.application.notify_use_cases import NotifyOptOutUseCase
+
+    return NotifyOptOutUseCase(get_domain_claim_repository(request, session))
 
 
 def get_join_tenant_use_case(request: Request, session: AsyncSession) -> JoinTenantByDomainUseCase:

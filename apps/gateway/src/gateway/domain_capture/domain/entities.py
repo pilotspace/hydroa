@@ -27,3 +27,7 @@ class DomainClaim:
     verified_at: datetime | None
     expires_at: datetime
     created_by_user_id: uuid.UUID
+    # ADDITIVE (domain-verify-notify TASK.md §3 — FROZEN @ v1, SECURITY): opt-in
+    # timestamp (None = not opted in) + email-sent timestamp (None = not yet notified).
+    notify_requested_at: datetime | None = None
+    notified_at: datetime | None = None

@@ -30,6 +30,7 @@ from gateway.core.error_catalog import (
     DOMAIN_ALREADY_VERIFIED,
     DOMAIN_CLAIM_EXPIRED,
     DOMAIN_CLAIM_NOT_FOUND,
+    DOMAIN_CLAIM_NOT_PENDING,
     DOMAIN_INVALID,
     DOMAIN_VERIFICATION_FAILED,
     RATE_LIMITED,
@@ -38,6 +39,8 @@ from gateway.domain_capture.api.deps import (
     get_create_claim_use_case,
     get_domain_claim_rate_limiter,
     get_domain_claim_repository,
+    get_notify_optin_use_case,
+    get_notify_optout_use_case,
     get_registrar_hint_use_case,
     get_revoke_claim_use_case,
     get_verify_claim_use_case,
@@ -45,6 +48,7 @@ from gateway.domain_capture.api.deps import (
 from gateway.domain_capture.api.schemas import (
     DomainClaimCreateRequest,
     DomainClaimCreateResponse,
+    DomainClaimListItem,
     DomainClaimListResponse,
     DomainClaimVerifyResponse,
     RegistrarHintResponse,
@@ -58,6 +62,7 @@ from gateway.domain_capture.domain.errors import (
     DomainAlreadyVerifiedError,
     DomainClaimExpiredError,
     DomainClaimNotFoundError,
+    DomainClaimNotPendingError,
     DomainClaimRateLimitedError,
     DomainInvalidError,
     DomainVerificationFailedError,
@@ -210,6 +215,52 @@ async def revoke_domain_claim(
 ) -> None:
     identity = await _get_owner_identity(request, session)
     use_case = get_revoke_claim_use_case(request, session)
+    try:
+        await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+
+
+@domain_claims_router.post("/{claim_id}/notify", response_model=DomainClaimListItem)
+async def opt_in_domain_claim_notify(
+    request: Request,
+    claim_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DomainClaimListItem:
+    """domain-verify-notify TASK.md §3 M1 (FROZEN @ v1, SECURITY) — body is intentionally
+    unread: NO email field exists on this route at all (R-sec-1, the anti-spam guard).
+    The recipient is decided later, server-side, by DomainVerifyNotifyScheduler."""
+    identity = await _get_owner_identity(request, session)
+    settings = request.app.state.settings
+    await _rate_limit(
+        request,
+        action="notify",
+        tenant_id=identity.tenant_id,
+        limit=settings.domain_claim_create_rpm,
+    )
+
+    use_case = get_notify_optin_use_case(request, session)
+    try:
+        claim = await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
+    except DomainClaimNotFoundError:
+        raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    except DomainClaimNotPendingError:
+        raise DOMAIN_CLAIM_NOT_PENDING.exc() from None
+    except DomainClaimExpiredError:
+        raise DOMAIN_CLAIM_EXPIRED.exc() from None
+    return to_list_item(claim)
+
+
+@domain_claims_router.delete("/{claim_id}/notify", status_code=204)
+async def opt_out_domain_claim_notify(
+    request: Request,
+    claim_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """domain-verify-notify TASK.md §3 M2 (FROZEN @ v1) — clears notify_requested_at;
+    idempotent (opting out when not opted in is a no-op success)."""
+    identity = await _get_owner_identity(request, session)
+    use_case = get_notify_optout_use_case(request, session)
     try:
         await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
     except DomainClaimNotFoundError:

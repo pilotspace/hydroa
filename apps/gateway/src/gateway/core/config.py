@@ -1415,6 +1415,20 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Domain verify-notify scheduler (domain-verify-notify TASK.md §3, FROZEN @ v1,
+    # SECURITY) ──────────────────────────────────────────────────────────────────────
+    # GATEWAY_DOMAIN_VERIFY_NOTIFY_INTERVAL_SECONDS — an asyncio background sweeper
+    # started in the FastAPI lifespan (mirrors CatalogRefreshScheduler / RetentionSweeper)
+    # that periodically re-checks opted-in pending domain claims via the FROZEN
+    # VerifyDomainClaimUseCase DNS-TXT proof (reused verbatim, fail-closed) and emails the
+    # owner exactly once on the first match. Default 300 (5 min, default-ON) — DNS TXT
+    # propagation is typically minutes, not hours; 0 disables the sweeper entirely
+    # (opt-OUT, no task started), mirroring catalog_refresh_interval_seconds's own
+    # interval-sentinel convention (no separate *_ENABLED bool).
+    domain_verify_notify_interval_seconds: int = Field(
+        default=300, ge=0
+    )  # GATEWAY_DOMAIN_VERIFY_NOTIFY_INTERVAL_SECONDS
+
     # ── Catalog refresh scheduler (catalog-refresh-scheduler — asyncio sweeper) ──
     # GATEWAY_CATALOG_REFRESH_INTERVAL_SECONDS — an asyncio background sweeper started in
     # the FastAPI lifespan (mirrors RetentionSweeper / OpenRouterRecoverySweeper) that

@@ -28,6 +28,11 @@ class DomainClaimExpiredError(DomainCaptureError):
     """now > claim.expires_at at verify time (R6) — caller must re-POST to reissue."""
 
 
+class DomainClaimNotPendingError(DomainCaptureError):
+    """domain-verify-notify TASK.md §3 (FROZEN @ v1) — opt-in was attempted on a claim
+    that is not status='pending' (already verified — nothing left to watch, R2)."""
+
+
 class DomainVerificationFailedError(DomainCaptureError):
     """DNS TXT record missing or did not match this claim's own stored token (R5)."""
 

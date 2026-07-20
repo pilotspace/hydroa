@@ -58,6 +58,34 @@ class DomainClaimRepository(Protocol):
         just an early, friendlier 409 before any write is attempted."""
         ...
 
+    # ── domain-verify-notify TASK.md §3 (FROZEN @ v1, SECURITY) — additive ──────────
+
+    async def request_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainClaim:
+        """Set notify_requested_at (idempotent — a repeat opt-in preserves the ORIGINAL
+        timestamp, a true no-op). Tenant-scoped; raises DomainClaimNotFoundError if the
+        row does not exist for this tenant (defensive — the caller already checked via
+        get_own before calling this)."""
+        ...
+
+    async def clear_notify(self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """Clear notify_requested_at (idempotent — a repeat opt-out is a no-op).
+        Tenant-scoped."""
+        ...
+
+    async def mark_notified(self, *, claim_id: uuid.UUID) -> bool:
+        """Atomic conditional claim: ONE `UPDATE ... SET notified_at=now() WHERE id=:id
+        AND notified_at IS NULL RETURNING id`. Returns True iff THIS call won the claim
+        (the caller — and only the caller — that gets True may dispatch the email);
+        False means another caller already claimed it — the exactly-once-email guard
+        (R-sec-3), safe under overlapping ticks/replicas regardless of replica count."""
+        ...
+
+    async def list_notify_candidates(self, now: datetime) -> list[DomainClaim]:
+        """The bounded scheduler input: claims where notify_requested_at IS NOT NULL AND
+        status='pending' AND notified_at IS NULL AND expires_at > now. Naturally bounded
+        (R-sec-4) — no claim stays a candidate forever; expiry is the ceiling."""
+        ...
+
 
 class DomainClaimResolver(Protocol):
     async def resolve_verified_tenant(self, domain: str) -> uuid.UUID | None:

@@ -41,6 +41,10 @@ class DomainClaimListItem(BaseModel):
     dns_record_value: str
     expires_at: datetime
     verified_at: datetime | None
+    # ADDITIVE (domain-verify-notify TASK.md §3 — FROZEN @ v1): also the 200 response
+    # shape for POST/DELETE .../notify (contract reuses this list-item shape verbatim).
+    notify_requested_at: datetime | None
+    notified_at: datetime | None
 
 
 class DomainClaimListResponse(BaseModel):
@@ -83,6 +87,8 @@ def to_list_item(claim: DomainClaim) -> DomainClaimListItem:
         dns_record_value=_dns_record_value(claim.verification_token),
         expires_at=claim.expires_at,
         verified_at=claim.verified_at,
+        notify_requested_at=claim.notify_requested_at,
+        notified_at=claim.notified_at,
     )
 
 

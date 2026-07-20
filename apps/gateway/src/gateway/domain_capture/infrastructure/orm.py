@@ -56,3 +56,12 @@ class TenantDomainClaimRow(Base):
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id")
     )
+    # ADDITIVE (domain-verify-notify TASK.md §3 — FROZEN @ v1, SECURITY): opt-in +
+    # auto-verify-notify tracking. NULL = not opted in / not yet notified respectively —
+    # byte-identical default state for every pre-existing row (migration 0f1648b174a2).
+    notify_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )

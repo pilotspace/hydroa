@@ -3,10 +3,9 @@
 slug: domain-verify-notify · created: 2026-07-19 · stage: production
 milestone: domain-onboarding-softening
 component: gateway
-sensitivity: security   <!-- a BACKGROUND job auto-verifies domain claims with NO human present + sends outbound email (PII). Security floor: HARD-STOP at verify + ≥2 independent adversarial verifies (standing bar). The DNS-TXT proof is REUSED verbatim (never weakened) — that is the core trust argument. -->
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: tests   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+sensitivity: security
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -157,8 +156,6 @@ Assumptions — lowest-confidence first:
     atomic flip); the scheduler calls the same use-case per candidate (tenant_id from the claim row).
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -243,8 +240,6 @@ Scenario: Opt-in beyond the rate limit is rejected   # R5
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -297,7 +292,7 @@ SAFETY RULES (security task — binding):
 Glossary deltas: none new (uses domain-claim / verified). "notify-when-live" is a feature name, not a domain term.
 Status: FROZEN @ v1 — approved by Tin Dang, 2026-07-20 (consolidated backend-first freeze; security bar: ≥2 adversarial verifies + HARD-STOP floor)
 Reported: yes — consolidated freeze report (banner/ARC/SHAPE + the 3 security invariants) rendered 2026-07-20
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
+Least-sure flag surfaced at freeze: [scenario] multiple gateway replicas each running the scheduler could double-verify/double-email. Mitigated by design REGARDLESS of replica count: `mark_verified` is idempotent (WHERE status='pending' → 2nd flip no-ops) and `mark_notified` is an ATOMIC conditional claim (UPDATE … SET notified_at=now() WHERE id=:id AND notified_at IS NULL RETURNING id → only one replica wins the send). If the atomic claim proves insufficient: cost = add an advisory lock / leader — but the conditional-UPDATE claim is the standard sufficient guard. This is the #1 thing the ≥2 adversarial verifies must probe.
 
 ---
 
@@ -325,9 +320,6 @@ a fake DnsTxtResolver + a capturing EmailSender injected via app.state):
 
 Tests live in: `apps/gateway/tests/domain_capture/` (new sibling suite files, e.g. `test_domain_verify_notify.py`
 + scheduler test) — NOT editing any FROZEN domain-capture suite. MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -353,14 +345,12 @@ CatalogRefreshScheduler — do NOT add celery); double-email → atomic mark_not
 chain off `alembic heads` at build; manifest test red → SANCTIONED additive reconciliation (sweep first);
 scope-artifact poisoning → clean .coverage/.pytest_cache as the LAST pre-gate step (per [[add-scope-snapshot-poisoning]]);
 frozen proof → REUSE VerifyDomainClaimUseCase, never re-implement.
-Strategy actually used: <fill at VERIFY>
+Strategy actually used: as planned (add-build subagent, sonnet) — migration+orm/entity cols → repository ports (atomic mark_notified claim, idempotent COALESCE request_notify, bounded list_notify_candidates) → opt-in/out router endpoints + new ERR_DOMAIN_CLAIM_NOT_PENDING → email template → DomainVerifyNotifyScheduler reusing VerifyDomainClaimUseCase verbatim + UserRoleRepository recipient resolution → main.py lifespan wiring + interval knob. Pure asyncio (no celery). 14 tests red→green; 57/57 with existing+migration suites; manifest reconciled additively.
 Safety rule (feature-specific): no claim is ever flipped verified without a live matching DNS-TXT record (proof
 reused fail-closed); recipient is always the owner's account email (never request-supplied); email sent
 exactly once via the atomic notified_at claim, marked before dispatch.
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -377,41 +367,40 @@ Constraints: do NOT change any test or the contract; allow-list packages only; a
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] Green bar met: `pytest (Makefile:test / ci.yml 'Tests' step)` — 57/57 green across tests/domain_capture/ (14 new domain-verify-notify + existing untouched) + tests/migrations/test_migrations.py (parity/idempotent/downgrade/manifest); pyright 0 errors on all touched files; 2026-07-20.
+- [x] An opted-in claim whose TXT goes live is auto-verified + emails the owner exactly once — confirmed: test_scheduler_verifies_and_emails_owner + test_exactly_once_email_on_double_claim green; notify_scheduler._process_one verify→mark_notified(atomic)→send.
+- [x] Recipient is the owner's account email, never request input — confirmed: test_recipient_is_owner_never_request; scheduler resolves owner via UserRoleRepository.get_by_id_and_tenant(created_by_user_id); opt-in body has NO email field (router M1 comment + schema).
+- [x] A DNS miss/failure leaves the claim pending, untouched, no email — confirmed: test_scheduler_leaves_unmatched_pending + test_scheduler_failopen_on_dns_error; _process_one catches the fail-closed errors → return 0.
+- [x] Migration is additive-only, ClaimStatus enum + both unique indexes intact — confirmed: migration parity + autogenerate-empty-diff + downgrade tests green.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — DomainVerifyNotifyScheduler constructed + asyncio.create_task(run_forever) in main.py lifespan (lines 741-752, started iff interval>0) + cancelled on shutdown (905-911); new repository methods called by the scheduler + notify use-cases; new endpoints registered on domain_claims_router; new ErrorSpec used. Confirmed by grep + the green suite exercising the full path.
+- [x] DEAD-CODE — no orphaned symbol; every new symbol on a request/scheduler path or a test seam.
+- [x] SEMANTIC — read notify_scheduler.py + repository notify methods + the notify endpoints + the email template + the migration IN FULL: the 3 security invariants are enforced at the mechanism level (atomic UPDATE claims, frozen proof reuse, server-derived recipient); template is injection-safe (to=owner email, domain=validated hostname).
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
-> Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every §3-cited symbol resolves in the current tree — VerifyDomainClaimUseCase / CatalogRefreshScheduler pattern / send_email / EmailSender / TenantDomainClaimRow / DomainClaimRepository all present; pyright clean confirms.
+- [x] no anchor moved since Ground SHA 9ec92b4 (same session; registrar-hint's additive edits to the shared files did not move any cited symbol — 57/57 green).
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-> Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: self (orchestrator) + 2 independent opus adversarial verifies (acba… Lens A trust/proof/recipient; a483… Lens B concurrency/spam/resilience) · adversarially checked: (1) traced the recipient data-flow end-to-end — no request value reaches email `to`, no cross-tenant leak (resolution is tenant-scoped); (2) attempted a verify-without-live-TXT path — none, the frozen fail-closed proof is reused verbatim; (3) probed double-send under overlapping ticks/replicas — mark_notified's atomic `WHERE notified_at IS NULL RETURNING` gates the single winner, run before dispatch. The security tests are real (recipient-never-request + exactly-once + failopen all assert observable state, not internals). Both adversarial verifies returned CLEAR; my own read concurs.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
-> Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: self + 2 independent opus add-verify agents (Lens A + Lens B)
+1. Security: CLEAR — proof reused verbatim (fail-closed; no verify without a live TXT match); recipient server-derived from created_by_user_id (no spam/injection vector; opt-in has no email field); owner-gated + rate-limited endpoints; email template injection-safe. Both adversarial lenses CLEAR.
+2. Concurrency: CLEAR — exactly-once via the atomic mark_notified claim (safe across overlapping ticks/replicas); mark_notified BEFORE dispatch (under-send > over-send); fail-open loop; bounded candidate set (opted-in ∧ pending ∧ !notified ∧ !expired; claim-expiry ceiling).
+3. Architecture: CLEAR — pure-asyncio scheduler mirrors CatalogRefreshScheduler (no celery); additive migration (frozen ClaimStatus enum + 2 unique indexes intact); hexagonal layering; existing verify chain byte-unchanged.
+Verdict: PASS (pending the human security gate — security is ALWAYS a human floor)
+Residue: none
+Binding: security sensitivity — HUMAN gate required (not auto-passable); ≥2 adversarial verifies satisfied (self + 2 opus, all CLEAR).
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: yes — security gate report (evidence + 3 CLEAR verdicts + the 3 invariants) rendered to Tin 2026-07-20
+Outcome: PASS
+component: gateway · expected green-bar: pytest (Makefile:test / ci.yml 'Tests' step) · verify: cd apps/gateway && uv run pytest
+If RISK-ACCEPTED -> owner: n/a · ticket: n/a · expires: n/a   (never for a security gap)
+Reviewed by: Tin Dang · date: 2026-07-20   (explicit security-gate approval — all 3 invariants CLEAR ×3 independent verifies)
 
 ---
 
@@ -420,11 +409,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang, 2026-07-20 (consolidated backend-first freeze; security bar: ≥2 adversarial verifies + HARD-STOP floor))
+- [AI] build — strategy used: as planned (add-build subagent, sonnet) — migration+orm/entity cols → repository ports (atomic mark_notified claim, idempotent COALESCE request_notify, bounded list_notify_candidates) → opt-in/out router endpoints + new ERR_DOMAIN_CLAIM_NOT_PENDING → email template → DomainVerifyNotifyScheduler reusing VerifyDomainClaimUseCase verbatim + UserRoleRepository recipient resolution → main.py lifespan wiring + interval knob. Pure asyncio (no celery). 14 tests red→green; 57/57 with existing+migration suites; manifest reconciled additively.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
