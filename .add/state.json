@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "domain-verify-notify",
+  "active_task": "dns-verify-softeners",
   "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1195,12 +1195,28 @@
     },
     "dns-verify-softeners": {
       "title": "Soften the DNS-TXT verify flow: auto-poll + auto-flip, verify-later/notify, not-the-DNS-owner hand-off, registrar deep-link, one-block copy",
-      "phase": "tests",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "domain-onboarding-softening",
       "depends_on": [],
       "created": "2026-07-19T16:19:46+00:00",
-      "updated": "2026-07-20T02:43:44+00:00"
+      "updated": "2026-07-20T04:30:07+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "ee3182b8c058663b43edc8b52eb8023c",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/dashboard/"
+        ],
+        "snapshot_md5": "f6217a1264b2f1b0764c3141350e84df"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "domain-verify-notify": {
       "title": "Email-me-when-it's-live: opt-in + background scheduler auto-verify + transactional email (backend, SECURITY)",
@@ -1378,7 +1394,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T03:32:27+00:00",
+  "updated": "2026-07-20T04:30:07+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2414,7 +2430,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "domain-onboarding-softening": "domain-verify-notify"
+    "domain-onboarding-softening": "dns-verify-softeners"
   },
   "todos": [
     {

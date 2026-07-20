@@ -127,4 +127,17 @@ export const defaultHandlers = [
   // tests/billing-plan.test.tsx) stays green untouched. Default = empty catalog; tests
   // asserting live-menu content override per scenario.
   http.get(`${APP}/api/gw/admin/plans`, () => HttpResponse.json({ plans: [] })),
+
+  // dns-verify-softeners (M8): the domain-claims console's challenge card fires
+  // GET /admin/domain-claims/registrar-hint?domain= as soon as a claim is created
+  // (its NS-inferred deep-link display). MUST be an INITIAL handler (not a runtime
+  // server.use) for the same reason as the reads above — resetHandlers() must
+  // preserve it so the frozen domain-claims-console create-flow test (which renders
+  // the card without mocking this new read) stays green under onUnhandledRequest:
+  // "error". Default = the graceful fallback shape (a static provider list); tests
+  // asserting a concrete deep link override via server.use per scenario.
+  http.get(`${APP}/api/gw/admin/domain-claims/registrar-hint`, ({ request }) => {
+    const domain = new URL(request.url).searchParams.get("domain") ?? "";
+    return HttpResponse.json({ domain, registrar: null, deep_link_url: null, fallback: true });
+  }),
 ];
