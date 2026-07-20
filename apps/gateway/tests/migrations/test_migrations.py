@@ -76,6 +76,8 @@ EXPECTED_TABLES = frozenset(
         "tenant_report_schedules",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
         "compliance_report_runs",  # SANCTIONED EDIT — compliance-report-center TASK.md §3 manifest maintenance; disposition: additive migration f5a8c1e3b6d9 adds this table
         "checkout_sessions",  # SANCTIONED EDIT — self-serve-checkout TASK.md §3 manifest maintenance; disposition: additive migration b7e2c4a9f1d3 adds this table (plans.self_serve/audience are additive COLUMNS, no new table)
+        "domain_invite_links",  # SANCTIONED EDIT — invite-by-domain TASK.md §3 manifest maintenance; disposition: additive migration a4f2d9c17b3e adds this table
+        "domain_invite_redemptions",  # SANCTIONED EDIT — invite-by-domain TASK.md §3 manifest maintenance; disposition: additive migration a4f2d9c17b3e adds this table
     }
 )
 

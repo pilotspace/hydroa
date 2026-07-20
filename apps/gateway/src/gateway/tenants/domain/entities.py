@@ -80,6 +80,34 @@ class InviteStatus(StrEnum):
     REVOKED = "revoked"
 
 
+class DomainInviteLinkStatus(StrEnum):
+    """Lifecycle of a domain-restricted shareable invite link (invite-by-domain TASK.md §3).
+
+    active -> revoked (terminal; supersede/re-create or explicit DELETE both revoke).
+    """
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+@dataclass(frozen=True, slots=True)
+class DomainInviteLink:
+    """A tenant-scoped, reusable, revocable, 30-day shareable secret an eligible admin
+    (member/owner-verified on `domain`) mints so any holder of an @domain mailbox may
+    redeem it (after a 6-digit mailbox-proof code) to join the tenant as a MEMBER
+    (invite-by-domain TASK.md §3, FROZEN @ v1). The plaintext token is returned exactly
+    ONCE at creation and NEVER persisted — only its SHA256 hash lives at rest (token_hash
+    is INFRA-ONLY, never on this entity). Never enables stranger auto-join."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    domain: str
+    status: DomainInviteLinkStatus
+    expires_at: datetime
+    created_by_user_id: uuid.UUID
+    created_at: datetime
+
+
 @dataclass(frozen=True, slots=True)
 class Plan:
     """A named, superadmin-assignable governance profile for a customer tenant's usage

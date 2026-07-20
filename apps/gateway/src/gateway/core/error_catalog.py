@@ -824,6 +824,35 @@ MEMBER_VERIFY_NOT_ELIGIBLE = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Domain-restricted shareable invite link (invite-by-domain TASK.md §3, FROZEN @ v1, SECURITY)
+# ---------------------------------------------------------------------------
+
+#: POST /admin/domain-invite-links for a domain the caller's tenant is NOT member/owner-
+#: verified on (M1/R2) — no link is minted. Tenant-scoped (anti-confused-deputy).
+DOMAIN_INVITE_NOT_ELIGIBLE = ErrorSpec(
+    403,
+    "ERR_DOMAIN_INVITE_NOT_ELIGIBLE",
+    "Your tenant is not verified for this domain",
+)
+
+#: POST /domain-invite-links/{token}/redeem[/verify] with an email whose domain != the
+#: link's domain (M6/R3) — no code is emailed at step-1. A code proves control of the
+#: mailbox it was sent to and nothing else.
+DOMAIN_INVITE_DOMAIN_MISMATCH = ErrorSpec(
+    403,
+    "ERR_DOMAIN_INVITE_DOMAIN_MISMATCH",
+    "The email domain does not match this invite link's domain",
+)
+
+#: POST /domain-invite-links/{token}/redeem[/verify] against a link whose status is not
+#: 'active' — revoked or superseded (M5/R9). A revoked link can never again be redeemed.
+DOMAIN_INVITE_LINK_INACTIVE = ErrorSpec(
+    409,
+    "ERR_DOMAIN_INVITE_LINK_INACTIVE",
+    "This invite link is no longer active",
+)
+
+# ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
 

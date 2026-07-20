@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "member-verified-code-entry",
+  "active_task": "invite-by-domain",
   "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1342,6 +1342,38 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "invite-by-domain": {
+      "title": "Domain-restricted shareable invite link (rung-1 unlock)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-20T07:42:00+00:00",
+      "updated": "2026-07-20T09:13:10+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "2c4ebd7a8be254ca7d114e855894b539",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/invite_by_domain/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/"
+        ],
+        "snapshot_md5": "19f5db1ba62219e2b59b22e1ba5449b8"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1458,7 +1490,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T07:38:34+00:00",
+  "updated": "2026-07-20T09:13:10+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2494,7 +2526,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "domain-onboarding-softening": "member-verified-code-entry"
+    "domain-onboarding-softening": "invite-by-domain"
   },
   "todos": [
     {

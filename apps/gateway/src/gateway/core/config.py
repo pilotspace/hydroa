@@ -1428,6 +1428,40 @@ class Settings(BaseSettings):
     member_verify_rpm: int = 30  # GATEWAY_MEMBER_VERIFY_RPM
     member_verify_resend_rpm: int = 10  # GATEWAY_MEMBER_VERIFY_RESEND_RPM
 
+    # ── Domain-restricted shareable invite link (invite-by-domain TASK.md §3, FROZEN @ v1,
+    # SECURITY) ─────────────────────────────────────────────────────────────────────────
+    # An eligible admin (member/owner-verified on a domain + MEMBERS_MANAGE) mints a 30-day
+    # reusable, revocable link; any @domain mailbox redeems it via a 6-digit code (reusing
+    # the member-verify code primitives) to join as a MEMBER. The two PUBLIC redeem steps
+    # are per-IP rate-limited (own knobs, fail-open); the per-(link,email) attempt cap bounds
+    # code brute-force. All hardcoded-constant TTLs mirror the invite/member-verify defaults.
+    domain_invite_link_ttl_days: int = 30  # GATEWAY_DOMAIN_INVITE_LINK_TTL_DAYS
+    domain_invite_code_ttl_minutes: int = 15  # GATEWAY_DOMAIN_INVITE_CODE_TTL_MINUTES
+    domain_invite_code_max_attempts: int = 5  # GATEWAY_DOMAIN_INVITE_CODE_MAX_ATTEMPTS
+    domain_invite_redeem_rpm: int = 30  # GATEWAY_DOMAIN_INVITE_REDEEM_RPM
+    domain_invite_verify_rpm: int = 10  # GATEWAY_DOMAIN_INVITE_VERIFY_RPM
+
+    @field_validator(
+        "domain_invite_link_ttl_days",
+        "domain_invite_code_ttl_minutes",
+        "domain_invite_code_max_attempts",
+        "domain_invite_redeem_rpm",
+        "domain_invite_verify_rpm",
+    )
+    @classmethod
+    def _validate_domain_invite_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive domain-invite knob (invite-by-domain). A zero or
+        negative TTL/cap/rpm is a misconfiguration, not a disable signal — mirrors
+        invite_preview_rpm's own positive-knob validator."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_DOMAIN_INVITE_KNOB: domain_invite_link_ttl_days, "
+                "domain_invite_code_ttl_minutes, domain_invite_code_max_attempts, "
+                "domain_invite_redeem_rpm and domain_invite_verify_rpm must each be a "
+                f"positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @field_validator(
         "member_verify_code_ttl_seconds",
         "member_verify_max_attempts",

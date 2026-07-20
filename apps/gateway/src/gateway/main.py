@@ -244,6 +244,8 @@ from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.billing_owner_router import billing_owner_router
 from gateway.tenants.api.cache_router import cache_router
 from gateway.tenants.api.guardrail_router import guardrail_router
+from gateway.tenants.api.domain_invite_links_router import domain_invite_links_router
+from gateway.tenants.api.domain_invite_redeem_router import domain_invite_redeem_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.plan_router import plan_router
@@ -1634,6 +1636,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(users_router)
     app.include_router(invites_router)
     app.include_router(invite_accept_router)
+    app.include_router(domain_invite_links_router)
+    app.include_router(domain_invite_redeem_router)
     app.include_router(scim_token_router)
     app.include_router(scim_router)
     app.include_router(platform_tenants_router)
