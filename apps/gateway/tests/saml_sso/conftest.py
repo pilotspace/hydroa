@@ -111,13 +111,23 @@ async def seed_verified_domain_claim(
             {"tid": tenant_id},
         )
     ).scalar_one()
+    # ADDITIVE reconciliation (member-verified-recognition TASK.md §3 M1 — signup-issuance
+    # drift): a new-tenant BUSINESS signup now auto-issues a PENDING member-verify claim for
+    # the tenant's own signup domain, so a raw INSERT here can collide on
+    # uq_domain_claims_tenant_domain when (tenant_id, domain) matches. Upsert instead —
+    # promote any existing pending row to verified — so the helper still guarantees exactly
+    # what its intent requires (a VERIFIED claim exists for (tenant_id, domain)).
     await db_session.execute(
         text(
             "INSERT INTO tenant_domain_claims "
             "(id, tenant_id, domain, verification_token, status, verified_at, expires_at, "
             "created_by_user_id) "
             "VALUES (:id, :tenant_id, :domain, :token, 'verified', now(), "
-            "now() + interval '365 days', :owner_id)"
+            "now() + interval '365 days', :owner_id) "
+            "ON CONFLICT (tenant_id, domain) DO UPDATE SET "
+            "status = 'verified', verified_at = now(), "
+            "expires_at = now() + interval '365 days', "
+            "verification_token = EXCLUDED.verification_token"
         ),
         {
             "id": uuid.uuid4(),

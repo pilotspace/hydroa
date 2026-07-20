@@ -23,6 +23,13 @@ class DomainClaimCreateRequest(BaseModel):
     domain: str
 
 
+class MemberVerifyRequest(BaseModel):
+    """POST /admin/domain-claims/{id}/member-verify body — the 6-digit code ONLY (no email
+    or domain field; recipient/domain are server-derived, R-sec-3)."""
+
+    code: str
+
+
 class DomainClaimCreateResponse(BaseModel):
     claim_id: uuid.UUID
     domain: str
@@ -45,6 +52,10 @@ class DomainClaimListItem(BaseModel):
     # shape for POST/DELETE .../notify (contract reuses this list-item shape verbatim).
     notify_requested_at: datetime | None
     notified_at: datetime | None
+    # ADDITIVE (member-verified-recognition TASK.md §3 — FROZEN @ v1): the ONLY new field
+    # the following dashboard task reads to derive its rung-aware seal. The code
+    # hash/expiry/attempt-count are NEVER exposed in any API response.
+    member_verified_at: datetime | None
 
 
 class DomainClaimListResponse(BaseModel):
@@ -89,6 +100,7 @@ def to_list_item(claim: DomainClaim) -> DomainClaimListItem:
         verified_at=claim.verified_at,
         notify_requested_at=claim.notify_requested_at,
         notified_at=claim.notified_at,
+        member_verified_at=claim.member_verified_at,
     )
 
 

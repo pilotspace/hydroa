@@ -1415,6 +1415,35 @@ class Settings(BaseSettings):
             )
         return v
 
+    # ── Member-verified recognition (member-verified-recognition TASK.md §3, FROZEN @ v1,
+    # SECURITY) ────────────────────────────────────────────────────────────────────────
+    # A 6-digit mailbox-confirmation code emailed to a business admin's OWN signup address
+    # grants rung-1 member-verified (member_verified_at on the domain claim; status stays
+    # 'pending', auto-join UNTOUCHED). Brute-force bound: ~15-min TTL + ≤5-attempt hard cap
+    # (then invalidate) + per-tenant rate-limit on BOTH member-verify and its resend. The
+    # hash-at-rest is Option A: HMAC-SHA256(code, HMAC(jwt_secret,'member-verify-code')) —
+    # NO new secret (reuses the existing required, dev-default-guarded jwt_secret).
+    member_verify_code_ttl_seconds: int = 900  # GATEWAY_MEMBER_VERIFY_CODE_TTL_SECONDS
+    member_verify_max_attempts: int = 5  # GATEWAY_MEMBER_VERIFY_MAX_ATTEMPTS
+    member_verify_rpm: int = 30  # GATEWAY_MEMBER_VERIFY_RPM
+    member_verify_resend_rpm: int = 10  # GATEWAY_MEMBER_VERIFY_RESEND_RPM
+
+    @field_validator(
+        "member_verify_code_ttl_seconds",
+        "member_verify_max_attempts",
+        "member_verify_rpm",
+        "member_verify_resend_rpm",
+    )
+    @classmethod
+    def _validate_member_verify_positive_knobs(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError(
+                "INVALID_MEMBER_VERIFY_KNOB: member_verify_code_ttl_seconds, "
+                "member_verify_max_attempts, member_verify_rpm, and member_verify_resend_rpm "
+                f"must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     # ── Domain verify-notify scheduler (domain-verify-notify TASK.md §3, FROZEN @ v1,
     # SECURITY) ──────────────────────────────────────────────────────────────────────
     # GATEWAY_DOMAIN_VERIFY_NOTIFY_INTERVAL_SECONDS — an asyncio background sweeper

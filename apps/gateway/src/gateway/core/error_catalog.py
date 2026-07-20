@@ -778,6 +778,52 @@ DOMAIN_NOT_VERIFIED = ErrorSpec(
 )
 
 # ---------------------------------------------------------------------------
+# Member-verified recognition (member-verified-recognition TASK.md §3, FROZEN @ v1, SECURITY)
+# ---------------------------------------------------------------------------
+
+#: POST .../member-verify with a wrong 6-digit code, still under the attempt-cap (R3) —
+#: the attempt counter is incremented; member_verified_at unchanged.
+MEMBER_VERIFY_CODE_INVALID = ErrorSpec(
+    400, "ERR_MEMBER_VERIFY_CODE_INVALID", "The verification code is incorrect"
+)
+
+#: POST .../member-verify after the in-flight code's expiry (R4) — the code is cleared;
+#: the caller must resend.
+MEMBER_VERIFY_CODE_EXPIRED = ErrorSpec(
+    410, "ERR_MEMBER_VERIFY_CODE_EXPIRED", "The verification code has expired; request a new one"
+)
+
+#: POST .../member-verify once the ≤5 attempt-cap is reached (R5) — the code is invalidated;
+#: the caller must resend.
+MEMBER_VERIFY_TOO_MANY_ATTEMPTS = ErrorSpec(
+    429,
+    "ERR_MEMBER_VERIFY_TOO_MANY_ATTEMPTS",
+    "Too many incorrect attempts; request a new verification code",
+)
+
+#: POST .../member-verify or .../resend when the claim's domain != the authenticated
+#: caller's OWN email domain (M6b, R10) — a code proves control of the mailbox it was sent
+#: to and nothing else.
+MEMBER_VERIFY_DOMAIN_MISMATCH = ErrorSpec(
+    403,
+    "ERR_MEMBER_VERIFY_DOMAIN_MISMATCH",
+    "This domain does not match your account's email domain",
+)
+
+#: POST .../member-verify/resend on a generic/public email domain (R6, R-sec-5).
+DOMAIN_GENERIC = ErrorSpec(
+    422, "ERR_DOMAIN_GENERIC", "Member verification is not available for generic email domains"
+)
+
+#: POST .../member-verify/resend on a personal (account_type='personal') account (R7,
+#: R-sec-5) — personal accounts never get member-verified.
+MEMBER_VERIFY_NOT_ELIGIBLE = ErrorSpec(
+    403,
+    "ERR_MEMBER_VERIFY_NOT_ELIGIBLE",
+    "This account is not eligible for member verification",
+)
+
+# ---------------------------------------------------------------------------
 # Internal / server errors
 # ---------------------------------------------------------------------------
 

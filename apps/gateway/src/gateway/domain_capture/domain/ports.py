@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Protocol
 
-from gateway.domain_capture.domain.entities import DomainClaim
+from gateway.domain_capture.domain.entities import DomainClaim, MemberVerifyState
 
 
 class DomainClaimRepository(Protocol):
@@ -84,6 +84,43 @@ class DomainClaimRepository(Protocol):
         """The bounded scheduler input: claims where notify_requested_at IS NOT NULL AND
         status='pending' AND notified_at IS NULL AND expires_at > now. Naturally bounded
         (R-sec-4) — no claim stays a candidate forever; expiry is the ceiling."""
+        ...
+
+    # ── member-verified-recognition TASK.md §3 (FROZEN @ v1, SECURITY) — additive ──────
+
+    async def issue_member_verify_code(
+        self,
+        *,
+        claim_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        code_hash: str,
+        expires_at: datetime,
+    ) -> DomainClaim:
+        """Store a fresh keyed code hash + expiry and RESET member_verify_attempt_count=0
+        (tenant-scoped). Never touches status/verified_at/member_verified_at. Raises
+        DomainClaimNotFoundError if the row does not exist for this tenant."""
+        ...
+
+    async def load_member_verify_row_for_update(
+        self, *, claim_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> MemberVerifyState | None:
+        """SELECT … FOR UPDATE the tenant-scoped claim row (serializes concurrent guesses so
+        the ≤5 cap holds EXACTLY) and return its in-flight code state, or None if the row
+        does not exist for this tenant (unknown/cross-tenant, indistinguishable — R1). The
+        row-lock is held on the caller's session until it commits/rolls back."""
+        ...
+
+    async def mark_member_verified(self, *, claim_id: uuid.UUID) -> DomainClaim:
+        """SET member_verified_at=now() and CLEAR the 3 code columns (single-use). status,
+        verified_at, and both unique indexes are UNTOUCHED — member-verify never writes the
+        DNS auto-join gate (M7). Returns the updated claim."""
+        ...
+
+    async def bump_member_verify_attempt(self, *, claim_id: uuid.UUID, invalidate: bool) -> int:
+        """Atomically increment member_verify_attempt_count by 1; when `invalidate` is True
+        also CLEAR the code (hash+expiry NULL) — single-use invalidation at the cap/expiry.
+        Returns the new attempt count. Must run in the SAME transaction as the preceding
+        load_member_verify_row_for_update so the cap is exact under concurrency."""
         ...
 
 

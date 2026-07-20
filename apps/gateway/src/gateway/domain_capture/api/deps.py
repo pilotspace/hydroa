@@ -28,6 +28,11 @@ if TYPE_CHECKING:
         NotifyOptInUseCase,
         NotifyOptOutUseCase,
     )
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        IssueMemberVerifyCodeUseCase,
+        ResendMemberVerifyCodeUseCase,
+        VerifyMemberCodeUseCase,
+    )
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,
     )
@@ -155,6 +160,54 @@ def get_notify_optout_use_case(request: Request, session: AsyncSession) -> Notif
     from gateway.domain_capture.application.notify_use_cases import NotifyOptOutUseCase
 
     return NotifyOptOutUseCase(get_domain_claim_repository(request, session))
+
+
+def get_member_verify_use_case(request: Request, session: AsyncSession) -> VerifyMemberCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        VerifyMemberCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return VerifyMemberCodeUseCase(
+        get_domain_claim_repository(request, session),
+        jwt_secret=settings.jwt_secret,
+        max_attempts=settings.member_verify_max_attempts,
+    )
+
+
+def get_member_verify_resend_use_case(
+    request: Request, session: AsyncSession
+) -> ResendMemberVerifyCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        ResendMemberVerifyCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return ResendMemberVerifyCodeUseCase(
+        get_domain_claim_repository(request, session),
+        request.app.state.email_sender,
+        jwt_secret=settings.jwt_secret,
+        code_ttl_seconds=settings.member_verify_code_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
+
+
+def get_issue_member_verify_code_use_case(
+    request: Request, session: AsyncSession
+) -> IssueMemberVerifyCodeUseCase:
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        IssueMemberVerifyCodeUseCase,
+    )
+
+    settings = request.app.state.settings
+    return IssueMemberVerifyCodeUseCase(
+        get_create_claim_use_case(request, session),
+        get_domain_claim_repository(request, session),
+        request.app.state.email_sender,
+        jwt_secret=settings.jwt_secret,
+        code_ttl_seconds=settings.member_verify_code_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
 
 
 def get_join_tenant_use_case(request: Request, session: AsyncSession) -> JoinTenantByDomainUseCase:

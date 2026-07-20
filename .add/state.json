@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "dns-verify-softeners",
+  "active_task": "member-verified-recognition",
   "active_milestone": "domain-onboarding-softening",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1278,6 +1278,41 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "member-verified-recognition": {
+      "title": "Persist + surface rung-1 member-verified: additive member_verified_at populated from the admin's signup email domain, plus the rung-aware climb seal",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "domain-onboarding-softening",
+      "depends_on": [],
+      "created": "2026-07-20T04:37:41+00:00",
+      "updated": "2026-07-20T06:40:02+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "97f45d977e6f1bd7296be03da400abc7",
+        "tests": {
+          "apps/gateway/tests/domain_capture/test_member_verified_recognition.py": "8f7239076d9fd5fe050833553515eee5"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/domain_capture/",
+          "apps/gateway/src/gateway/email/",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/tenants/api/router.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/domain_capture/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/"
+        ],
+        "snapshot_md5": "c3de50fde591063fe6be44a7bd5bbd5a"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1394,7 +1429,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T04:30:07+00:00",
+  "updated": "2026-07-20T06:40:02+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2430,7 +2465,7 @@
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
     "agent-gateway-v1": "agents-console",
-    "domain-onboarding-softening": "dns-verify-softeners"
+    "domain-onboarding-softening": "member-verified-recognition"
   },
   "todos": [
     {
