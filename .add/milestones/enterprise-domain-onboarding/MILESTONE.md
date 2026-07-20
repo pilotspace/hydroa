@@ -11,7 +11,7 @@ rationale: sub-milestone (intake 2026-07-16, QUEUED behind `account-tiers-billin
   PRE-VERIFIES the domain (DNS-TXT), NOT zero-touch first-employee provisioning (email domain alone is
   not ownership proof); (c) invite-only remains the enforced default.
 stage: production · status: queued · created: 2026-07-16T03:12:06+00:00
-release: pending
+release: 0.11.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,

@@ -10,7 +10,7 @@ rationale: new milestone (intake 2026-07-19, Tin-confirmed) — a follow-on, pur
   change-request — it never modifies the frozen auto-join semantics; it adds gentler first rungs on top.
   See the UX report: https://claude.ai/code/artifact/f227dc3f-f8fe-4ab5-b0dd-0eede700a6f9
 stage: production · status: active · created: 2026-07-19T16:18:08+00:00
-release: pending
+release: 0.11.0
 
 > SDD living doc for this milestone. Keep it THIN: breadth, shared decisions, and
 > exit criteria only — per-task detail lives in each `.add/tasks/<slug>/TASK.md`,
