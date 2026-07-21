@@ -10,11 +10,16 @@
  *   4. 401/error → inline error with problem+json title, no navigation
  */
 
-import { useState, useEffect, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, FormEvent, ChangeEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { BffError } from "@/lib/bff-client";
 import { Button, Card, CardContent, Input } from "@/components/ui";
+import {
+  classifyEmailDomain,
+  normalizeEmailDomain,
+  type EmailDomainClass,
+} from "@/lib/email-domain-routing";
 
 const LoginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -32,6 +37,19 @@ const SSO_DOMAIN_KEY = "sso_domain";
 const SSO_PREFLIGHT_TIMEOUT_MS = 5000;
 const SSO_NOT_CONFIGURED_MSG =
   "That domain isn’t set up for single sign-on. Check the spelling or contact your administrator.";
+
+/**
+ * unified-signin-entry §3 (FROZEN @ v1) M4 — the three static lead-in
+ * strings, mirroring SignupForm's own PUBLIC_LEAD_IN/CORPORATE_LEAD_IN
+ * constants. "unknown" deliberately has NO lead-in: it renders today's
+ * shipped neutral surface, byte-identical (M7, the SAFE DEFAULT).
+ */
+const PUBLIC_ENTRY_LEAD_IN =
+  "Looks like a personal address — sign in, or create your own workspace.";
+const CORPORATE_ENTRY_LEAD_IN =
+  "If your team already uses Hydroa, sign in with your company account.";
+const LOGIN_ENTRY_LEAD_IN_ID = "login_entry_lead_in";
+const SSO_DOMAIN_HELP_ID = "sso_domain_help";
 
 /**
  * SSO-domain preference accessors — defensive on purpose. localStorage is absent
@@ -86,24 +104,64 @@ export interface LoginFormProps {
 
 export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [ssoDomain, setSsoDomain] = useState("");
+  // unified-signin-entry M10/R6: PRISTINE-ONLY auto-seed guard. Flips to true,
+  // permanently, on EITHER the SSO field's own onChange OR the one-shot
+  // ?domain=/localStorage seed effect below assigning a value. Once true the
+  // auto-seed (wired on the Email field's onChange) never overwrites it again.
+  const [ssoDomainTouched, setSsoDomainTouched] = useState(false);
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Seed the SSO field with the last-used domain (non-secret UI preference).
-  // Effect (not a useState initializer) so it never runs during SSR — localStorage
-  // is browser-only, and this avoids a hydration mismatch.
+  // Seed the SSO field: signup-refusal-router TASK.md §3 (FROZEN @ v1) M2 —
+  // a ONE-SHOT `?domain=` query-param seed (arriving from the signup routing
+  // panel's SSO link), additive to the existing ONE-SHOT localStorage seed
+  // below. Effect (not a useState initializer) so neither runs during SSR —
+  // both localStorage and useSearchParams are browser-only reads here, and
+  // this avoids a hydration mismatch. Precedence (OPEN per TASK.md §4's own
+  // flag — not specified by §3): a present `?domain=` wins over a stored
+  // localStorage value, since it reflects the visitor's just-made intent;
+  // absent param falls back to the existing localStorage seed, unchanged.
   useEffect(() => {
+    const domainParam = searchParams.get("domain");
+    if (domainParam) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSsoDomain(domainParam);
+      // unified-signin-entry M10/R6: a seed-assigned value counts as touched —
+      // the auto-seed below must never clobber it.
+      setSsoDomainTouched(true);
+      return;
+    }
     // One-shot sync from an external store (localStorage) — the SSR-safe pattern for
     // a browser-only seed; not a cascading render. (rule is over-strict here.)
     const saved = readSsoDomain();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved) setSsoDomain(saved);
+    if (saved) {
+      setSsoDomain(saved);
+      setSsoDomainTouched(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * unified-signin-entry M10/R6: the ONE Email-field change handler. While the
+   * SSO domain field is still pristine (never touched by the visitor nor by
+   * the seed effect above), every keystroke also auto-fills ssoDomain with
+   * normalizeEmailDomain(value) — the "type your email once" collapse. Once
+   * ssoDomainTouched flips true (either path), this branch is permanently
+   * inert: the auto-seed may NEVER overwrite a touched value.
+   */
+  function handleEmailChange(e: ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setEmail(value);
+    if (!ssoDomainTouched) {
+      setSsoDomain(normalizeEmailDomain(value));
+    }
+  }
 
   async function handleSso() {
     setSsoError(null);
@@ -216,6 +274,123 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
     }
   }
 
+  // unified-signin-entry M1/M2: a DERIVED value recomputed on every render
+  // from the typed email string alone — never state, never a useEffect.
+  // classifyEmailDomain is a pure, zero-IO function of (email, a static
+  // list), so entryClass (and everything below it) is a pure function of
+  // what the visitor typed. Server state is NOT an input (M11). Never
+  // replace this with a lookup — mirrors SignupForm's own domainClass.
+  const entryClass: EmailDomainClass = classifyEmailDomain(email);
+  const leadInText =
+    entryClass === "corporate"
+      ? CORPORATE_ENTRY_LEAD_IN
+      : entryClass === "public"
+        ? PUBLIC_ENTRY_LEAD_IN
+        : null;
+  const leadInId = leadInText ? LOGIN_ENTRY_LEAD_IN_ID : undefined;
+
+  // unified-signin-entry M8/R7: a NEW, ALWAYS-PRESENT route off this page — a
+  // plain anchor, never a fetch. email === "" -> "/signup" (no empty param).
+  const createWorkspaceHref =
+    email === ""
+      ? "/signup"
+      : `/signup?email=${encodeURIComponent(email)}${
+          entryClass === "corporate" ? "&account_type=business" : ""
+        }`;
+
+  // unified-signin-entry M9/R5: the four affordances, each defined ONCE and
+  // reordered below by moving the whole subtree — never by rewriting one in
+  // place. Their own copy/href/handler are byte-identical to what shipped.
+  const passwordRoute = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="login_password" className="text-sm font-medium text-foreground">
+          Password
+        </label>
+        <Input
+          id="login_password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+        {fieldErrors.password && (
+          <p role="alert" aria-live="polite" className="text-sm text-destructive">
+            {fieldErrors.password}
+          </p>
+        )}
+      </div>
+      <Button type="submit" disabled={isSubmitting} className="w-full">
+        {isSubmitting ? "Signing in…" : "Log in"}
+      </Button>
+    </div>
+  );
+
+  const ssoRoute = (
+    <div className="flex flex-col gap-4">
+      {/* SSO login — an optional work-email/domain field drives the relay's
+          ?domain= so a tenant with per-tenant OIDC configured can start SSO
+          from here. Empty field → env-level SSO (no ?domain=). The click does
+          a full-page NAVIGATION (window.location.assign) so the browser follows
+          the relay's 302 chain to the external IdP — a fetch could not.
+          unified-signin-entry M10/R6: onChange also flips ssoDomainTouched so
+          the Email-field auto-seed never clobbers a visitor-typed value. */}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="sso_domain" className="text-sm font-medium text-foreground">
+          Work email or domain
+        </label>
+        <Input
+          id="sso_domain"
+          type="text"
+          value={ssoDomain}
+          onChange={(e) => {
+            setSsoDomain(e.target.value);
+            setSsoDomainTouched(true);
+          }}
+          autoComplete="email"
+          placeholder="you@company.com"
+          aria-describedby={
+            ssoError ? `sso_domain_error ${SSO_DOMAIN_HELP_ID}` : SSO_DOMAIN_HELP_ID
+          }
+        />
+        <p id={SSO_DOMAIN_HELP_ID} className="text-xs text-muted-foreground">
+          Optional — auto-filled from your email address; you can also enter it yourself.
+        </p>
+        {ssoError && (
+          <p
+            id="sso_domain_error"
+            role="alert"
+            aria-live="polite"
+            className="text-sm text-destructive"
+          >
+            {ssoError}
+          </p>
+        )}
+      </div>
+
+      <Button type="button" variant="outline" className="w-full" onClick={handleSso}>
+        Sign in with SSO
+      </Button>
+    </div>
+  );
+
+  // domain-auto-assign-login M6: SAML sibling of the OIDC route above — same
+  // domain field, full-page navigation to the SAML login relay.
+  const samlRoute = (
+    <Button type="button" variant="outline" className="w-full" onClick={handleSamlSso}>
+      Sign in with SAML
+    </Button>
+  );
+
+  const createWorkspaceRoute = (
+    <a
+      href={createWorkspaceHref}
+      className="text-center text-sm font-medium text-primary underline-offset-4 hover:underline"
+    >
+      Create a workspace
+    </a>
+  );
+
   return (
     <form onSubmit={handleSubmit} noValidate aria-label="Log in">
       <Card data-slot="auth-card">
@@ -228,30 +403,12 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
               id="login_email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
               autoComplete="email"
             />
             {fieldErrors.email && (
               <p role="alert" aria-live="polite" className="text-sm text-destructive">
                 {fieldErrors.email}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="login_password" className="text-sm font-medium text-foreground">
-              Password
-            </label>
-            <Input
-              id="login_password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-            {fieldErrors.password && (
-              <p role="alert" aria-live="polite" className="text-sm text-destructive">
-                {fieldErrors.password}
               </p>
             )}
           </div>
@@ -262,59 +419,57 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
             </p>
           )}
 
-          <Button type="submit" disabled={isSubmitting} className="w-full">
-            {isSubmitting ? "Signing in…" : "Log in"}
-          </Button>
-
-          {/* SSO login — an optional work-email/domain field drives the relay's
-              ?domain= so a tenant with per-tenant OIDC configured can start SSO
-              from here. Empty field → env-level SSO (no ?domain=). The click does
-              a full-page NAVIGATION (window.location.assign) so the browser follows
-              the relay's 302 chain to the external IdP — a fetch could not. */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="sso_domain" className="text-sm font-medium text-foreground">
-              Work email or domain
-            </label>
-            <Input
-              id="sso_domain"
-              type="text"
-              value={ssoDomain}
-              onChange={(e) => setSsoDomain(e.target.value)}
-              autoComplete="email"
-              placeholder="you@company.com"
-              aria-describedby={ssoError ? "sso_domain_error" : undefined}
-            />
-            {ssoError && (
+          {/* unified-signin-entry §3 (FROZEN @ v1): the region gains
+              data-domain-class, a classification-derived lead-in, and a
+              per-class ORDER over the four affordances — and ONLY those.
+              entryClass is a pure function of the typed email and a
+              compile-time constant list (M11): no request is issued to
+              compute or refresh it, at any keystroke, for any domain. Two
+              domains in the same shape class render byte-identically
+              regardless of tenant/claim/user/SSO-config existence. */}
+          <div
+            data-slot="login-entry-routes"
+            data-domain-class={entryClass}
+            aria-describedby={leadInId}
+            className="flex flex-col gap-4"
+          >
+            {leadInText && (
               <p
-                id="sso_domain_error"
-                role="alert"
+                id={LOGIN_ENTRY_LEAD_IN_ID}
                 aria-live="polite"
-                className="text-sm text-destructive"
+                className="text-sm text-muted-foreground"
               >
-                {ssoError}
+                {leadInText}
               </p>
             )}
+
+            {entryClass === "corporate" ? (
+              // M5: a corporate work email leads with company sign-in.
+              <>
+                {ssoRoute}
+                {samlRoute}
+                {passwordRoute}
+                {createWorkspaceRoute}
+              </>
+            ) : entryClass === "public" ? (
+              // M6: a personal address leads with self-serve signup.
+              <>
+                {createWorkspaceRoute}
+                {passwordRoute}
+                {ssoRoute}
+                {samlRoute}
+              </>
+            ) : (
+              // M7 (unknown, the SAFE DEFAULT): today's shipped order,
+              // byte-identical, with create-workspace appended.
+              <>
+                {passwordRoute}
+                {ssoRoute}
+                {samlRoute}
+                {createWorkspaceRoute}
+              </>
+            )}
           </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleSso}
-          >
-            Sign in with SSO
-          </Button>
-
-          {/* domain-auto-assign-login M6: SAML sibling of the OIDC button above —
-              same domain field, full-page navigation to the SAML login relay. */}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleSamlSso}
-          >
-            Sign in with SAML
-          </Button>
         </CardContent>
       </Card>
     </form>

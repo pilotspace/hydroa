@@ -40,9 +40,22 @@ export const acceptInviteSchema = z.object({
   password: z.string().min(1).max(4096),
 });
 
+// signup-refusal-router TASK.md §3 (FROZEN @ v1) M4: the request-access BFF
+// route body. Deliberately NOT `.email()` — presence + bounds only, same
+// guard-bound shape as signupSchema.email above. The gateway's pydantic
+// EmailStr is the format AUTHORITY (R1); this layer only stops an oversized/
+// absent payload from reaching it, so a malformed-but-present value (e.g.
+// "not-an-email") still round-trips to the gateway and gets ITS 422, not a
+// locally-fabricated one — tests-bff/access-requests-route.test.ts's R1 case
+// forwards the gateway's own validation-error shape verbatim.
+export const accessRequestSchema = z.object({
+  email: z.string().min(1).max(320),
+});
+
 export type LoginBody = z.infer<typeof loginSchema>;
 export type SignupBody = z.infer<typeof signupSchema>;
 export type AcceptInviteBody = z.infer<typeof acceptInviteSchema>;
+export type AccessRequestBody = z.infer<typeof accessRequestSchema>;
 
 export type ParseResult<T> =
   | { ok: true; data: T }
