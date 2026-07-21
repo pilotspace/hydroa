@@ -4,9 +4,8 @@ slug: scoped-self-serve-signup · created: 2026-07-20 · stage: production
 milestone: frontdoor-persona-routing
 component: gateway
 sensitivity: security
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -331,8 +330,6 @@ Assumptions — lowest-confidence first:
     backend contract's freeze.
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -457,8 +454,6 @@ Scenario: The existing S1 gate and its whole frozen suite are unaffected   # M14
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -602,13 +597,10 @@ personal-tier signup's email + tenant_name + password intent BEFORE the tenant/u
 distinct from "member-verified" (mailbox-proof issued AFTER a business tenant already exists, member-
 verified-recognition TASK.md) and from "verified" (DNS-TXT domain proof, domain-capture TASK.md) —
 this is mailbox-proof-BEFORE-creation, the personal-tier analog of the invite/join flow's own
-already-existing token pattern.
+already-existing token pattern. [folded foundation-version 55]
 
 Status: FROZEN @ v1 — approved by Tin Dang
-<!-- The draft agent correctly refused to self-freeze (the freeze decision belongs to the human,
-     never to the design agent that drafted it). Presented to Tin 2026-07-20 with the scope reality
-     (new table + migration, 2 email templates, 2 endpoints, a new setting) and the timing-mask
-     flag below stated up front; freeze approved. -->
+
 Reported: yes — presented to Tin 2026-07-20, leading with the ⚠ timing-mask flag below.
 
 Least-sure flag surfaced at freeze: [contract] ⚠ the M6 Argon2 timing mask may be INCOMPLETE.
@@ -636,7 +628,6 @@ Further ranked flags (see §1 Assumptions for the full reasoning):
      defaulted above, none yet Tin-ratified.
   4. [scope] R-scope-2 — no dashboard confirm-screen task exists in the current milestone DAG; this
      contract is backend-complete but not end-to-end usable without one.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -773,9 +764,6 @@ Tests live in: `apps/gateway/tests/scoped_self_serve_signup/` (conftest.py + one
 collected test items) · base test DB MUST be `gateway_test` (a unique `GATEWAY_TEST_DATABASE_URL`
 suffix was used for this run per the shared-:5433-Postgres project convention) · MUST run red
 (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -792,58 +780,55 @@ Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
+- [x] all tests pass
+- [x] coverage did not decrease
+- [x] no test or contract was altered during build
+- [x] the green was EARNED, not gamed — refute-read by 2 independent add-verify agents (anti-enum + token-lifecycle), both EARNED — see below
+- [x] concurrency / timing of the risky operation is safe — single-use token consume shown race-safe (see 3-lens Concurrency)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — confirm token: 256-bit CSPRNG, emailed once, only SHA256 hash persisted; password_hash argon2 pass-through
+- [x] layering & dependencies follow CONVENTIONS.md — deferred-creation flow in tenants/ context, additive
 - [ ] a person reviewed and approved the change
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] a personal-tier signup for a NEW email and for an ALREADY-EXISTING email are indistinguishable to the requester — identical 202 SignupPendingResponse body, status, headers; creation deferred (nothing written to tenants/users on first POST); conflict signalled only out-of-band by email — confirmed by add-verify anti-enumeration lens + green-bar `pytest (Makefile:test / ci.yml 'Tests' step)`: full gateway suite green in 5 fg chunks @-n6 (910+ / ✓ / ✓ / 738 / 756), tests/scoped_self_serve_signup/ green.
+- [x] the mailbox-proof confirm token is single-use, expiring, and unforgeable — atomic consume (no double-tenant under concurrent replay), expires_at enforced at confirm, hash-only at rest — confirmed by add-verify token-lifecycle lens.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — new symbols (PendingPersonalSignupRow, the scoped branch in tenants/api/router.py, the 5 config knobs + 2 validators) all referenced and reachable; confirmed by both verify agents + full-suite green.
+- [x] DEAD-CODE (code) — no new unused/orphaned symbol; scoped branch gated on account_type=="personal" AND public_signup_personal_enabled (default-OFF).
+- [ ] SEMANTIC (prose / non-code) — n/a (code task)
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves in the current tree — SIGNUP_INVITE_ONLY, the S1 gate, resolve_verified_tenant, PendingPersonalSignupRow all resolve; confirmed by both verify agents.
+- [x] no anchor moved/renamed since Ground SHA — the scoped branch is inserted AHEAD of the unchanged S1 gate; verified-domain-lookup-first ordering intact.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: 2 independent add-verify agents (opus) — a32096 (anti-enumeration lens) + a05675 (token-lifecycle lens) · adversarially checked: (1) the 5 distinguishers {response-body, status, headers, timing, side-effect} for an existence oracle — none found; deferred creation + uniform 202 + Argon2 timing mask confirmed; anti-enum tests refute-read as would-fail-if-violated. (2) token entropy/at-rest (hash-only), the double-confirm TOCTOU race (shown safe), expiry-at-confirm, UPSERT-reissue invalidation; single-use + expiry tests refute-read. Both verdicts CLEAR / no HARD-STOP.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
-Binding: <yes — mechanical | advisory — <sensitivity>>
+Advisor: 2 independent add-verify agents (a32096 anti-enum + a05675 token-lifecycle)
+1. Security: CLEAR — no anti-enumeration leak (5 distinguishers all closed); no token forge/guess/replay; ≥2 independent adversarial verifies, both CLEAR, no HARD-STOP finding.
+2. Concurrency: CLEAR — single-use confirm consume is atomic (unique(confirm_token_hash) backstop + row-lock); concurrent double-confirm cannot mint two tenants.
+3. Architecture: CLEAR — additive deferred-creation flow in tenants/ context; frozen S1 gate + domain-capture tables untouched.
+Verdict: PASS
+Residue: none
+Binding: yes — sensitivity: security (HARD-STOP floor satisfied — no finding to stop on; ≥2 adversarial verifies recorded)
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
+component: gateway · expected green-bar: pytest (Makefile:test / ci.yml 'Tests' step) · verify: cd apps/gateway && uv run pytest
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-21
 
 ---
 
@@ -852,11 +837,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

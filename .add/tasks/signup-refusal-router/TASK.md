@@ -5,7 +5,7 @@ milestone: frontdoor-persona-routing
 component: gateway, dashboard
 autonomy: conservative
 sensitivity: security
-phase: build
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -260,8 +260,6 @@ Assumptions — lowest-confidence first:
     a list that changes independently of any dashboard build).
 </assumptions>
 
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
-
 ---
 
 ## 2 · SCENARIOS — pass/fail cases ▸ docs/04-step-2-scenarios.md
@@ -363,8 +361,6 @@ Scenario: All three routes are reachable and operable keyboard-only   # accessib
 ```
 
 </scenarios>
-
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
 
 ---
 
@@ -470,8 +466,6 @@ just the homepage.
 
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
-
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -591,9 +585,6 @@ Tests live in: `apps/dashboard/tests/signup-refusal-router.test.tsx`,
 `apps/dashboard/tests/pricing-cta-signup-entry.test.tsx`,
 `apps/dashboard/tests-bff/access-requests-route.test.ts` · MUST run red (missing implementation)
 before Build — confirmed above. Gateway-side tests: NOT YET WRITTEN (see SCOPE OF THIS PASS).
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
-
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
 
 ---
 
@@ -610,58 +601,54 @@ Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
 
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
-
 ---
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests pass
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (score with an adversarial refute-read — a subagent recommended under `autonomy: auto`; a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
+- [x] all tests pass
+- [x] coverage did not decrease
+- [x] no test or contract was altered during build
+- [x] the green was EARNED, not gamed — refute-read by 2 independent add-verify agents (no-leak + earned-green), both CLEAR — see below
+- [x] concurrency / timing of the risky operation is safe — rate-limiter INCR+EXPIRE race bounded to ≤1 double-count (documented, mirrors InvitePublicRateLimiter)
+- [x] no exposed secrets, injection openings, or unexpected dependencies — store-only endpoint; input validated
+- [x] layering & dependencies follow CONVENTIONS.md — clean hexagonal split in the new access_requests/ context mirroring domain_capture
+- [x] a person reviewed and approved the change — HUMAN GATE (autonomy: conservative): Tin Dang approved PASS on 2026-07-21, after being shown both adversarial verify verdicts (CLEAR/CLEAR) and the 2 non-blocking flags (fail-open rate-limiter M7 trade-off; M10 shared-branch wording drift). Tin accepted the fail-open limiter as contracted, not as a logged waiver.
 
 ### Build expectations — what "correct" looks like (fill BEFORE build; confirm each at the gate)
 > OBSERVABLE outcomes a correct build must produce, derived from the §2 scenarios + §3 contract — evidence you can SEE, not test names.
-- [ ] <observable outcome a correct build must produce> — confirmed by <how / where>
-- [ ] <another observable outcome> — confirmed by <evidence seen>
+- [x] a would-be signer who is a member of an existing tenant is routed to a live next step (SSO / invite link / request-access), never a dead end — confirmed by dashboard SignupForm [data-slot="signup-alt-routes"] panel + green-bar `vitest (ci.yml dashboard job)`: full suite 1681 passed + tests-bff/access-requests-route.test.ts 6/6.
+- [x] the refusal reveals NOTHING about tenant/domain existence: routing is client-side static, and the one server endpoint returns uniform 202 {"ok":true} for any valid email (zero SELECT, zero branch in use-case + repo) — confirmed by add-verify no-leak lens, proven both ways (existing account + verified domain claim) + green-bar `pytest (Makefile:test / ci.yml 'Tests' step)`: full gateway suite green in 5 fg chunks, tests/access_requests/ 6/6.
 
 ### Deep checks — do not skim (fill the path that applies; the resolver judges which)
-- [ ] WIRING (code) — every new symbol is referenced; record where / how confirmed
-- [ ] DEAD-CODE (code) — no new unused or orphaned symbol introduced
-- [ ] SEMANTIC (prose / non-code) — read in full, not skimmed: <what read · what confirmed>
+- [x] WIRING (code) — the new access_requests/ context (domain/application/infra/api), the SignupForm alt-routes panel, and the problem.code plumbing are all referenced and reachable; confirmed by both verify agents + full-suite green.
+- [x] DEAD-CODE (code) — no new unused/orphaned symbol.
+- [x] SEMANTIC (prose / non-code) — honest store-only copy read in full: the request-access path stores the request and says so, promising no account.
 
 ### Live-verify evidence — confirm the §0 GROUND anchors still resolve (fill at the gate)
 > Re-resolve every symbol §3 cites against the CURRENT tree (code moved since Ground SHA) — catch a stale anchor here, not later.
-- [ ] every symbol §3 CONTRACT cites still resolves in the current tree — confirmed by <how / where>
-- [ ] any anchor that moved/renamed since Ground SHA is named here, not left silent
+- [x] every symbol §3 CONTRACT cites still resolves — ProblemDetail/BffError (resilient-fetch.ts), the refusal codes, resolve_verified_tenant all resolve; confirmed by both verify agents.
+- [x] anchor that moved since Ground SHA, named not silent: §3 M10 ("signup() byte-identical") is literally false on the shared branch because the SIBLING task scoped-self-serve-signup inserted a personal branch AHEAD of the S1 gate — but M10's OBSERVABLE holds (branch gated on account_type=="personal" AND default-OFF; verified-domain-lookup-first ordering intact; invite-only 403 unchanged). NOT this task's change; reconcile M10 wording at merge. See [[domain-routing-unification-cr-and-tamper]].
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
 > Under auto, record the earned-green refute-read (the engine never spawns it — you do; NOT-EARNED -> `add.py heal`). Audit-measured (`refute_unrecorded`), never blocked; a human spot-audit is the backstop.
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: 2 independent add-verify agents (opus) — ac3ac0 (no-leak lens) + a7d6a3 (earned-green lens) · adversarially checked: (1) refusal existence-oracle across all observables (none — uniform 202 by construction), access_requests store-only (only add+commit, no tenant/user/session, no read of resolve_verified_tenant), rate-limiter present/per-IP/fail-open-contracted. (2) vacuous-test hunt: the problem.code tests would FAIL if code were dropped again (both fall to generic path), the a11y test asserts the alt-routes panel EXISTS before auditing (not audit-an-empty-form); R3 tests use a real registered account + a real verified TenantDomainClaimRow, not stubs. Both CLEAR / no HARD-STOP.
 
 ### Advisor 3-lens verdict — sequential (security → concurrency → architecture)
 > Lenses run in order; a Security HARD-STOP ends the checklist (leave the rest blank). Binding for sensitivity: mechanical (advisor-gate-relax); advisory otherwise. Audit-measured (`advisor_verdict_unrecorded`), never blocked.
-Advisor: <agent-id | self>
-1. Security: <CLEAR | HARD-STOP: finding>
-2. Concurrency: <CLEAR | RESIDUE: finding>
-3. Architecture: <CLEAR | RESIDUE: finding>
-Verdict: <PASS | HARD-STOP>
-Residue: <none | summary>
+Advisor: 2 independent add-verify agents (ac3ac0 no-leak + a7d6a3 earned-green)
+1. Security: CLEAR — no existence-oracle (uniform 202, zero SELECT/branch); store-only reveals nothing; no injection; ≥2 independent adversarial verifies, both CLEAR, no HARD-STOP finding.
+2. Concurrency: CLEAR — rate-limiter INCR+EXPIRE race bounded to ≤1 double-count (documented, mirrors InvitePublicRateLimiter); FAIL-OPEN on Redis/OS error is deliberate & contracted (M7 — fail-closed would DoS onboarding).
+3. Architecture: CLEAR — clean hexagonal split in access_requests/ mirroring domain_capture; all symbols wired; no dead code.
+Verdict: PASS (HUMAN gate: Tin Dang approved 2026-07-21)
+Residue: none blocking. 2 non-blocking flags carried forward: (a) M10 wording reconciliation at merge (observable holds); (b) rate-limiter deliberately fail-open — Tin accepted as the contracted M7 trade-off (fail-closed would DoS onboarding), recorded as clean, not as a waiver.
 Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-21
 
 ---
 
@@ -670,11 +657,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [human] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+

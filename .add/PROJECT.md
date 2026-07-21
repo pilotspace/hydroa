@@ -3,7 +3,7 @@
 > The durable foundation that outlives every milestone and feeds context into each
 > TDD⇄ADD loop. Read this FIRST in any session.
 
-slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 54
+slug: ai-proxy · stage: production · updated: 2026-06-18 · foundation-version: 55
 goal: a user can set up their tenant → log in → call any LLM model through the proxy → see accurate, billable cost tracking
 
 ---
@@ -135,6 +135,9 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     returns 404 even if either guard alone were removed (evidence: teams add-by-email CR).
 
 ## Spec / Living Document (SDD) — what we are building, now
+- (SDD) the anti-enumeration reasoning that protects the BACKEND (uniform status/body/cost, scoped-self-serve-signup §3) does NOT transfer to a routing UI, where the visible adaptation IS the observable — the only safe posture is to make the decision a pure client-side function of input + a static constant (evidence: §1 framings 2 and 4, both rejected for this reason).  [folded foundation-version 55 · from domain-aware-auth-routing]
+- (SDD) a task can inherit a live oracle from a NEIGHBOURING frozen contract without its own diff being at fault; grounding must sweep the surfaces the task ROUTES TO, not just the ones it edits (evidence: §0 R-a — LoginForm.handleSso's 302-vs-404 preflight, found only because ground read the SSO destination this task emphasizes).  [folded foundation-version 55 · from domain-aware-auth-routing]
+- (SDD) A frozen contract that permits an ALTERNATION of error codes (`403 | 404`) on an unauthenticated route silently licenses an enumeration oracle. The alternation reads as flexibility at freeze and as a leak in production. Prefer a single contracted terminal code on any unauthenticated discovery surface. (evidence: domain-routing-unification §3 M2's `403 | 404` line produced this task)  [folded foundation-version 55 · from sso-login-oracle-closure]
 - (SDD) Composing new behavior OUTSIDE a frozen fail-closed seam (a wrapper that catches the seam's own exception) let a hard "NEVER fallback" invariant be superseded for ONE caller without editing the frozen contract or weakening it for every other caller — a reusable pattern for "add an escape hatch to a fail-closed gate." (evidence: _resolve_platform_fallback composes over resolve() untouched)  [folded foundation-version 53 · from platform-credential-fallback]
 - (SDD) a BYOK provider used for an ANCILLARY IO seam (moderation) needs an ISOLATED CircuitBreaker/client instance from the SAME provider's PRIMARY seam (chat completions) — sharing one adapter instance across two independent failure domains would cross-contaminate breaker state; worth a general pattern note for any future secondary use of an existing provider adapter (evidence: §0 R3, §1 M8).  [folded foundation-version 50 · from ml-moderation-layer]
 - (SDD) a new self-service WRITE API silently widens the blast radius of PRE-EXISTING read-time semantics elsewhere (recovery re-resolve; env.py autogen); a build's grounding should scan "what does making X mutable newly expose?" not just "does X compute right" (evidence: C1 + C2 both pre-existing, both newly reachable via this task).  [folded foundation-version 49 · from tiered-rate-cards]
@@ -359,6 +362,8 @@ goal: a user can set up their tenant → log in → call any LLM model through t
     candidate next-loop task to stamp `usage_source='client_disconnect'` so EVERY $0 stream row is explained.
 
 ## Users (UDD) — UI/UX: design before code
+- (UDD) The shipped test suite is a DESIGN CONSTRAINT, not just a safety net — reading four auth test files decided the shape of this task (emphasis-not-disclosure, /login-not-/start) before any code existed, and both alternatives would have looked reasonable on a whiteboard (evidence: §0 R-a and R-b, each grounded in a cited line of a green test).  [folded foundation-version 55 · from unified-signin-entry]
+- (UDD) A frozen a11y placement can flip from liability to asset once an upstream surface seeds the input — domain-aware's panel-above-the-field is a problem when the visitor types below it, and exactly right when the email arrives pre-classified from another door (evidence: the `?email=` seed, M13).  [folded foundation-version 55 · from unified-signin-entry]
 - (UDD) a green `next build` proves compilation, NOT that a font/theme applies — verify computed style on a LIVE render (evidence: Geist fell back to ui-sans-serif while the build was green; caught only by a playwright probe).  [folded foundation-version 53 · from airier-theme-restyle]
 - (UDD) an accent hue that works as a solid FILL can fail AA as TEXT on its own soft tint — give accent-as-text its own AA-safe token (evidence: #2f6df0 on #eef3fe = 4.14:1, failed on ~30 routes via the shared active-nav).  [folded foundation-version 53 · from airier-theme-restyle]
 - (UDD) A financial-document idiom (InvoiceStatusSeal/InvoiceDetailPage) does not always transplant its exact vocabulary onto a structurally-similar-but-semantically-different document (an Art. 12 bundle has no draft state) — the lesson is to translate the IDIOM (dated header, tabular-nums, visible immutability marker) rather than force-reuse the exact component/prop union (evidence: BundleEvidenceSeal introduced as a sibling, not an InvoiceStatusSeal prop-union widening).  [folded foundation-version 53 · from compliance-report-center]
@@ -497,6 +502,7 @@ plane, `/internal/*`) → PostgreSQL (tenants/users/keys/ledger) + Redis
 ## Key Decisions (append-only)
 | date | decision | why | outcome |
 |------|----------|-----|---------|
+| 2026-07-21 | fold all → foundation-version 55 (SDD 3 · UDD 2 · TDD 2 · ADD 3 · GLOSSARY 3) | consolidate captured OBSERVE lessons into the versioned foundation | 10 lessons open→folded; +10 routed bullets; 3 glossary term(s) added; 54→55 |
 | 2026-07-20 | fold all → foundation-version 54 (TDD 2 · ADD 4 · GLOSSARY 8) | consolidate captured OBSERVE lessons into the versioned foundation | 6 lessons open→folded; +6 routed bullets; 8 glossary term(s) added; 53→54 |
 | 2026-07-17 | fold all → foundation-version 53 (SDD 1 · UDD 3 · TDD 1 · ADD 3 · GLOSSARY 11) | consolidate captured OBSERVE lessons into the versioned foundation | 8 lessons open→folded; +8 routed bullets; 10 glossary term(s) added; 52→53 |
 | 2026-07-13 | fold all → foundation-version 52 (GLOSSARY 4) | consolidate captured OBSERVE lessons into the versioned foundation | 0 lessons open→folded; +0 routed bullets; 4 glossary term(s) added; 51→52 |

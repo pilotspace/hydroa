@@ -2,9 +2,8 @@
 
 slug: homepage-integration-proof · created: 2026-07-20 · stage: production
 milestone: frontdoor-persona-routing
-autonomy: auto   <!-- level: manual < conservative < auto — lower for a high-risk task (`add.py autonomy set`). Multi-component repo? add a `component: <name>` line (.add/components.toml) to join that root to §5 Scope. -->
-phase: build   <!-- ground -> specify -> scenarios -> contract -> tests -> build -> verify -> observe -> done -->
-<!-- high-risk/method-defining? declare `risk: high` on the slug line + a lowered autonomy — the engine refuses an unguarded completion (`unguarded_high_risk_auto`). A comment is never a declaration. -->
+autonomy: auto
+phase: done
 
 > One file = one task — fill top-to-bottom; the phase marker above is the single source of truth (`add.py phase`); unclear phase → its book chapter.
 
@@ -86,8 +85,6 @@ Assumptions — lowest-confidence first:
   - [ ] No copy-to-clipboard control on this sample (unlike `QuickstartPanel`'s "Duplicate" button) — deliberate, to keep zero client-side state in the frozen Server Component hero; a visitor who wants to copy clicks through via the existing "Get started"/"Log in" CTAs or `/docs/quickstart`. If wrong: additive follow-up using the exact pattern `QuickstartPanel` already proves (extract a small client subcomponent) — cheap, non-breaking.
   - [ ] Placement is INSIDE the existing hero (last child, no new section/heading/nav-anchor) rather than a new standalone "proof" section between HERO and `#product`. Chosen to avoid reopening the FROZEN `landing-page` section-list/nav-anchor contract for a v1 proof. If wrong (the human wants it promoted to a full labeled section): a move-only rework — wrap in `<section aria-labelledby>` + h2, no content change.
 </assumptions>
-
-<!-- EXIT: every rule + rejection stated; assumptions ranked lowest-confidence first, top 1–2 ⚠-flagged with why + cost (or an honest "none material" naming the biggest risk). -->
 
 ---
 
@@ -181,8 +178,6 @@ Scenario: Reject — raw or new visual pattern   # R6
 
 </scenarios>
 
-<!-- EXIT: one scenario per Must AND per Reject; each result is observable. -->
-
 ---
 
 ## 3 · CONTRACT — freeze the shape ▸ docs/05-step-3-contract.md
@@ -262,7 +257,6 @@ Least-sure flag surfaced at freeze: [spec] the model-id literal ("gpt-4o", follo
   [spec] placement is INSIDE the existing hero rather than a new labeled section (§1, assumption
   #2) — chosen to avoid reopening the FROZEN landing-page section list; reversible as a move-only
   rework if the human wants it promoted later.
-<!-- The freeze IS the one approval — lead it with the bundle's lowest-confidence flag (§1 ⚠ feeds it; a flag may point at any part — run.md). Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen contract = change request back to SPECIFY. EXIT: frozen · every §1 rejection has a contracted response · names match GLOSSARY (new terms = Glossary delta) · flag surfaced. -->
 
 ---
 
@@ -329,7 +323,6 @@ Plan (one test per scenario, asserting behavior not internals):
 Tests live in: `./tests/` · `tests/base-url-swap.test.tsx` (NEW, 17 tests: 15 red / 1 ground-truth
   sanity green-by-design / 1 labelled `[REGRESSION PIN]` green-by-design — 0 vacuous passes) ·
   MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0 -->
 
 RED evidence (`./node_modules/.bin/vitest run tests/base-url-swap.test.tsx --reporter=verbose`,
   run from `apps/dashboard`, 2026-07-20):
@@ -366,8 +359,6 @@ Cross-suite sanity (`apps/dashboard`, 2026-07-20) — this file + the sibling `p
 `pricing-catalog-no-drift.test.ts`'s 2 retargeted red assertions (15+12+2=29) — no unexplained
 failure, no collateral damage to `docs-quickstart-page.test.tsx` (also green in this run).
 
-<!-- EXIT: one test per scenario; suite red for the RIGHT reason; target recorded. -->
-
 ---
 
 ## 5 · BUILD — AI writes code ▸ docs/07-step-5-build.md
@@ -382,8 +373,6 @@ Strategy actually used: <fill at VERIFY — the strategy you ACTUALLY used (or "
 Safety rule (feature-specific): <e.g. debit+credit in one atomic transaction>
 Code lives in: `./src/`
 Constraints: do NOT change any test or the contract; allow-list packages only; ask if unclear.
-
-<!-- Scope tokens, backticked, FIRST declaring line: `./…` = this task dir · a token with "/" = project root · a bare name = sibling of the previous token's dir · a DIRECTORY token covers its whole subtree (diverges from §4's non-recursive counting) · outside-root resolutions drop fail-closed · absent line = UNDECLARED (grandfathered, never retro-red) · enforcement live: a completing verify gate refuses an out-of-scope build (scope_violation → self-heal); check surfaces it. EXIT: all green; coverage held; no test/contract touched; no unlisted dependency. -->
 
 ---
 
@@ -430,11 +419,9 @@ Binding: <yes — mechanical | advisory — <sensitivity>>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Advisor 3-lens and Refute-read verdicts are audit-measured (`advisor_verdict_unrecorded` · `refute_unrecorded`), never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-21
 
 ---
 
@@ -443,11 +430,14 @@ Reviewed by: <name> · date: <date>
 Watch (reuse scenarios as monitors): <error rate / per-rejection rate / latency>
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
-<!-- e.g.  - [DDD · open] the model missed multi-tenancy (evidence: scenario_x failed) -->
+
