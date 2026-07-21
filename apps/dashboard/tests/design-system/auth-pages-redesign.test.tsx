@@ -148,8 +148,13 @@ describe("Auth pages render through AuthShell", () => {
     expect(card!.querySelectorAll("h3").length).toBe(0);
   });
 
-  it("test_signup_page_uses_authshell", () => {
-    const { container } = render(<SignupPage />);
+  // SignupPage became an ASYNC server component in `3159ada` (it awaits searchParams so the route
+  // renders dynamically — a client useSearchParams() under a PRERENDERED route fails `next build`).
+  // An async component cannot be rendered synchronously, so this mirrors the LoginPage case above
+  // exactly rather than inventing a second pattern. Retarget, not a weakening: every assertion below
+  // is unchanged.
+  it("test_signup_page_uses_authshell", async () => {
+    const { container } = render(await SignupPage({ searchParams: Promise.resolve({}) }));
 
     expect(container.querySelector('[data-slot="auth-brand"]')).not.toBeNull();
     expect(container.querySelectorAll("form")).toHaveLength(1);
