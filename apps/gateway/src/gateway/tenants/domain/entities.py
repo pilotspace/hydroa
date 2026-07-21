@@ -188,3 +188,16 @@ class ImpersonationSession:
     expires_at: datetime
     revoked_at: datetime | None = None
     revoked_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingPersonalSignup:
+    """A repository-internal transfer object for a consumed pending_personal_signups row
+    (scoped-self-serve-signup TASK.md §3, FROZEN @ v1, SECURITY) — NEVER rides any API
+    schema (mirrors DomainClaim's code-fields-stay-internal convention). `password_hash`
+    is the already-argon2-hashed password computed at issuance (M6); confirm-time reuses
+    it unchanged, never re-hashing."""
+
+    email: str
+    tenant_name: str
+    password_hash: str

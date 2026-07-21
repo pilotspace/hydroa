@@ -14,6 +14,8 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway.access_requests.api.access_requests_router import access_requests_router
+from gateway.access_requests.infrastructure.rate_limiter import AccessRequestIpRateLimiter
 from gateway.agent_oauth.api.agent_principal_router import agents_router
 from gateway.agent_oauth.api.device_approval_router import agent_oauth_approval_router
 from gateway.agent_oauth.api.device_authorize_router import agent_oauth_device_router
@@ -1357,6 +1359,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fail-open on Redis outage.
     app.state.invite_public_limiter = InvitePublicRateLimiter(redis=redis_client)
 
+    # Per-client-IP rate limiter for the public access-requests endpoint
+    # (signup-refusal-router TASK.md §3, M7). Same redis_client; no IO at construction;
+    # fail-open on Redis outage.
+    app.state.access_request_limiter = AccessRequestIpRateLimiter(redis=redis_client)
+
     # Per-scim_token_id rate limiter for /scim/v2/* writes (scim-provisioning TASK.md §3,
     # M12). Same redis_client; no IO at construction; fail-open on Redis outage.
     app.state.scim_rate_limiter = ScimTokenRateLimiter(redis=redis_client)
@@ -1638,6 +1645,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(invite_accept_router)
     app.include_router(domain_invite_links_router)
     app.include_router(domain_invite_redeem_router)
+    app.include_router(access_requests_router)
     app.include_router(scim_token_router)
     app.include_router(scim_router)
     app.include_router(platform_tenants_router)

@@ -133,3 +133,20 @@ class SeatCapExceededError(IdentityError):
         self.plan_name = plan_name
         self.seat_cap = seat_cap
         self.current_seats = current_seats
+
+
+class PendingSignupNotFoundError(IdentityError):
+    """POST /admin/auth/signup/confirm — token unknown, already consumed, or never issued
+    (scoped-self-serve-signup TASK.md §3 M11/R5, FROZEN @ v1, SECURITY). Deliberately a
+    plain marker — no distinguishing detail beyond this class, mirroring
+    InviteNotFoundError's own indistinguishable-by-design shape."""
+
+    pass
+
+
+class PendingSignupExpiredError(IdentityError):
+    """POST /admin/auth/signup/confirm — a matching pending_personal_signups row existed
+    but its expires_at had passed (scoped-self-serve-signup TASK.md §3 M11/R6, FROZEN @
+    v1, SECURITY). The row is deleted as cleanup by the caller before this is raised."""
+
+    pass

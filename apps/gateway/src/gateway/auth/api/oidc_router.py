@@ -131,19 +131,43 @@ async def oidc_login(
     v2/CR-v2): when ?domain= is present, the tenant is resolved CLAIM-FIRST
     via the verified tenant_domain_claims source of truth (normalize_domain +
     resolve_verified_tenant — the one shared predicate) and the OIDC config is
-    then loaded by tenant_id — NEVER by an email_domains containment match. A
-    verified claim whose tenant has no enabled config fails closed with 403
-    ERR_OIDC_DOMAIN_NOT_MAPPED — never a 500 (no oracle between "unclaimed"
-    and "claimed but unconfigured"). When NO verified claim exists, the
-    EXISTING pre-unification resolution (resolver.resolve(domain), then the
-    env-Settings fallback below) is retained AS A FALLBACK — CR-v2 narrowed
-    v1's claim-ONLY design after it broke legacy per-tenant-config-seam and
-    env-routing tests that never establish a domain_capture claim.
+    then loaded by tenant_id — NEVER by an email_domains containment match.
+    When NO verified claim exists, the EXISTING pre-unification resolution
+    (resolver.resolve(domain), then the env-Settings fallback below) is
+    retained AS A FALLBACK — CR-v2 narrowed v1's claim-ONLY design after it
+    broke legacy per-tenant-config-seam and env-routing tests that never
+    establish a domain_capture claim.
+
+    ONE collapsed terminal (sso-login-oracle-closure TASK.md §3 — FROZEN @ v1,
+    which AMENDS domain-routing-unification §3 M2's `403 | 404` alternation to
+    404 only for this route). Every no-resolution case — no verified claim, a
+    verified claim whose tenant has no enabled config, and no ?domain= at all —
+    reaches the SAME terminal branch below. It raises the existing
+    OIDC_NOT_CONFIGURED spec with no detail/headers/extra, so the body is
+    byte-identical by construction. This route no longer raises
+    ERR_OIDC_DOMAIN_NOT_MAPPED at all (that 403 survives only in oidc_callback,
+    which is post-authentication and requires an IdP-signed ID token).
+
+    Why the collapse: this endpoint is unauthenticated and domain-parameterized,
+    so a distinct terminal for "claimed but unconfigured" let anyone walk a
+    domain list and separate verified customer domains from strangers — one GET
+    per domain, no auth. Note this is a CONTROL-FLOW property, not a choice of
+    error code: the claimed-but-unconfigured leg must FALL THROUGH rather than
+    raise, or under settings.oidc_enabled it 4xxs while the unclaimed leg 302s
+    and the oracle merely inverts.
+
+    ACCEPTED RESIDUAL (disclosed, not silently carried — §3): 302-vs-4xx is
+    still observable, so a prober can still learn whether a domain has SSO
+    configured, and the Location header names the IdP. That is inherent to
+    domain-based SSO discovery — routing a user to their IdP IS this endpoint's
+    function, and Okta/Slack/Google Workspace expose the same signal. What is
+    closed is the strictly worse leak: identifying a verified customer domain
+    that has not yet enabled SSO. Timing is likewise comparable but not
+    equalized between the two collapsed legs.
 
     Returns 302 redirect to IdP authorize endpoint with state + nonce + tenant cookies.
-    Returns 404 ERR_OIDC_NOT_CONFIGURED when no domain is supplied (or the
-    fallback resolution above also comes up empty) and env OIDC is disabled
-    (the pre-existing no-domain env-Settings shape, unchanged).
+    Returns 404 ERR_OIDC_NOT_CONFIGURED for every unresolved case when env OIDC
+    is disabled.
     """
     settings = request.app.state.settings
     domain: str | None = request.query_params.get("domain")
@@ -167,10 +191,20 @@ async def oidc_login(
                 oidc_config = await resolver.resolve_by_tenant_id(  # pyright: ignore[reportAttributeAccessIssue]  — guarded by hasattr; concrete DbOidcConfigResolver has resolve_by_tenant_id, Protocol doesn't
                     str(mapped_tenant_id)
                 )
-            if oidc_config is None:
-                # Claimed tenant has no enabled OIDC config — same fail-closed
-                # rejection as an unclaimed domain (M2: no oracle between the two).
-                raise OIDC_DOMAIN_NOT_MAPPED.exc()
+            # sso-login-oracle-closure §3 M1/M2: when the claimed tenant has NO
+            # enabled config, oidc_config stays None and we FALL THROUGH to the
+            # shared terminal below — deliberately NOT a short-circuit raise. A
+            # raise here (with any spec) re-creates the enumeration oracle: under
+            # settings.oidc_enabled the unclaimed leg reaches the env fallback and
+            # 302s while this leg would 4xx, telling a prober that this domain is a
+            # verified customer domain. Reaching the SAME terminal as every other
+            # unresolved case is the security property.
+            #
+            # The `elif` below is load-bearing, not stylistic: it makes it
+            # STRUCTURALLY impossible for a claimed domain to reach
+            # resolver.resolve(domain). A claimed domain routed by another tenant's
+            # email_domains containment match is the cross-tenant hijack
+            # domain-routing-unification M1/M8 closed. Do not flatten this branch.
         elif resolver is not None:  # pyright: ignore[reportUnnecessaryComparison]  — defensive; get_oidc_config_resolver may return None when OIDC DI is unconfigured
             # CR-v2 fallback: no verified claim — retain the EXISTING
             # domain-keyed resolution (deterministic DbOidcConfigResolver.resolve,

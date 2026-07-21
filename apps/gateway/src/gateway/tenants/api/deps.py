@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_TOKEN_MISSING
 from gateway.tenants.application.use_cases import (
+    ConfirmPendingSignupUseCase,
     GetIdentityUseCase,
+    IssuePendingSignupUseCase,
     LoginUseCase,
     SignupUseCase,
 )
@@ -61,6 +63,32 @@ def get_identity_use_case(
             timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
         ),
     )
+
+
+def get_issue_pending_signup_use_case(
+    request: Request, session: AsyncSession
+) -> IssuePendingSignupUseCase:
+    """scoped-self-serve-signup TASK.md §3 (FROZEN @ v1, SECURITY). Reuses the SAME
+    request.app.state.password_hasher instance every other signup/login use-case reads —
+    the M6 timing-mask call-count assertion (test_probe_registered_vs_unknown_
+    indistinguishable) depends on this being the identical, monkeypatchable instance, not
+    a fresh Argon2PasswordHasher(). Called directly (request, session) — mirrors
+    domain_capture/api/deps.py::get_join_tenant_use_case's own plain-function shape, the
+    style tenants/api/router.py::signup already uses for its sibling call sites."""
+    settings = request.app.state.settings
+    return IssuePendingSignupUseCase(
+        SqlAlchemyIdentityRepository(session),
+        request.app.state.password_hasher,
+        request.app.state.email_sender,
+        confirm_ttl_seconds=settings.personal_signup_confirm_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
+
+
+def get_confirm_pending_signup_use_case(
+    request: Request, session: AsyncSession
+) -> ConfirmPendingSignupUseCase:
+    return ConfirmPendingSignupUseCase(SqlAlchemyIdentityRepository(session))
 
 
 def get_bearer_token(request: Request) -> str:

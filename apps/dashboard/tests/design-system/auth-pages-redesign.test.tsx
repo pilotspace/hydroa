@@ -108,19 +108,30 @@ describe("LoginForm — Card-wrapped fields + styled SSO", () => {
   });
 });
 
-describe("SignupForm — Card-wrapped fields, no SSO", () => {
-  it("test_signup_form_card_no_sso", () => {
+describe("SignupForm — Card-wrapped fields, with alt-routes panel", () => {
+  it("test_signup_form_card_with_alt_routes", () => {
     const { container } = render(<SignupForm />);
 
     const card = container.querySelector('[data-slot="auth-card"]');
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByLabelText(/tenant name/i)).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByLabelText(/email/i)).toBeInTheDocument();
+    // The main signup email field, disambiguated from the request-access mini-form's own
+    // email input by its stable id (see signup-refusal-router SignupForm changes).
     expect(within(card as HTMLElement).getByLabelText(/password/i)).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /^sign up$/i })).toBeInTheDocument();
-    // Signup has NO SSO entry.
-    expect(screen.queryByRole("link", { name: /sso/i })).toBeNull();
+
+    // RETARGETED (not weakened) by signup-refusal-router TASK.md §3 M2 (FROZEN @ v1,
+    // human-approved): the earlier v23 "signup has NO SSO entry" assertion is superseded.
+    // SignupForm now renders an unconditional alt-routes panel so a member of an existing
+    // tenant is routed forward (SSO / invite link / request access) instead of dead-ending
+    // on the invite-only refusal. Same reconciliation shape as the Aurora→Airier design-
+    // system test retargets (precedent commit 9ec92b4). Assert the NEW reality.
+    const altRoutes = container.querySelector('[data-slot="signup-alt-routes"]');
+    expect(altRoutes).not.toBeNull();
+    expect(
+      within(altRoutes as HTMLElement).getByRole("link", { name: /sign in with sso/i }),
+    ).toBeInTheDocument();
   });
 });
 

@@ -160,6 +160,26 @@ SIGNUP_PLAN_UNPROVISIONED = ErrorSpec(
     "Personal signup is temporarily unavailable; the free plan is not provisioned",
 )
 
+#: POST /admin/auth/signup/confirm — token unknown, already consumed, or never issued
+#: (scoped-self-serve-signup TASK.md §3 M11/R5, FROZEN @ v1, SECURITY). Safe to disclose
+#: here (R-sec-6): distinguishable confirm-time states are only ever observed by whoever
+#: already possesses the emailed token — never by an anonymous prober of the initial
+#: /admin/auth/signup endpoint, so this does not reopen the S1 enumeration property.
+SIGNUP_CONFIRM_INVALID = ErrorSpec(
+    400,
+    "ERR_SIGNUP_CONFIRM_INVALID",
+    "This confirmation link is invalid or has already been used",
+)
+
+#: POST /admin/auth/signup/confirm — a matching pending row existed but its TTL had
+#: passed (scoped-self-serve-signup TASK.md §3 M11/R6). The expired row is deleted as
+#: cleanup; the caller must re-submit /admin/auth/signup for a fresh token.
+SIGNUP_CONFIRM_EXPIRED = ErrorSpec(
+    410,
+    "ERR_SIGNUP_CONFIRM_EXPIRED",
+    "This confirmation link has expired; please sign up again",
+)
+
 # ---------------------------------------------------------------------------
 # Model errors
 # ---------------------------------------------------------------------------

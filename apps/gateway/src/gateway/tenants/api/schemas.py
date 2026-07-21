@@ -24,6 +24,24 @@ class SignupResponse(BaseModel):
     joined_existing_tenant: bool = False
 
 
+class SignupPendingResponse(BaseModel):
+    """scoped-self-serve-signup TASK.md §3 (FROZEN @ v1, SECURITY) — the UNIFORM 202 body
+    for the personal-tier deferred-creation signup path (M7/M9): IDENTICAL in shape and
+    value whether the submitted email is brand-new or already registered — the only
+    difference (which email template is dispatched) happens entirely out-of-band, never
+    reflected in this body."""
+
+    status: Literal["pending_verification"] = "pending_verification"
+    email: EmailStr
+
+
+class ConfirmSignupRequest(BaseModel):
+    """POST /admin/auth/signup/confirm body — PUBLIC, no bearer auth (scoped-self-serve-
+    signup TASK.md §3 M10). The token is the ONLY credential, delivered solely by email."""
+
+    token: str
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

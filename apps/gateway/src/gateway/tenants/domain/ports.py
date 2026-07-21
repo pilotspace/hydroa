@@ -1,7 +1,14 @@
 import uuid
+from datetime import datetime
 from typing import Protocol
 
-from gateway.tenants.domain.entities import Identity, ImpersonationContext, Role, User
+from gateway.tenants.domain.entities import (
+    Identity,
+    ImpersonationContext,
+    PendingPersonalSignup,
+    Role,
+    User,
+)
 from gateway.tenants.domain.entitlements import ResolvedEntitlements
 
 
@@ -32,6 +39,36 @@ class IdentityRepository(Protocol):
         ...
 
     async def get_user_by_email(self, email: str) -> User | None: ...
+
+    async def issue_or_reissue_pending_signup(
+        self,
+        *,
+        email: str,
+        tenant_name: str,
+        password_hash: str,
+        confirm_token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        """ADDITIVE (scoped-self-serve-signup TASK.md §3 M8 — FROZEN @ v1, SECURITY):
+        UPSERT-by-email (create-or-reissue idiom, mirrors CreateDomainClaimUseCase) — a
+        repeat not-yet-confirmed submission for the SAME email overwrites token hash +
+        expiry; the previous token stops working."""
+        ...
+
+    async def consume_pending_signup(
+        self, *, confirm_token_hash: str
+    ) -> PendingPersonalSignup | None:
+        """ADDITIVE (M10 — FROZEN @ v1, SECURITY): one atomic
+        `DELETE ... WHERE confirm_token_hash = :hash AND expires_at > now() RETURNING *`
+        — single-use by construction; a concurrent double-confirm of the SAME token can
+        never both return a row. None on a miss (unknown / already-consumed / expired)."""
+        ...
+
+    async def pop_expired_pending_signup(self, *, confirm_token_hash: str) -> bool:
+        """ADDITIVE (M11 — FROZEN @ v1, SECURITY): called ONLY when consume_pending_signup
+        misses, to distinguish "expired" from "never existed / already consumed" and
+        opportunistically clean up. True iff a matching (expired) row was deleted."""
+        ...
 
     async def get_or_provision_oidc_user(
         self,

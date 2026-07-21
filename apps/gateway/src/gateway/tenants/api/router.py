@@ -2,6 +2,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
@@ -11,9 +12,13 @@ from gateway.core.error_catalog import (
     AUTH_PASSWORD_WEAK,
     AUTH_TOKEN_INVALID,
     PLAN_SEAT_CAP_EXCEEDED,
+    RATE_LIMITED,
+    SIGNUP_CONFIRM_EXPIRED,
+    SIGNUP_CONFIRM_INVALID,
     SIGNUP_INVITE_ONLY,
     SIGNUP_PLAN_UNPROVISIONED,
 )
+from gateway.core.net import resolve_trusted_client_ip
 from gateway.domain_capture.api.deps import (
     get_domain_claim_resolver,
     get_issue_member_verify_code_use_case,
@@ -21,14 +26,18 @@ from gateway.domain_capture.api.deps import (
 )
 from gateway.tenants.api.deps import (
     get_bearer_token,
+    get_confirm_pending_signup_use_case,
     get_identity_use_case,
+    get_issue_pending_signup_use_case,
     get_login_use_case,
     get_signup_use_case,
 )
 from gateway.tenants.api.schemas import (
+    ConfirmSignupRequest,
     LoginRequest,
     LoginResponse,
     MeResponse,
+    SignupPendingResponse,
     SignupRequest,
     SignupResponse,
 )
@@ -42,8 +51,14 @@ from gateway.tenants.domain.errors import (
     IndividualPlanMissingError,
     InvalidCredentialsError,
     InvalidTokenError,
+    PendingSignupExpiredError,
+    PendingSignupNotFoundError,
     SeatCapExceededError,
     WeakPasswordError,
+)
+from gateway.tenants.infrastructure.invite_public_rate_limiter import (
+    InvitePublicRateLimiter,
+    InviteRateLimitedError,
 )
 from gateway.tenants.infrastructure.repository import get_tenant_by_id
 
@@ -58,7 +73,7 @@ async def signup(
     body: SignupRequest,
     use_case: Annotated[SignupUseCase, Depends(get_signup_use_case)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> SignupResponse:
+) -> SignupResponse | JSONResponse:
     # domain-capture TASK.md §3 M8 (FROZEN @ v1, disclosed amendment to S1 M2's own "zero
     # DB IO when disabled" property — Tin-confirmed at freeze): the verified-domain lookup
     # runs BEFORE the public_signup_enabled check below, so a tenant OWNER's proven domain
@@ -104,6 +119,56 @@ async def signup(
         return SignupResponse(
             tenant_id=claimed_tenant_id, user_id=user_id, joined_existing_tenant=True
         )
+
+    # scoped-self-serve-signup TASK.md §3 (FROZEN @ v1, SECURITY) — inserted ahead of the
+    # S1 gate below (M14): a personal-tier signup that fell through the verified-domain-
+    # claim check above may self-serve via a DEFERRED-creation, rate-limited, uniform-
+    # response path when the NEW, narrow public_signup_personal_enabled flag is on. NEVER
+    # read anywhere near public_signup_enabled (M1) — business signups (and personal
+    # signups with this flag OFF) are entirely unaffected and fall through unchanged to
+    # the S1 gate immediately below.
+    settings = request.app.state.settings
+    if body.account_type == "personal" and settings.public_signup_personal_enabled:
+        # M3: rate-limit FIRST, uniform, fail-open — BEFORE any further DB IO, regardless
+        # of whether the submitted email is registered. Reuses the EXISTING
+        # InvitePublicRateLimiter / app.state.invite_public_limiter with 2 new `action`
+        # labels; client IP via the EXISTING resolve_trusted_client_ip (never raw
+        # request.client.host).
+        limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
+        client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
+        normalized_email = body.email.lower()
+        try:
+            await limiter.check(
+                action="personal_signup_ip", key=client_ip, limit=settings.personal_signup_ip_rpm
+            )
+            await limiter.check(
+                action="personal_signup_email",
+                key=normalized_email,
+                limit=settings.personal_signup_email_rpm,
+            )
+        except InviteRateLimitedError as exc:
+            raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
+
+        issue_pending_use_case = get_issue_pending_signup_use_case(request, session)
+        try:
+            await issue_pending_use_case.execute(
+                tenant_name=body.tenant_name, email=body.email, password=body.password
+            )
+        except WeakPasswordError:
+            raise AUTH_PASSWORD_WEAK.exc() from None
+        except IndividualPlanMissingError:
+            raise SIGNUP_PLAN_UNPROVISIONED.exc() from None
+
+        # M7: the uniform anti-enumeration response — IDENTICAL status/body whether the
+        # target email was fresh (M8) or already registered (M9). Returned as a bare
+        # JSONResponse (bypassing this route's own response_model=SignupResponse /
+        # status_code=201 decorator defaults) since this branch's shape and status code
+        # are contractually DIFFERENT (202 SignupPendingResponse) from every other branch
+        # of this endpoint.
+        pending_response = SignupPendingResponse(
+            status="pending_verification", email=normalized_email
+        )
+        return JSONResponse(status_code=202, content=pending_response.model_dump(mode="json"))
 
     # Invite-only gate (S1): refuse public signup unless explicitly enabled. Checked
     # BEFORE the use case is invoked and before any FURTHER DB IO — so a disabled
@@ -152,6 +217,50 @@ async def signup(
             )
 
     return SignupResponse(tenant_id=tenant_id, user_id=user_id)
+
+
+@router.post("/signup/confirm", status_code=201, response_model=SignupResponse)
+async def signup_confirm(
+    request: Request,
+    body: ConfirmSignupRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SignupResponse:
+    """scoped-self-serve-signup TASK.md §3 (FROZEN @ v1, SECURITY) — M10/M11/M12/M13.
+
+    PUBLIC, no bearer auth — the token is the ONLY credential (delivered solely by
+    email). Distinguishing invalid/expired/taken here is safe (R-sec-6): reachable in a
+    meaningful way ONLY by whoever already possesses the emailed token, never by an
+    anonymous prober of the initial /admin/auth/signup endpoint.
+    """
+    settings = request.app.state.settings
+    # M13: defense-in-depth per-IP rate limit on this endpoint — the 256-bit token space
+    # is already brute-force-infeasible; this bounds abuse of the endpoint itself.
+    limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
+    try:
+        await limiter.check(
+            action="personal_signup_confirm",
+            key=client_ip,
+            limit=settings.personal_signup_confirm_rpm,
+        )
+    except InviteRateLimitedError as exc:
+        raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
+
+    confirm_use_case = get_confirm_pending_signup_use_case(request, session)
+    try:
+        tenant_id, user_id = await confirm_use_case.execute(token=body.token)
+    except PendingSignupExpiredError:
+        raise SIGNUP_CONFIRM_EXPIRED.exc() from None
+    except PendingSignupNotFoundError:
+        raise SIGNUP_CONFIRM_INVALID.exc() from None
+    except IndividualPlanMissingError:
+        raise SIGNUP_PLAN_UNPROVISIONED.exc() from None
+    except EmailAlreadyRegisteredError:
+        # M12/R7: confirm-time race against an UNRELATED signup path for the same email
+        # (safe to reveal here — R-sec-6, the caller is token-possession-authenticated).
+        raise AUTH_EMAIL_TAKEN.exc() from None
+
+    return SignupResponse(tenant_id=tenant_id, user_id=user_id, joined_existing_tenant=False)
 
 
 @router.post("/login", response_model=LoginResponse)

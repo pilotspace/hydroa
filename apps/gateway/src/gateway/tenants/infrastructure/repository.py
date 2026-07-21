@@ -1,7 +1,8 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,9 +10,10 @@ from gateway.auth.domain.errors import OidcTenantConflictError
 from gateway.auth.domain.saml_errors import SamlTenantConflictError
 from gateway.core.ids import uuid7
 from gateway.tenants.application.entitlements import assert_seat_available
-from gateway.tenants.domain.entities import Role, User
+from gateway.tenants.domain.entities import PendingPersonalSignup, Role, User
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError, SeatCapExceededError
 from gateway.tenants.infrastructure.orm import (
+    PendingPersonalSignupRow,
     PlanRow,
     SeatMembershipEventRow,
     TenantRow,
@@ -343,3 +345,82 @@ class SqlAlchemyIdentityRepository:
             ),
             True,
         )
+
+    # ── scoped-self-serve-signup TASK.md §3 (FROZEN @ v1, SECURITY) — additive ─────────
+
+    async def issue_or_reissue_pending_signup(
+        self,
+        *,
+        email: str,
+        tenant_name: str,
+        password_hash: str,
+        confirm_token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        """UPSERT-by-email (M8, create-or-reissue idiom — mirrors
+        CreateDomainClaimUseCase/SqlAlchemyDomainClaimRepository.create_or_reissue's own
+        pg_insert(...).on_conflict_do_update shape exactly): a repeat not-yet-confirmed
+        submission for the SAME email overwrites token hash + expiry, so the previous
+        (now-superseded) token stops matching any row."""
+        stmt = (
+            pg_insert(PendingPersonalSignupRow)
+            .values(
+                id=uuid7(),
+                email=email,
+                tenant_name=tenant_name,
+                password_hash=password_hash,
+                confirm_token_hash=confirm_token_hash,
+                expires_at=expires_at,
+            )
+            .on_conflict_do_update(
+                index_elements=[PendingPersonalSignupRow.email],
+                set_={
+                    "tenant_name": tenant_name,
+                    "password_hash": password_hash,
+                    "confirm_token_hash": confirm_token_hash,
+                    "expires_at": expires_at,
+                },
+            )
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+
+    async def consume_pending_signup(
+        self, *, confirm_token_hash: str
+    ) -> PendingPersonalSignup | None:
+        """M10: one atomic DELETE ... WHERE confirm_token_hash = :hash AND
+        expires_at > now() RETURNING * — single-use by construction. Under Postgres
+        READ COMMITTED, a concurrent second DELETE targeting the SAME row blocks on the
+        row lock until the first commits, then re-evaluates the WHERE clause and finds no
+        matching row — so a concurrent double-confirm of the same token can never both
+        return a row (the M10 atomicity scenario)."""
+        stmt = (
+            delete(PendingPersonalSignupRow)
+            .where(
+                PendingPersonalSignupRow.confirm_token_hash == confirm_token_hash,
+                PendingPersonalSignupRow.expires_at > func.now(),
+            )
+            .returning(PendingPersonalSignupRow)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return PendingPersonalSignup(
+            email=row.email, tenant_name=row.tenant_name, password_hash=row.password_hash
+        )
+
+    async def pop_expired_pending_signup(self, *, confirm_token_hash: str) -> bool:
+        """M11: called ONLY when consume_pending_signup misses — deletes a matching row
+        regardless of expiry so the caller can distinguish "expired" (a row existed here)
+        from "never existed / already consumed" (nothing to delete), with cleanup as a
+        side effect. True iff a row was deleted."""
+        stmt = (
+            delete(PendingPersonalSignupRow)
+            .where(PendingPersonalSignupRow.confirm_token_hash == confirm_token_hash)
+            .returning(PendingPersonalSignupRow.id)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        return result.scalar_one_or_none() is not None

@@ -2,8 +2,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FeatureCard } from "@/components/marketing/feature-card";
+import { BaseUrlSwap } from "@/components/marketing/base-url-swap";
 import { Reveal } from "@/components/ui";
 import { buildMetadata } from "@/lib/seo";
+import { publicApiBaseUrl } from "@/lib/public-api-base-url";
+import { formatBasePrice, getPricingCatalogEntry } from "@/lib/pricing-catalog";
 
 export const metadata = buildMetadata({
   title: "Hydroa — AI Proxy for Enterprise Teams",
@@ -131,10 +134,14 @@ export default function MarketingRootPage() {
           <Button asChild size="lg" className="shadow-md">
             <Link href="/signup">Get started</Link>
           </Button>
+          <Button asChild variant="ghost" size="lg">
+            <Link href="/signup?account_type=business">For your team</Link>
+          </Button>
           <Button asChild variant="outline" size="lg">
             <Link href="/login">Log in</Link>
           </Button>
         </div>
+        <BaseUrlSwap baseUrl={publicApiBaseUrl()} />
       </Reveal>
 
       {/* ── FEATURES (#product) ──────────────────────────────────────────── */}
@@ -184,6 +191,15 @@ export default function MarketingRootPage() {
           <p className="mt-4 text-muted-foreground">
             From solo teams to enterprise deployments. Usage-based tiers with no
             hidden fees — you pay for what you proxy.
+          </p>
+          <p
+            data-slot="price-anchor"
+            className="mt-3 text-sm font-medium text-foreground"
+          >
+            {formatBasePrice(getPricingCatalogEntry("free").basePriceUsd, "Free")}{" "}
+            to start · plans from{" "}
+            {formatBasePrice(getPricingCatalogEntry("starter").basePriceUsd, "Free")}
+            /mo
           </p>
           <div className="mt-8">
             <Button asChild variant="outline" size="lg">
@@ -265,9 +281,12 @@ export default function MarketingRootPage() {
           <p className="mt-4 text-primary-foreground/80">
             Start routing, tracking, and governing AI usage across your organisation today.
           </p>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Button asChild variant="secondary" size="lg">
               <Link href="/signup">Get started</Link>
+            </Button>
+            <Button asChild variant="ghost" size="lg">
+              <Link href="/signup?account_type=business">For your team</Link>
             </Button>
           </div>
         </div>

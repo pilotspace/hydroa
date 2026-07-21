@@ -1291,7 +1291,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-20T11:18:07+00:00",
+  "updated": "2026-07-21T05:21:16+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2326,6 +2326,23 @@
         "invite-by-domain-ui"
       ],
       "archived": "2026-07-20"
+    },
+    {
+      "slug": "frontdoor-persona-routing",
+      "title": "Front-door persona routing",
+      "tasks": 9,
+      "task_slugs": [
+        "scoped-self-serve-signup",
+        "signup-refusal-router",
+        "homepage-integration-proof",
+        "homepage-price-anchor",
+        "homepage-cta-intent-split",
+        "domain-aware-auth-routing",
+        "unified-signin-entry",
+        "pricing-tier-ladder",
+        "sso-login-oracle-closure"
+      ],
+      "archived": "2026-07-21"
     }
   ],
   "active_milestones": [
@@ -2671,6 +2688,12 @@
       "id": 55,
       "text": "dashboard: 13 pre-existing Airier design-token test failures (design-system/aurora-classic-blue, premium-console, tokens, enterprise-ext, marketing-seo) expect the retired Classic-Blue palette \u2014 route to the design-foundation owner; not commercial-self-serve debt.",
       "created": "2026-07-17T18:40:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 56,
+      "text": "Pre-existing pyright debt on main (not wave-1): mcp_connector/application/use_cases.py:496 candidate_body possibly-unbound; tenants/application/domain_invite_link_use_cases.py:21 unused UTC import. Billing-blocked CI let these slip. Fix in a dedicated cleanup, not a feature milestone.",
+      "created": "2026-07-20T17:18:51+00:00",
       "status": "open"
     }
   ]
