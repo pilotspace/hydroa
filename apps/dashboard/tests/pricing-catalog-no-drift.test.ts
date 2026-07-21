@@ -70,8 +70,10 @@ describe("test_pricing_page_derives_from_catalog_not_a_literal", () => {
     const teamEntry = getPricingCatalogEntry("team");
     const entEntry = getPricingCatalogEntry("enterprise");
 
+    // Free tier's null base price renders "$0" (Tin-decided 2026-07-21, re-cross) so it
+    // does not duplicate the card's own "Free" title as an ambiguous by-text match.
     expect(
-      within(freeCard).getByText(formatBasePrice(freeEntry.basePriceUsd, "Free")),
+      within(freeCard).getByText(formatBasePrice(freeEntry.basePriceUsd, "$0")),
     ).toBeInTheDocument();
     expect(
       within(teamCard).getByText(formatBasePrice(teamEntry.basePriceUsd, "Free")),

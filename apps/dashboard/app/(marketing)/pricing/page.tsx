@@ -39,24 +39,56 @@ type Tier = {
   featured?: boolean;
 };
 
-// plan-tiers-and-base-fee TASK.md §3 (FROZEN @ v1, M4): price text derives from the
-// shared PRICING_CATALOG module (backed by a no-drift test), never a re-hardcoded
-// literal — still exactly 3 rendered cards (no IA change, milestone Scope is "minimal").
-// This page's "Starter" card is the free evaluation entry point — it binds to the
-// catalog's `free` tier (basePriceUsd NULL -> "Free"), not the catalog's own `starter`
-// tier (a distinct, NOT-yet-rendered personal $1 tier); the displayed copy is
-// byte-identical to before this task shipped.
+// pricing-tier-ladder TASK.md §3 (FROZEN @ v1) — CHANGE REQUEST to plan-tiers-and-
+// base-fee TASK.md §3's "still 3 rendered cards" clause (every other clause there —
+// Schema/ORM/Invoice/Signup/the no-drift MECHANISM — is unchanged and still governs).
+// All 5 PRICING_CATALOG tiers now render, ascending-price / personal-then-business
+// order: Free, Starter, Pro, Team, Enterprise. Every price/qualifier is still
+// formatBasePrice(getPricingCatalogEntry(<name>).basePriceUsd, <nullLabel>) — never a
+// re-hardcoded literal (M1). The card that used to be mislabeled "Starter" while
+// actually binding to the catalog's `free` entry is renamed "Free" (matching
+// PRICING_CATALOG's own displayName) so the catalog's real `starter` ($1) tier can
+// finally own the "Starter" label — resolving the naming collision (M2).
 const TIERS: Tier[] = [
   {
-    name: "Starter",
-    price: formatBasePrice(getPricingCatalogEntry("free").basePriceUsd, "Free"),
+    name: "Free",
+    // Null base price renders as "$0" (not the word "Free") so it never collides with the
+    // card's own "Free" title — a card that reads "Free / Free" is redundant, and the
+    // duplicate leaf text made the by-text price assertion ambiguous. Tin-decided 2026-07-21.
+    price: formatBasePrice(getPricingCatalogEntry("free").basePriceUsd, "$0"),
     qualifier: "for evaluation",
     description: "Single tenant, get a feel for the proxy.",
     features: [
-      "1 tenant, up to 3 users",
+      "1 tenant, up to 1 user",
       "Multi-provider routing",
       "Basic usage & cost tracking",
       "Community support",
+    ],
+    cta: { label: "Get started", href: "/signup" },
+  },
+  {
+    name: "Starter",
+    price: formatBasePrice(getPricingCatalogEntry("starter").basePriceUsd, "Free"),
+    qualifier: "per month",
+    description: "For a single builder ready to move past evaluation.",
+    features: [
+      "1 tenant, up to 1 user",
+      "Multi-provider routing",
+      "Usage & cost tracking",
+      "Community support",
+    ],
+    cta: { label: "Get started", href: "/signup" },
+  },
+  {
+    name: "Pro",
+    price: formatBasePrice(getPricingCatalogEntry("pro").basePriceUsd, "Free"),
+    qualifier: "per month",
+    description: "For a power user who wants more headroom.",
+    features: [
+      "1 tenant, up to 1 user",
+      "Multi-provider routing",
+      "Usage & cost tracking",
+      "Email support",
     ],
     cta: { label: "Get started", href: "/signup" },
   },
@@ -115,7 +147,7 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="mx-auto mt-14 grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="mx-auto mt-14 grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {TIERS.map((tier) => {
             const tierId = `tier-${tier.name.toLowerCase()}`;
             return (

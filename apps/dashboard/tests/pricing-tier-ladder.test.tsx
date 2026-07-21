@@ -63,7 +63,7 @@ describe("test_all_5_tiers_render_in_ascending_order", () => {
   it("every card's price text equals formatBasePrice(that tier's basePriceUsd, its nullLabel)", () => {
     renderPricing();
     const expectations: Array<[name: string, catalogKey: string, nullLabel: string]> = [
-      ["Free", "free", "Free"],
+      ["Free", "free", "$0"],
       ["Starter", "starter", "Free"],
       ["Pro", "pro", "Free"],
       ["Team", "team", "Free"],
@@ -219,7 +219,7 @@ describe("test_dark_theme_renders_all_5_cards_correctly", () => {
   it("every card's price/background pairing uses only theme-aware token classes, never a raw color", () => {
     renderPricing();
     const expectations: Array<[name: string, catalogKey: string, nullLabel: string]> = [
-      ["Free", "free", "Free"],
+      ["Free", "free", "$0"],
       ["Starter", "starter", "Free"],
       ["Pro", "pro", "Free"],
       ["Team", "team", "Free"],
