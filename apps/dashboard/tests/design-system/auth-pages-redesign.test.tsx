@@ -89,8 +89,9 @@ describe("LoginForm — Card-wrapped fields + styled SSO", () => {
     // Fields live inside the token-styled auth Card.
     const card = container.querySelector('[data-slot="auth-card"]');
     expect(card).not.toBeNull();
-    // Exact /^email$/ — the password-login email field (distinct from the SSO
-    // "Work email or domain" field added by the sso-login-button task).
+    // Exact /^email$/ — the single merged email field. It was once distinct from a separate SSO
+    // "Work email or domain" field; merge-login-email-field retired that second field, so this one
+    // now drives password login, SSO/SAML, and classification alike.
     expect(within(card as HTMLElement).getByLabelText(/^email$/i)).toBeInTheDocument();
     expect(within(card as HTMLElement).getByLabelText(/password/i)).toBeInTheDocument();
 
@@ -101,10 +102,17 @@ describe("LoginForm — Card-wrapped fields + styled SSO", () => {
     // domain-driven handler (sso-login-button task supersedes the v24 <a> design).
     const sso = screen.getByRole("button", { name: /sign in with sso/i });
     expect(sso.className).toContain("inline-flex"); // buttonVariants base marker
-    // The new work-email/domain field drives the SSO ?domain=.
+    // RETARGET (merge-login-email-field): the SSO ?domain= is now driven by the SAME merged "Email"
+    // field asserted above — there is no longer a second, separate input. The guarantee is
+    // unchanged (an SSO-driving field exists inside the card); only the control it names moved.
+    // Asserted as EXACTLY ONE email-shaped input, so a reintroduced second field fails loudly
+    // rather than passing silently.
     expect(
-      within(card as HTMLElement).getByLabelText(/work email or domain/i),
-    ).toBeInTheDocument();
+      within(card as HTMLElement).queryByLabelText(/work email or domain/i),
+    ).toBeNull();
+    expect(
+      within(card as HTMLElement).getAllByLabelText(/email/i),
+    ).toHaveLength(1);
   });
 });
 

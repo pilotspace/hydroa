@@ -59,9 +59,10 @@ describe("LoginForm — SAML SSO affordance (M6)", () => {
   it("test_saml_affordance_navigates_with_domain", async () => {
     // covers: M6 — clicking it, with a domain entered, full-page-navigates toward
     // the SAML login-init path carrying the resolved domain (mirrors the OIDC
-    // button's own ?domain= navigation shape).
+    // button's own ?domain= navigation shape). Retarget (merge-login-email-field
+    // §3): selector only — the domain is now typed into the merged "Email" field.
     render(<LoginForm />);
-    await user.type(screen.getByLabelText(/work email or domain/i), "alice@acme.com");
+    await user.type(screen.getByLabelText(/^email$/i), "alice@acme.com");
     await user.click(screen.getByRole("button", { name: /saml/i }));
 
     await waitFor(() => expect(assign).toHaveBeenCalled());

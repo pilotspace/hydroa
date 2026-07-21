@@ -172,8 +172,11 @@ describe("LoginForm — SSO entry", () => {
     expect(
       screen.getByRole("button", { name: /sign in with sso/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/work email or domain/i)).toBeInTheDocument();
-    // the email/password form is unchanged
+    // RETARGET (merge-login-email-field): the separate "Work email or domain" input is retired —
+    // the merged "Email" field below now drives SSO as well as password login. The guarantee this
+    // test encodes (the SSO button has a field feeding its ?domain=) is unchanged; the control moved.
+    expect(screen.queryByLabelText(/work email or domain/i)).toBeNull();
+    // the email/password form is unchanged — and is now also the SSO domain source
     expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
   });

@@ -42,13 +42,16 @@ beforeEach(() => {
 
 describe("LoginForm — SSO domain seeded from a ?domain= query param (M2)", () => {
   it("test_login_prefills_from_domain_query_param", async () => {
-    // covers: M2 — arriving at /login?domain=acme.com pre-fills "Work email or
-    // domain" with "acme.com", with no stored localStorage value to conflict.
+    // covers: M2, M6 — arriving at /login?domain=acme.com pre-fills the single
+    // merged "Email" field with "acme.com", with no stored localStorage value
+    // to conflict. Retarget (merge-login-email-field §3): selector only — the
+    // seeded value now pre-fills the SAME field password login also uses (⚠
+    // disclosed at CONTRACT); the prefill guarantee itself is intact.
     setDomainParam("acme.com");
     render(<LoginForm />);
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/work email or domain/i)).toHaveValue("acme.com"),
+      expect(screen.getByLabelText(/^email$/i)).toHaveValue("acme.com"),
     );
   });
 
@@ -56,11 +59,12 @@ describe("LoginForm — SSO domain seeded from a ?domain= query param (M2)", () 
     // covers: M2 (guard) — absent param must not throw or clobber the existing
     // localStorage seed path (tests/sso-login.test.tsx already pins that path
     // byte-unchanged; this only proves the new read degrades safely to empty).
+    // Retarget: selector only.
     setDomainParam(null);
     render(<LoginForm />);
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/work email or domain/i)).toHaveValue(""),
+      expect(screen.getByLabelText(/^email$/i)).toHaveValue(""),
     );
   });
 });
