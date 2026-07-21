@@ -1425,6 +1425,15 @@ async def test_guardrails_core_migration_column_exists(
     # Guardrails-core still adds no tables of its own; invariant intent unchanged. (Surfaced by
     # the domain-onboarding-softening pre-close full-suite cross-task-drift check — this manifest
     # lives separately from tests/migrations EXPECTED_TABLES, which the 6a task already updated.)
+    # SANCTIONED EDIT (frontdoor-persona-routing pre-merge full-suite cross-task-drift check,
+    # 2026-07-21): added pending_personal_signups (scoped-self-serve-signup §3, migration
+    # b8e1c4f2a9d6, owned by tenants/ context) and access_requests (signup-refusal-router,
+    # migration b8c1f4a2d6e9, owned by the NEW access_requests/ context) — additive migrations,
+    # NEW tables owned by their own tasks' contexts, registered on Base.metadata via side-effect
+    # ORM imports (same precedent as every entry above). Guardrails-core still adds no tables of
+    # its own; invariant intent unchanged. (Surfaced again by the SAME M1/M2 cross-manifest lesson —
+    # this manifest lives separately from tests/migrations EXPECTED_TABLES, which both tasks
+    # already updated.)
     new_tables = (
         await db_session.execute(
             text(
@@ -1447,7 +1456,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'tenant_priority_markup_overrides',"
                 " 'agent_principals','tenant_report_schedules','compliance_report_runs',"
                 " 'checkout_sessions',"
-                " 'domain_invite_links','domain_invite_redemptions')"
+                " 'domain_invite_links','domain_invite_redemptions',"
+                " 'pending_personal_signups','access_requests')"
             )
         )
     ).fetchall()

@@ -197,6 +197,72 @@ class Settings(BaseSettings):
     # deploy bootstraps its first tenant by temporarily flipping this on.
     public_signup_enabled: bool = False  # GATEWAY_PUBLIC_SIGNUP_ENABLED
 
+    # ── Scoped self-serve signup — personal tier (scoped-self-serve-signup TASK.md §3,
+    # FROZEN @ v1, SECURITY) ──────────────────────────────────────────────────────────
+    # Default OFF. NARROWLY scoped to account_type=='personal' signups that already fell
+    # through the verified-domain-claim check — NEVER read anywhere near the flag above
+    # (public_signup_enabled, business/global); zero coupling to it by construction.
+    public_signup_personal_enabled: bool = False  # GATEWAY_PUBLIC_SIGNUP_PERSONAL_ENABLED
+    # Confirm-token TTL: 24h default — an email a visitor may not click immediately,
+    # unlike the member-verify code's ~15-min TTL (which bounds an ONLINE brute-force
+    # this 256-bit token doesn't have).
+    personal_signup_confirm_ttl_seconds: int = 86400  # GATEWAY_PERSONAL_SIGNUP_CONFIRM_TTL_SECONDS
+    # Per-client-IP / per-normalized-email fixed-window rate limits on the initial POST
+    # (M3) — reuses the EXISTING InvitePublicRateLimiter with 2 new `action` labels.
+    personal_signup_ip_rpm: int = 20  # GATEWAY_PERSONAL_SIGNUP_IP_RPM
+    personal_signup_email_rpm: int = 5  # GATEWAY_PERSONAL_SIGNUP_EMAIL_RPM
+    # Per-client-IP rate limit on POST /admin/auth/signup/confirm (M13, defense-in-depth
+    # — the 256-bit token space is already brute-force-infeasible).
+    personal_signup_confirm_rpm: int = 30  # GATEWAY_PERSONAL_SIGNUP_CONFIRM_RPM
+
+    @field_validator(
+        "personal_signup_ip_rpm", "personal_signup_email_rpm", "personal_signup_confirm_rpm"
+    )
+    @classmethod
+    def _validate_personal_signup_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive personal-signup rate-limit knob — mirrors
+        _validate_invite_positive_knobs exactly (a functioning per-IP/per-email limiter
+        needs a strictly positive ceiling; a zero or negative value is a
+        misconfiguration, not a disable signal)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_PERSONAL_SIGNUP_KNOB: personal_signup_ip_rpm, "
+                "personal_signup_email_rpm, and personal_signup_confirm_rpm must each be "
+                f"a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    @field_validator("personal_signup_confirm_ttl_seconds")
+    @classmethod
+    def _validate_personal_signup_confirm_ttl(cls, v: int) -> int:
+        """Fail loud on a non-positive confirm-token TTL (mirrors
+        _validate_impersonation_ttl's own style — a positive lifetime is the point)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_PERSONAL_SIGNUP_CONFIRM_TTL: personal_signup_confirm_ttl_seconds "
+                f"must be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
+    # ── Access requests (signup-refusal-router TASK.md §3 M7 — FROZEN @ v1, SECURITY) ──
+    # Per-client-IP fixed-window rate limit for the PUBLIC, unauthenticated request-access
+    # endpoint. Mirrors invite_preview_rpm/invite_accept_rpm's own fail-fast-at-boot
+    # positive-knob pattern exactly.
+    access_request_rpm: int = 20  # GATEWAY_ACCESS_REQUEST_RPM
+
+    @field_validator("access_request_rpm")
+    @classmethod
+    def _validate_access_request_rpm(cls, v: int) -> int:
+        """Fail loud on a non-positive access_request_rpm (signup-refusal-router). A zero
+        or negative value is a misconfiguration, not a disable signal — mirrors
+        invite_preview_rpm's own positive-knob validator."""
+        if v <= 0:
+            raise ValueError(
+                f"INVALID_ACCESS_REQUEST_KNOB: access_request_rpm must be a positive "
+                f"integer (> 0); got {v!r}"
+            )
+        return v
+
     # ── OIDC SSO (sso-oidc task) ─────────────────────────────────────────────
     oidc_enabled: bool = False  # GATEWAY_OIDC_ENABLED
     oidc_issuer: str = ""  # GATEWAY_OIDC_ISSUER (e.g. https://accounts.google.com)

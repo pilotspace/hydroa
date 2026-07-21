@@ -78,6 +78,8 @@ EXPECTED_TABLES = frozenset(
         "checkout_sessions",  # SANCTIONED EDIT — self-serve-checkout TASK.md §3 manifest maintenance; disposition: additive migration b7e2c4a9f1d3 adds this table (plans.self_serve/audience are additive COLUMNS, no new table)
         "domain_invite_links",  # SANCTIONED EDIT — invite-by-domain TASK.md §3 manifest maintenance; disposition: additive migration a4f2d9c17b3e adds this table
         "domain_invite_redemptions",  # SANCTIONED EDIT — invite-by-domain TASK.md §3 manifest maintenance; disposition: additive migration a4f2d9c17b3e adds this table
+        "pending_personal_signups",  # SANCTIONED EDIT — scoped-self-serve-signup TASK.md §3 manifest maintenance; disposition: additive migration b8e1c4f2a9d6 adds this table
+        "access_requests",  # SANCTIONED EDIT — signup-refusal-router TASK.md §3 manifest maintenance; disposition: additive migration b8c1f4a2d6e9 adds this table
     }
 )
 

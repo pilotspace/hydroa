@@ -582,3 +582,33 @@ class SeatMembershipEventRow(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # row-write instant, for audit/ordering-tiebreak only — never read for pricing.
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PendingPersonalSignupRow(Base):
+    """pending_personal_signups — a short-lived (~24h), single-use, mailbox-proof-BEFORE-
+    creation row for a personal-tier self-serve signup (scoped-self-serve-signup TASK.md
+    §3, FROZEN @ v1, SECURITY). Purely additive: no existing table is altered.
+
+    `confirm_token_hash` is a bare SHA-256 hex digest (Sha256SecretHasher, no HMAC pepper
+    — the token itself is 256-bit CSPRNG, right-sized entropy per Ground R-sec-4, mirrors
+    InviteRow.token_hash's own bare-digest discipline). `password_hash` is the
+    already-argon2-hashed password computed at issuance (M6) — passed through unchanged
+    at confirm-time, never re-hashed.
+
+    UNIQUE(email) is the UPSERT/create-or-reissue target (M8): a repeat not-yet-confirmed
+    submission for the same email overwrites this row rather than creating a second one.
+    UNIQUE(confirm_token_hash) backs the single-statement atomic consume (M10).
+    """
+
+    __tablename__ = "pending_personal_signups"
+    __table_args__ = (
+        CheckConstraint("email = lower(email)", name="ck_pending_personal_signups_email_lower"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid7)
+    email: Mapped[str] = mapped_column(Text, unique=True)
+    tenant_name: Mapped[str] = mapped_column(Text)
+    password_hash: Mapped[str] = mapped_column(Text)
+    confirm_token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
