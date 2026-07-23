@@ -320,6 +320,17 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
           </p>
         )}
       </div>
+      {/* login-global-error-position §3 (FROZEN @ v1): the failed-login message
+          lives INSIDE the password affordance, immediately above the "Log in"
+          button it explains (Tin's freeze decision — offered the after-button
+          ssoError mirror, chose above). It travels WITH this subtree under
+          per-class reordering, so it stays beside the button the visitor
+          actually clicked in every visibleClass order. */}
+      {globalError && (
+        <p role="alert" aria-live="polite" className="text-sm text-destructive">
+          {globalError}
+        </p>
+      )}
       <Button type="submit" disabled={isSubmitting} className="w-full">
         {isSubmitting ? "Signing in…" : "Log in"}
       </Button>
@@ -386,12 +397,6 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
               </p>
             )}
           </div>
-
-          {globalError && (
-            <p role="alert" aria-live="polite" className="text-sm text-destructive">
-              {globalError}
-            </p>
-          )}
 
           {/* unified-signin-entry §3 (FROZEN @ v1): the region gains
               data-domain-class, a classification-derived lead-in, and a
