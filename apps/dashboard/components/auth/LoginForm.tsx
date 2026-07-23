@@ -17,7 +17,6 @@ import { BffError } from "@/lib/bff-client";
 import { Button, Card, CardContent, Input } from "@/components/ui";
 import {
   classifyEmailDomain,
-  normalizeEmailDomain,
   type EmailDomainClass,
 } from "@/lib/email-domain-routing";
 
@@ -49,7 +48,6 @@ const PUBLIC_ENTRY_LEAD_IN =
 const CORPORATE_ENTRY_LEAD_IN =
   "If your team already uses Hydroa, sign in with your company account.";
 const LOGIN_ENTRY_LEAD_IN_ID = "login_entry_lead_in";
-const SSO_DOMAIN_HELP_ID = "sso_domain_help";
 
 /**
  * SSO-domain preference accessors — defensive on purpose. localStorage is absent
@@ -107,65 +105,58 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [ssoDomain, setSsoDomain] = useState("");
-  // unified-signin-entry M10/R6: PRISTINE-ONLY auto-seed guard. Flips to true,
-  // permanently, on EITHER the SSO field's own onChange OR the one-shot
-  // ?domain=/localStorage seed effect below assigning a value. Once true the
-  // auto-seed (wired on the Email field's onChange) never overwrites it again.
-  const [ssoDomainTouched, setSsoDomainTouched] = useState(false);
+  // merge-login-email-field §3 (FROZEN @ v1) M6b — TIN'S EXPLICIT FREEZE
+  // DECISION: starts false, flips true (permanently) on the FIRST onChange of
+  // the merged Email field, never resets. Gates ONLY entryClass's input, not
+  // `email` itself — the seeded value still fills the field and still feeds
+  // SSO/SAML on click; only the class-driven lead-in/reorder wait for the
+  // visitor's own first keystroke. NOT the retired ssoDomainTouched: that
+  // guarded a now-deleted email→ssoDomain COPY BRIDGE; this gates
+  // CLASSIFICATION, which nothing gated before the merge. Do not delete this
+  // as vestigial (ENTRY_VESTIGIAL_STATE is narrowed at freeze so this exact
+  // boolean can never trip it).
+  const [hasTyped, setHasTyped] = useState(false);
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Seed the SSO field: signup-refusal-router TASK.md §3 (FROZEN @ v1) M2 —
-  // a ONE-SHOT `?domain=` query-param seed (arriving from the signup routing
-  // panel's SSO link), additive to the existing ONE-SHOT localStorage seed
-  // below. Effect (not a useState initializer) so neither runs during SSR —
-  // both localStorage and useSearchParams are browser-only reads here, and
-  // this avoids a hydration mismatch. Precedence (OPEN per TASK.md §4's own
-  // flag — not specified by §3): a present `?domain=` wins over a stored
-  // localStorage value, since it reflects the visitor's just-made intent;
-  // absent param falls back to the existing localStorage seed, unchanged.
+  // merge-login-email-field §3 M6 — PRISTINE-ONLY SEED, ONE FIELD (supersedes
+  // unified-signin-entry M10 for this surface): the one-shot `?domain=` (else
+  // localStorage["sso_domain"]) seed sets `email` ONLY while `email` is still
+  // "" at the moment this effect runs, via a FUNCTIONAL update — never a
+  // stale-closure overwrite. Effect (not a useState initializer) so neither
+  // read runs during SSR — both localStorage and useSearchParams are
+  // browser-only reads here, and this avoids a hydration mismatch. Precedence
+  // (`?domain=` over localStorage) is preserved by the `??` short-circuit,
+  // unchanged from the prior two-branch effect. No `ssoDomainTouched`-style
+  // flag exists anywhere in this file: "touched" now means exactly "the field
+  // is non-empty", which typing can only ever make true, never reverse.
   useEffect(() => {
-    const domainParam = searchParams.get("domain");
-    if (domainParam) {
+    const seed = searchParams.get("domain") ?? readSsoDomain();
+    if (seed) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSsoDomain(domainParam);
-      // unified-signin-entry M10/R6: a seed-assigned value counts as touched —
-      // the auto-seed below must never clobber it.
-      setSsoDomainTouched(true);
-      return;
-    }
-    // One-shot sync from an external store (localStorage) — the SSR-safe pattern for
-    // a browser-only seed; not a cascading render. (rule is over-strict here.)
-    const saved = readSsoDomain();
-    if (saved) {
-      setSsoDomain(saved);
-      setSsoDomainTouched(true);
+      setEmail((prev) => (prev === "" ? seed : prev));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
-   * unified-signin-entry M10/R6: the ONE Email-field change handler. While the
-   * SSO domain field is still pristine (never touched by the visitor nor by
-   * the seed effect above), every keystroke also auto-fills ssoDomain with
-   * normalizeEmailDomain(value) — the "type your email once" collapse. Once
-   * ssoDomainTouched flips true (either path), this branch is permanently
-   * inert: the auto-seed may NEVER overwrite a touched value.
+   * merge-login-email-field §3 M1/M2 — the ONE email-field change handler.
+   * Every keystroke updates the sole `email` state (fed to handleSubmit,
+   * handleSso, handleSamlSso, and — once hasTyped is true — entryClass) and
+   * flips hasTyped permanently (M6b).
    */
   function handleEmailChange(e: ChangeEvent<HTMLInputElement>) {
-    const value = e.target.value;
-    setEmail(value);
-    if (!ssoDomainTouched) {
-      setSsoDomain(normalizeEmailDomain(value));
-    }
+    setEmail(e.target.value);
+    setHasTyped(true);
   }
 
   async function handleSso() {
     setSsoError(null);
-    const raw = ssoDomain.trim();
+    setFieldErrors({}); // M5: a stale password-shape error can never linger
+    // under the field the visitor is now using for SSO.
+    const raw = email.trim();
     if (raw === "") {
       // Empty field → env-level SSO fallback (no ?domain=), unchanged behavior.
       window.location.assign(OIDC_LOGIN_PATH);
@@ -211,7 +202,8 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
    */
   function handleSamlSso() {
     setSsoError(null);
-    const domain = resolveSsoDomain(ssoDomain);
+    setFieldErrors({}); // M5: symmetric with handleSso — see above.
+    const domain = resolveSsoDomain(email);
     const error = validateSsoDomain(domain);
     if (error) {
       setSsoError(error); // block navigation; the gateway never sees a bad domain
@@ -281,10 +273,18 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
   // what the visitor typed. Server state is NOT an input (M11). Never
   // replace this with a lookup — mirrors SignupForm's own domainClass.
   const entryClass: EmailDomainClass = classifyEmailDomain(email);
+  // merge-login-email-field M6b: what the UI ACTS ON is gated on hasTyped so
+  // a SEEDED value (which now shares the same `email` state) cannot
+  // pre-classify the form before the visitor's own first keystroke —
+  // preserving today's exact "always neutral until you type" on-load
+  // behavior. `entryClass` above stays the pure, ungated classification of
+  // whatever is currently typed (M11); `visibleClass` is the one every
+  // render decision below reads.
+  const visibleClass: EmailDomainClass = hasTyped ? entryClass : "unknown";
   const leadInText =
-    entryClass === "corporate"
+    visibleClass === "corporate"
       ? CORPORATE_ENTRY_LEAD_IN
-      : entryClass === "public"
+      : visibleClass === "public"
         ? PUBLIC_ENTRY_LEAD_IN
         : null;
   const leadInId = leadInText ? LOGIN_ENTRY_LEAD_IN_ID : undefined;
@@ -295,7 +295,7 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
     email === ""
       ? "/signup"
       : `/signup?email=${encodeURIComponent(email)}${
-          entryClass === "corporate" ? "&account_type=business" : ""
+          visibleClass === "corporate" ? "&account_type=business" : ""
         }`;
 
   // unified-signin-entry M9/R5: the four affordances, each defined ONCE and
@@ -328,49 +328,22 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
 
   const ssoRoute = (
     <div className="flex flex-col gap-4">
-      {/* SSO login — an optional work-email/domain field drives the relay's
-          ?domain= so a tenant with per-tenant OIDC configured can start SSO
-          from here. Empty field → env-level SSO (no ?domain=). The click does
-          a full-page NAVIGATION (window.location.assign) so the browser follows
-          the relay's 302 chain to the external IdP — a fetch could not.
-          unified-signin-entry M10/R6: onChange also flips ssoDomainTouched so
-          the Email-field auto-seed never clobbers a visitor-typed value. */}
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="sso_domain" className="text-sm font-medium text-foreground">
-          Work email or domain
-        </label>
-        <Input
-          id="sso_domain"
-          type="text"
-          value={ssoDomain}
-          onChange={(e) => {
-            setSsoDomain(e.target.value);
-            setSsoDomainTouched(true);
-          }}
-          autoComplete="email"
-          placeholder="you@company.com"
-          aria-describedby={
-            ssoError ? `sso_domain_error ${SSO_DOMAIN_HELP_ID}` : SSO_DOMAIN_HELP_ID
-          }
-        />
-        <p id={SSO_DOMAIN_HELP_ID} className="text-xs text-muted-foreground">
-          Optional — auto-filled from your email address; you can also enter it yourself.
-        </p>
-        {ssoError && (
-          <p
-            id="sso_domain_error"
-            role="alert"
-            aria-live="polite"
-            className="text-sm text-destructive"
-          >
-            {ssoError}
-          </p>
-        )}
-      </div>
-
+      {/* merge-login-email-field §3: the SSO login affordance no longer has
+          its own field — it reads the merged Email field above via
+          resolveSsoDomain(email). Empty field → env-level SSO (no ?domain=).
+          The click does a full-page NAVIGATION (window.location.assign) so
+          the browser follows the relay's 302 chain to the external IdP — a
+          fetch could not. M8: the error travels with this subtree under
+          per-class reordering, beside the button it concerns; it carries no
+          id (nothing describes it via aria-describedby anymore). */}
       <Button type="button" variant="outline" className="w-full" onClick={handleSso}>
         Sign in with SSO
       </Button>
+      {ssoError && (
+        <p role="alert" aria-live="polite" className="text-sm text-destructive">
+          {ssoError}
+        </p>
+      )}
     </div>
   );
 
@@ -405,6 +378,7 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
               value={email}
               onChange={handleEmailChange}
               autoComplete="email"
+              placeholder="you@company.com"
             />
             {fieldErrors.email && (
               <p role="alert" aria-live="polite" className="text-sm text-destructive">
@@ -429,7 +403,7 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
               regardless of tenant/claim/user/SSO-config existence. */}
           <div
             data-slot="login-entry-routes"
-            data-domain-class={entryClass}
+            data-domain-class={visibleClass}
             aria-describedby={leadInId}
             className="flex flex-col gap-4"
           >
@@ -443,7 +417,7 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
               </p>
             )}
 
-            {entryClass === "corporate" ? (
+            {visibleClass === "corporate" ? (
               // M5: a corporate work email leads with company sign-in.
               <>
                 {ssoRoute}
@@ -451,7 +425,7 @@ export function LoginForm({ nextPath = "/app/keys" }: LoginFormProps = {}) {
                 {passwordRoute}
                 {createWorkspaceRoute}
               </>
-            ) : entryClass === "public" ? (
+            ) : visibleClass === "public" ? (
               // M6: a personal address leads with self-serve signup.
               <>
                 {createWorkspaceRoute}

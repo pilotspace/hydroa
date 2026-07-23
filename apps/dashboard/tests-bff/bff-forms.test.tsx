@@ -66,8 +66,9 @@ describe("LoginForm (BFF behavior)", () => {
   async function fillAndSubmitLogin(overrides?: { email?: string; password?: string }) {
     const email = overrides?.email ?? "ada@acme.io";
     const password = overrides?.password ?? "hunter12345";
-    // /^email$/ — the password-login email field (distinct from the SSO
-    // "Work email or domain" field added by the sso-login-button task).
+    // /^email$/ — the single merged email field. It once had to be distinguished from a separate
+    // SSO "Work email or domain" input; merge-login-email-field retired that, so the exact-match
+    // selector now just pins the one field rather than disambiguating two.
     await user.type(screen.getByLabelText(/^email$/i), email);
     await user.type(screen.getByLabelText(/password/i), password);
     await user.click(screen.getByRole("button", { name: /^log in$/i }));

@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "agents-console",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "merge-login-email-field",
+  "active_milestone": "frontdoor-polish",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -1192,6 +1192,20 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "merge-login-email-field": {
+      "title": "Merge /login's two email fields into one",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "frontdoor-polish",
+      "depends_on": [],
+      "created": "2026-07-21T06:22:35+00:00",
+      "updated": "2026-07-21T07:31:39+00:00",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1288,10 +1302,26 @@
       "status": "queued",
       "created": "2026-07-02T15:53:54+00:00",
       "updated": "2026-07-02T15:53:54+00:00"
+    },
+    "frontdoor-polish": {
+      "title": "Frontdoor Polish",
+      "goal": "The /login and /signup surfaces shipped in frontdoor-persona-routing lose their visible rough edges: one email field instead of two, and the login error sits where the visitor is looking.",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-21T06:22:28+00:00",
+      "updated": "2026-07-21T06:22:34+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-21T06:22:34+00:00",
+      "confirmed_by": "tindang",
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-21T05:21:16+00:00",
+  "updated": "2026-07-21T07:31:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2349,7 +2379,8 @@
     "platform-admin-console",
     "platform-access-plan",
     "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "agent-gateway-v1",
+    "frontdoor-polish"
   ],
   "active_tasks": {
     "platform-admin-console": "declare-components-registry",
@@ -2357,7 +2388,8 @@
     "tenant-impersonation": "impersonation-live-session-guard",
     "platform-access-plan": "plan-rate-enforcement",
     "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "agent-gateway-v1": "agents-console",
+    "frontdoor-polish": "merge-login-email-field"
   },
   "todos": [
     {

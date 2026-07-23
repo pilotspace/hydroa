@@ -62,10 +62,6 @@ function emailInput(container: HTMLElement): HTMLInputElement {
   return el as HTMLInputElement;
 }
 
-function ssoDomainInput(): HTMLInputElement {
-  return screen.getByLabelText(/work email or domain/i) as HTMLInputElement;
-}
-
 /** The four affordances, located by their OWN observable copy (M9). */
 function routeAnchors(region: HTMLElement) {
   const password = within(region).getByRole("button", { name: /^log in$/i });
@@ -144,10 +140,45 @@ describe("LoginForm — data-domain-class + lead-in + order (M1,M3,M4,M5,M6,M7)"
   });
 
   it("test_corporate_email_autofills_the_sso_domain_field", async () => {
-    // covers: M10
-    render(<LoginForm />);
-    await user.type(emailInput(document.body), "dana@acme-corp.com");
-    await waitFor(() => expect(ssoDomainInput()).toHaveValue("acme-corp.com"));
+    // covers: M10 — RETARGET (merge-login-email-field §3): the mechanism
+    // collapsed. Post-merge there is no second field to auto-fill — the
+    // guarantee ("SSO gets the domain without retyping") now holds TRIVIALLY,
+    // because it is the same value. Assert directly: typing the merged field
+    // once and clicking "Sign in with SSO" carries the resolved domain with NO
+    // separate auto-fill step.
+    const assign = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        ...originalLocation,
+        assign,
+        href: "http://localhost:3000/login",
+        origin: "http://localhost:3000",
+      },
+    });
+    server.use(
+      http.get(`${APP}${OIDC_LOGIN}`, () =>
+        new HttpResponse(null, { status: 302, headers: { location: "https://idp.example/authorize" } }),
+      ),
+    );
+
+    const { container } = render(<LoginForm />);
+    await user.type(emailInput(container), "dana@acme-corp.com");
+    await user.click(
+      within(getRegion(container)).getByRole("button", { name: /sign in with sso/i }),
+    );
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`${OIDC_LOGIN}?domain=acme-corp.com`),
+    );
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   it("test_public_email_classifies_public_and_leads_with_create_workspace", async () => {
@@ -282,10 +313,15 @@ describe("LoginForm — M9/R5: every affordance stays present, byte-identical", 
       const region = getRegion(container);
       await waitFor(() => expect(region).toHaveAttribute("data-domain-class", cls));
 
-      // The password field and the "Work email or domain" field themselves
-      // (not just their buttons) are asserted directly.
+      // RETARGET (merge-login-email-field §3): post-merge there are 4
+      // affordances + 1 shared field, not 5 controls. The password field
+      // (inside the region) and the ONE merged Email field (outside the
+      // region — unaffected by per-class reordering, always rendered) are
+      // both asserted present, and exactly one email-shaped input exists.
       expect(within(region).getByLabelText(/^password$/i)).toBeInTheDocument();
-      expect(within(region).getByLabelText(/work email or domain/i)).toBeInTheDocument();
+      expect(container.querySelector("#login_email")).toBeInTheDocument();
+      expect(container.querySelectorAll('input[type="email"]')).toHaveLength(1);
+      expect(container.querySelector("#sso_domain")).not.toBeInTheDocument();
 
       const { password, sso, saml, createWorkspace } = routeAnchors(region);
       expect(password).toBeInTheDocument();
@@ -313,9 +349,14 @@ describe("LoginForm — M9/R5: every affordance stays present, byte-identical", 
     expect(passwordField).toHaveAttribute("type", "password");
     expect(passwordField).toHaveAttribute("autoComplete", "current-password");
 
-    const ssoField = within(region).getByLabelText(/work email or domain/i);
-    expect(ssoField).toHaveAttribute("id", "sso_domain");
-    expect(ssoField).toHaveAttribute("placeholder", "you@company.com");
+    // RETARGET (merge-login-email-field §3): the byte-identical-copy
+    // guarantee is preserved, just relocated onto the ONE merged field
+    // (outside `region`, per Tin's locked label/placeholder) instead of a
+    // distinct "sso_domain" node.
+    const mergedEmailField = container.querySelector("#login_email");
+    expect(mergedEmailField).toHaveAttribute("id", "login_email");
+    expect(mergedEmailField).toHaveAttribute("type", "email");
+    expect(mergedEmailField).toHaveAttribute("placeholder", "you@company.com");
 
     expect(within(region).getByRole("button", { name: "Log in" })).toBeInTheDocument();
     expect(within(region).getByRole("button", { name: "Sign in with SSO" })).toBeInTheDocument();
@@ -323,34 +364,105 @@ describe("LoginForm — M9/R5: every affordance stays present, byte-identical", 
   });
 });
 
-describe("LoginForm — M10/R6: pristine-only SSO auto-seed", () => {
+describe("LoginForm — M6: pristine-only seed, one field", () => {
   const user = userEvent.setup();
 
-  it("test_visitor_typed_sso_domain_is_never_clobbered", async () => {
-    // covers: M10, R6 — mirrors tests/sso-login.test.tsx:119-134's ordering.
-    render(<LoginForm />);
-    await user.type(ssoDomainInput(), "acme.com");
-    await user.type(emailInput(document.body), "ada@acme.io");
-
-    expect(ssoDomainInput()).toHaveValue("acme.com");
-    const region = getRegion(document.body);
-    await waitFor(() => expect(region).toHaveAttribute("data-domain-class", "corporate"));
-  });
-
-  it("test_query_param_seeded_sso_domain_is_never_clobbered", async () => {
-    // covers: M10, R6 — the non-clobber alone is already (trivially) true on
-    // unbuilt code, since nothing there touches ssoDomain from email input at
-    // all; also assert the region/classification the same keystrokes must
-    // drive, so this is red on the missing region today, not vacuously green.
+  // merge-login-email-field §3 retarget register: RETIRED, LOUDLY —
+  // test_visitor_typed_sso_domain_is_never_clobbered and
+  // test_query_param_seeded_sso_domain_is_never_clobbered both typed into
+  // field A then a DIFFERENT field B and asserted A survived B's typing —
+  // structurally impossible now that there is one field (there is no field B
+  // to type into). The protection they existed for (a visitor's own edit is
+  // never silently overwritten) is not lost — it is now unconditionally true,
+  // because there is exactly one place a keystroke can land. Superseded by
+  // the scenario below ("the visitor's own typing always wins over the
+  // seed"), which asserts the guarantee that still actually applies: the
+  // seed never re-asserts itself over a value the visitor put there
+  // themselves.
+  it("test_visitor_own_typing_always_wins_over_the_seed", async () => {
+    // covers: M6, R6 — §2 scenario "The visitor's own typing always wins over
+    // the seed"
     setDomainParam("acme.com");
     const { container } = render(<LoginForm />);
-    await waitFor(() => expect(ssoDomainInput()).toHaveValue("acme.com"));
+    await waitFor(() => expect(emailInput(container)).toHaveValue("acme.com"));
 
-    await user.type(emailInput(container), "ada@other-co.com");
-    expect(ssoDomainInput()).toHaveValue("acme.com");
+    await user.clear(emailInput(container));
+    await user.type(emailInput(container), "ada@acme.io");
 
+    expect(emailInput(container)).toHaveValue("ada@acme.io");
+
+    // Nothing re-seeds it back to "acme.com" on any subsequent render — and
+    // this holds with no ssoDomainTouched-style flag anywhere in the
+    // implementation (R5): the one-shot effect has already fired once and
+    // cannot re-fire.
+    await waitFor(() => expect(emailInput(container)).toHaveValue("ada@acme.io"));
     const region = getRegion(container);
     await waitFor(() => expect(region).toHaveAttribute("data-domain-class", "corporate"));
+  });
+});
+
+describe("LoginForm — M6b: a seeded value does not classify until the first keystroke", () => {
+  const user = userEvent.setup();
+  // merge-login-email-field §3 — NEW: TIN'S EXPLICIT FREEZE DECISION,
+  // 2026-07-21. Not named as its own §2 gherkin scenario line, but required by
+  // the FROZEN contract's own ENTRY_CLASSIFIES_SEEDED_VALUE refusal — filling
+  // a contract-conformance gap the register's per-file list didn't spell out.
+  // Today (pre-merge) the seed writes `ssoDomain`, a field entryClass never
+  // reads, so a returning visitor always lands on the neutral "unknown"
+  // surface until they type. This proves that exact on-load behavior survives
+  // the merge even though seed and classification now share one value.
+
+  it("test_seeded_domain_pre_fills_the_field_but_does_not_classify_before_typing", async () => {
+    // covers: M6b, ENTRY_CLASSIFIES_SEEDED_VALUE
+    const assign = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        ...originalLocation,
+        assign,
+        href: "http://localhost:3000/login",
+        origin: "http://localhost:3000",
+      },
+    });
+    server.use(
+      http.get(`${APP}${OIDC_LOGIN}`, () =>
+        new HttpResponse(null, { status: 302, headers: { location: "https://idp.example/authorize" } }),
+      ),
+    );
+
+    setDomainParam("acme-corp.com");
+    const { container } = render(<LoginForm />);
+
+    // The seed still fills the field...
+    await waitFor(() => expect(emailInput(container)).toHaveValue("acme-corp.com"));
+
+    // ...but the region stays on the SAME neutral surface as an empty visit —
+    // no corporate lead-in, no reorder — until the visitor's own first
+    // keystroke. (A brief wait proves this is not a race: the seed effect has
+    // already resolved by the time the field's value assertion above passed.)
+    const region = getRegion(container);
+    expect(region).toHaveAttribute("data-domain-class", "unknown");
+    expect(within(region).queryByText(CORPORATE_LEAD_IN)).not.toBeInTheDocument();
+    expect(routeOrder(region)).toEqual(["password", "sso", "saml", "create-workspace"]);
+
+    // The seeded value still feeds SSO on click — classification gating never
+    // blocks the CAPABILITY, only the lead-in/reorder.
+    await user.click(within(region).getByRole("button", { name: /sign in with sso/i }));
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`${OIDC_LOGIN}?domain=acme-corp.com`),
+    );
+
+    // The first keystroke flips classification on, permanently.
+    await user.type(emailInput(container), "x");
+    await waitFor(() => expect(region).toHaveAttribute("data-domain-class", "corporate"));
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
   });
 });
 
@@ -540,9 +652,14 @@ describe("Q3 — LoginForm's entry-routing path reaches no lookup, probe, or deb
     expect(code).toMatch(
       /import\s*{[^}]*classifyEmailDomain[^}]*}\s*from\s*["']@\/lib\/email-domain-routing["']/,
     );
-    expect(code).toMatch(
-      /import\s*{[^}]*normalizeEmailDomain[^}]*}\s*from\s*["']@\/lib\/email-domain-routing["']/,
-    );
+    // RETARGET (merge-login-email-field): this used to pin the normalizeEmailDomain IMPORT, because
+    // the Email->ssoDomain copy bridge called it. That bridge is deleted with the second field, so
+    // LoginForm no longer normalizes anything — pinning the import would force a dead import to
+    // exist purely to satisfy a test, which is the tail wagging the dog.
+    // The guarantee worth keeping is the real one: if normalization is ever needed here again, it
+    // comes from the frozen IO-free module and is NEVER re-implemented locally.
+    expect(code).not.toMatch(/function\s+normalize[A-Za-z]*Domain/);
+    expect(code).not.toMatch(/const\s+normalize[A-Za-z]*Domain\s*=/);
 
     // The derived value is computed directly in the render body — no timer.
     expect(code).toMatch(/const\s+entryClass[^=]*=\s*classifyEmailDomain\(email\)/);
@@ -590,16 +707,15 @@ describe("LoginForm — a11y: the corporate path is reachable without guessing (
     const describedNode = container.querySelector(`#${describedBy}`);
     expect(describedNode).toBe(leadIn);
 
-    // The SSO field is described as optional and auto-filled.
-    const ssoField = ssoDomainInput();
-    const ssoDescribedBy = ssoField.getAttribute("aria-describedby") ?? "";
-    const ssoDescriptionText = ssoDescribedBy
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((id) => container.querySelector(`#${id}`)?.textContent ?? "")
-      .join(" ");
-    expect(ssoDescriptionText).toMatch(/optional/i);
-    expect(ssoDescriptionText).toMatch(/auto-?fill/i);
+    // RETARGET + ONE GUARANTEE DROPPED, LOUDLY (merge-login-email-field §3):
+    // the shipped test asserted the SSO field's aria-describedby resolved to
+    // text matching /optional/i and /auto-?fill/i (SSO_DOMAIN_HELP_ID's
+    // text). That text and its wiring are REMOVED (M9, R8) per Tin's own
+    // explicit, already-made rejection of a helper-line variant — there is no
+    // substitute text describing "optional, auto-filled" because there is no
+    // longer a second field whose relationship to the first needs
+    // explaining. No replacement assertion for this guarantee; every OTHER
+    // assertion in this test is unchanged.
 
     // Reachable by keyboard within a small bounded number of tabs.
     let reached = false;

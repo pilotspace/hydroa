@@ -72,9 +72,12 @@ describe("LoginForm — SSO domain field", () => {
     localStorage.clear();
   });
 
+  // merge-login-email-field §3 (FROZEN @ v1) retarget register: the SSO field
+  // and #login_email are now the SAME node — select it by its one accessible
+  // name, "Email" (was "Work email or domain").
   async function clickSso(value?: string) {
     if (value) {
-      await user.type(screen.getByLabelText(/work email or domain/i), value);
+      await user.type(screen.getByLabelText(/^email$/i), value);
     }
     await user.click(screen.getByRole("button", { name: /sign in with sso/i }));
   }
@@ -106,6 +109,11 @@ describe("LoginForm — SSO domain field", () => {
   });
 
   it("test_password_login_unaffected", async () => {
+    // merge-login-email-field §3 retarget register: STRUCTURAL rewrite — the
+    // shipped test typed "acme.com" into #sso_domain THEN "ada@acme.io" into
+    // #login_email, which is impossible now that there is one field. Re-expressed
+    // as a single type into the merged field, submitted as a password login;
+    // the guarantee (password submit never triggers SSO navigation) is intact.
     let loginCalled = false;
     server.use(
       http.post("http://localhost:3000/api/auth/login", () => {
@@ -115,8 +123,6 @@ describe("LoginForm — SSO domain field", () => {
     );
     render(<LoginForm />);
 
-    // Type into the SSO field too — it must not interfere with password login.
-    await user.type(screen.getByLabelText(/work email or domain/i), "acme.com");
     await user.type(screen.getByLabelText(/^email$/i), "ada@acme.io");
     await user.type(screen.getByLabelText(/password/i), "hunter12345");
     await user.click(screen.getByRole("button", { name: /^log in$/i }));
@@ -128,10 +134,13 @@ describe("LoginForm — SSO domain field", () => {
   // ── v37 polish ─────────────────────────────────────────────────────────────
 
   it("test_sso_prefills_last_domain", async () => {
+    // Retarget: selector only — the seeded value now pre-fills the SAME field
+    // password login also uses (⚠ disclosed at CONTRACT); the prefill guarantee
+    // itself is intact.
     localStorage.setItem("sso_domain", "acme.com");
     render(<LoginForm />);
     await waitFor(() =>
-      expect(screen.getByLabelText(/work email or domain/i)).toHaveValue("acme.com"),
+      expect(screen.getByLabelText(/^email$/i)).toHaveValue("acme.com"),
     );
   });
 
@@ -163,5 +172,36 @@ describe("LoginForm — SSO domain field", () => {
     await waitFor(() => expect(assign).toHaveBeenCalledWith(`${OIDC_LOGIN}?domain=acme.com`));
     // Degrade navigates but does NOT persist an unverified domain.
     expect(localStorage.getItem("sso_domain")).toBeNull();
+  });
+
+  // ── merge-login-email-field (M5, R4) — NEW: the merge's one fresh risk ─────
+  // Neither suite could cover this pre-merge (the two fields were visually
+  // distinct, so their errors could never collide). Not individually named in
+  // §3's per-file retarget register, but required by the FROZEN contract's own
+  // ENTRY_STALE_ERROR_CARRIED refusal.
+  //
+  // NOTE — only ONE direction is tested here. §2 lists a symmetric-looking
+  // scenario ("a stale SSO error never survives a successful password
+  // login"), but §3 CONTRACT item 4 is explicit and authoritative: "The
+  // reverse is NOT required — handleSubmit does not need to clear ssoError —
+  // see §1 Assumption 5 for the accepted, out-of-scope asymmetric residue in
+  // that direction." Writing a test enforcing the reverse would contradict
+  // the frozen contract's own text, so it is deliberately NOT added here —
+  // flagged in the build report rather than silently either added or ignored.
+
+  it("test_stale_password_error_never_survives_a_successful_sso_click", async () => {
+    // covers: M5, R4 — §2 "A stale password error never survives into a
+    // successful SSO click"
+    render(<LoginForm />);
+    await user.type(screen.getByLabelText(/^email$/i), "not-an-email");
+    await user.click(screen.getByRole("button", { name: /^log in$/i }));
+    await waitFor(() => expect(screen.getByText("Invalid email address")).toBeInTheDocument());
+
+    await user.clear(screen.getByLabelText(/^email$/i));
+    await user.type(screen.getByLabelText(/^email$/i), "acme.com");
+    await user.click(screen.getByRole("button", { name: /sign in with sso/i }));
+
+    expect(screen.queryByText("Invalid email address")).not.toBeInTheDocument();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(`${OIDC_LOGIN}?domain=acme.com`));
   });
 });
