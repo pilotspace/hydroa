@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "image-edits-variations",
+  "active_task": "responses-state-store",
   "active_milestone": "api-surface-parity",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -182,14 +182,53 @@
     },
     "responses-state-store": {
       "title": "Stored responses + previous_response_id chaining (tenant-isolated, ZDR-composing)",
-      "phase": "direction",
+      "phase": "build",
       "gate": "none",
       "milestone": "api-surface-parity",
       "depends_on": [
         "responses-api-core"
       ],
       "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T03:29:47+00:00"
+      "updated": "2026-07-24T04:48:59+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T04:48:59+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "c32d790452040d0ef9d26576a2dd5d50",
+        "tests": {
+          "apps/gateway/tests/responses_state_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/responses_state_store/conftest.py": "50efc107ff2f1a79bdb5f2f8c167ec1f",
+          "apps/gateway/tests/responses_state_store/test_responses_state_store.py": "3cda4bfd74b4f15620e6c11d5a54222d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/responses_store/",
+          "apps/gateway/src/gateway/proxy/api/responses_router.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_responses_ingress.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py",
+          "apps/gateway/tests/responses_api_core/test_responses_api_core.py",
+          "apps/gateway/tests/responses_state_store/"
+        ],
+        "snapshot_md5": "9a6c3bbd3aa8e0ed64a9ebfb052c71f9"
+      }
     },
     "files-uploads-api": {
       "title": "OpenAI-wire /v1/files + multipart upload on the ObjectStore port",
@@ -198,7 +237,7 @@
       "milestone": "api-surface-parity",
       "depends_on": [],
       "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T03:54:28+00:00",
+      "updated": "2026-07-24T04:48:58+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-24T03:54:28+00:00",
@@ -215,7 +254,7 @@
         "by": null
       },
       "tripwire": {
-        "contract_md5": "7d3714fb584ea029f95675dbe6fc028a",
+        "contract_md5": "f3c467b2b6d947359083ede8265ff65d",
         "tests": {}
       },
       "scope": {
@@ -232,9 +271,9 @@
           "apps/gateway/migrations/versions/",
           "apps/gateway/tests/files_uploads_api/",
           "apps/gateway/tests/migrations/test_migrations.py",
-          "apps/gateway/tests/retention_zdr/test_retention_zdr.py"
+          "apps/gateway/tests/guardrails/test_guardrails_core.py"
         ],
-        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
+        "snapshot_md5": "9a6c3bbd3aa8e0ed64a9ebfb052c71f9"
       }
     },
     "moderations-endpoint": {
@@ -414,7 +453,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T03:55:08+00:00",
+  "updated": "2026-07-24T04:48:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1554,7 +1593,7 @@
     "api-surface-parity"
   ],
   "active_tasks": {
-    "api-surface-parity": "image-edits-variations"
+    "api-surface-parity": "responses-state-store"
   },
   "todos": [
     {
@@ -1891,6 +1930,12 @@
       "id": 56,
       "text": "Pre-existing pyright debt on main (not wave-1): mcp_connector/application/use_cases.py:496 candidate_body possibly-unbound; tenants/application/domain_invite_link_use_cases.py:21 unused UTC import. Billing-blocked CI let these slip. Fix in a dedicated cleanup, not a feature milestone.",
       "created": "2026-07-20T17:18:51+00:00",
+      "status": "open"
+    },
+    {
+      "id": 57,
+      "text": "R5 candidate: multi-provider moderation detectors \u2014 second adapter behind the ml-moderation verdict seam (Llama Guard 3 via OpenRouter/Bedrock, or Gemini safety classifier); enterprise differentiator vs OpenAI-only; approved-in-principle by Tin 2026-07-24",
+      "created": "2026-07-24T04:40:27+00:00",
       "status": "open"
     }
   ]
