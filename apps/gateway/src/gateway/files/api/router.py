@@ -169,15 +169,25 @@ async def create_file(
     if purpose not in _SUPPORTED_PURPOSES:
         raise FILE_PURPOSE_UNSUPPORTED.exc() from None
 
-    data = await file.read()
+    settings = _get_settings(request)
+    # Bounded read (defence-in-depth): read at most files_max_bytes+1 bytes so an oversize
+    # upload never fully materializes in the handler's memory — this holds even if the outer
+    # BodySizeLimitMiddleware /v1/files cap is ever raised or removed. A file at or below the
+    # cap is read in full (read(cap+1) returns the whole body when it is <= cap); a single
+    # byte over the cap is enough to reject with the contracted 413 BEFORE any object-store
+    # put or DB row. 0 = disabled -> no per-file cap, read the whole body. The outer guard
+    # (main._files_route_cap) sits a headroom above this so THIS check owns the boundary.
+    max_bytes = settings.files_max_bytes
+    if max_bytes > 0:
+        data = await file.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise FILE_TOO_LARGE.exc() from None
+    else:
+        data = await file.read()
+
     # zero-byte / missing file part -> 422.
     if len(data) == 0:
         raise FILE_EMPTY.exc() from None
-
-    # size cap check BEFORE any store put or row insert (0 = disabled).
-    settings = _get_settings(request)
-    if settings.files_max_bytes > 0 and len(data) > settings.files_max_bytes:
-        raise FILE_TOO_LARGE.exc() from None
 
     # ZDR fail-closed gate — checked BEFORE the object-store write below (not only inside
     # repo.create's own raise_if_zdr) so a ZDR-blocked upload never leaves payload bytes

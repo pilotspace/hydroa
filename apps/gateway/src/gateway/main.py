@@ -451,6 +451,27 @@ def build_email_sender(settings: Settings) -> EmailSender:
     return SmtpEmailSender(settings) if settings.email_smtp_enabled else ConsoleEmailSender()
 
 
+# files-uploads-api PLAN.md §3 — headroom the /v1/files BodySizeLimitMiddleware cap carries
+# over files_max_bytes so the coarse outer body guard never pre-empts the router's precise
+# per-file ERR_FILE_TOO_LARGE check: the multipart body (file part + `purpose` field + MIME
+# framing) is at most a few hundred bytes larger than the raw file, so 1 MiB is a generous
+# margin that keeps the router the sole decider for any raw file up to files_max_bytes.
+_FILES_MULTIPART_HEADROOM_BYTES = 1024 * 1024
+# When files_max_bytes=0 (operator-disabled per-file cap), the router applies NO size limit;
+# the outer guard then falls back to a large finite ceiling (Envoy enforces the real coarse
+# outer bound independently — body_size_guard.py docstring) rather than an unbounded cap.
+_FILES_UNLIMITED_ROUTE_CAP = 5 * 1024 * 1024 * 1024  # 5 GiB
+
+
+def _files_route_cap(files_max_bytes: int) -> int:
+    """The BodySizeLimitMiddleware cap for /v1/files: files_max_bytes + multipart headroom
+    (so the router owns the exact ERR_FILE_TOO_LARGE boundary), or a large finite ceiling
+    when the per-file cap is disabled (files_max_bytes=0)."""
+    if files_max_bytes <= 0:
+        return _FILES_UNLIMITED_ROUTE_CAP
+    return files_max_bytes + _FILES_MULTIPART_HEADROOM_BYTES
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Composition root: wires infrastructure adapters into domain ports."""
     settings = settings if settings is not None else Settings()
@@ -1743,6 +1764,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         BodySizeLimitMiddleware,
         route_caps={
+            # files-uploads-api PLAN.md §3: /v1/files uploads may be far larger than a JSON
+            # body (files_max_bytes default 512 MiB), so a dedicated longest-prefix cap
+            # overrides the wider "/v1/" JSON cap (20 MiB) — WITHOUT it, every upload in the
+            # 20 MiB→files_max_bytes range was rejected 413 ERR_REQUEST_BODY_TOO_LARGE and
+            # the contracted 413 ERR_FILE_TOO_LARGE could never fire (mirrors how
+            # "/v1/audio/" already overrides "/v1/" for multipart STT). The cap carries a
+            # small headroom over files_max_bytes so this coarse outer guard NEVER pre-empts
+            # the router's precise per-file check at the exact boundary — the multipart body
+            # (file part + purpose field + framing) is a few hundred bytes larger than the
+            # raw file, so a raw file of exactly files_max_bytes must still pass the outer
+            # guard and reach the router, which owns ERR_FILE_TOO_LARGE.
+            "/v1/files": _files_route_cap(settings.files_max_bytes),
             "/v1/audio/": settings.max_audio_upload_bytes,
             "/v1/": settings.max_json_body_bytes,
             "/admin/": settings.max_json_body_bytes,
