@@ -15,8 +15,20 @@ durable-queue shape — NOT invented machinery):
 
 Per-row drive (M2/M5/M6/M7): load -> terminal-skip -> raise_if_zdr (FIRST line of
 the chunk-write path) -> read file bytes -> chunk -> ONE batched embed via the
-ChunkEmbedder port -> ONE atomic finalize tx (delete stale chunks + bulk insert +
-CAS in_progress->completed) -> AWAITED usage record, ONLY when the CAS won.
+ChunkEmbedder port -> ONE atomic finalize tx (RE-CHECK raise_if_zdr + delete
+stale chunks + bulk insert + CAS in_progress->completed) -> AWAITED usage
+record, ONLY when the CAS won.
+
+SECURITY (ZDR TOCTOU heal, 2026-07-24): the embed call is a network round-trip
+(5s connect + 30s read in prod) — a window during which a tenant can flip
+tenants.zdr_enabled=true via their OWN retention-policy admin endpoint. The
+entry-line raise_if_zdr alone cannot catch a flip that lands DURING that
+window, so raise_if_zdr is re-checked a SECOND time, INSIDE the same
+session/transaction as finalize_completed, immediately before the chunk
+write + status flip and before that transaction commits — a flip caught there
+rolls back the whole transaction (zero chunks, zero status flip survive) and
+the row is marked failed/zdr_blocked instead. See drive()'s
+``zdr_flipped_during_ingest`` branch.
 
 AT-LEAST-ONCE + IDEMPOTENCY guarantees:
   - A stale/missing row id is logged + skipped (no re-enqueue, no raise).
@@ -263,20 +275,51 @@ class VectorStoreIngestWorker:
 
         total_bytes = len(content)
 
+        # SECURITY HARD-STOP HEAL (ZDR TOCTOU, refute-reproduced): the entry-line
+        # raise_if_zdr above only protects against a tenant that was ALREADY ZDR at
+        # drive() start — the embed call's network round-trip (5s connect + 30s
+        # read in prod) is a window during which the tenant can flip
+        # tenants.zdr_enabled=true via their OWN retention-policy admin endpoint,
+        # and the finalize commit would otherwise persist payload chunks for a now
+        # -ZDR tenant. Re-run raise_if_zdr INSIDE the SAME transaction/session as
+        # finalize_completed, immediately BEFORE the chunk delete/insert + CAS
+        # status flip, and BEFORE that transaction commits — read-committed
+        # isolation means this SELECT sees any ZDR flip already committed by
+        # another session. A flip caught here rolls back the WHOLE transaction
+        # (no chunks, no status flip survive) and the row is marked
+        # failed/zdr_blocked in a fresh transaction instead — fail-closed, and
+        # byte-identical (zero extra latency of consequence) for the non-ZDR
+        # majority path.
+        zdr_flipped_during_ingest = False
         async with self._sessionmaker() as session:
-            repo = VectorStoreFileRepository(session)
-            won = await repo.finalize_completed(
-                row_id=row_id,
-                vector_store_id=vector_store_id,
-                tenant_id=tenant_id,
-                chunks=chunks,
-                vectors=vectors,
-                usage_bytes=total_bytes,
-            )
-            if won:
-                await session.commit()
-            else:
+            try:
+                await raise_if_zdr(session, tenant_id)
+            except ProblemError:
+                zdr_flipped_during_ingest = True
                 await session.rollback()
+                won = False
+            else:
+                repo = VectorStoreFileRepository(session)
+                won = await repo.finalize_completed(
+                    row_id=row_id,
+                    vector_store_id=vector_store_id,
+                    tenant_id=tenant_id,
+                    chunks=chunks,
+                    vectors=vectors,
+                    usage_bytes=total_bytes,
+                )
+                if won:
+                    await session.commit()
+                else:
+                    await session.rollback()
+
+        if zdr_flipped_during_ingest:
+            await self._fail(
+                row_id,
+                code="zdr_blocked",
+                message="Zero-Data-Retention tenant: ingestion blocked (flipped during ingestion)",
+            )
+            return
 
         if not won:
             # CAS miss — a racer already finalized this row; never double-bill,
