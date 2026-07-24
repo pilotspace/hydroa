@@ -105,18 +105,26 @@ class FinetuneProviderPort(Protocol):
     Real impl: ``OpenAIFinetuneClient`` (infrastructure/openai_client.py). Test double:
     ``FakeFinetuneProvider`` (tests/finetune_broker/test_finetune_broker.py) — the
     signature below is the one the fake structurally satisfies.
+
+    HEAL (D1, mirrors the moderations CR-1 per-tenant breaker defect): every method
+    takes ``tenant_id`` FIRST — the authenticated caller's tenant, threaded through by
+    ``FinetuneBrokerService`` at all 3 call sites — so the implementation can key its
+    outbound-IO circuit breaker PER TENANT. Before this, no method carried a tenant
+    key at all, so a real implementation had no choice but a single process-wide
+    breaker: one tenant's 5 consecutive provider failures would trip EVERY other
+    tenant's fine-tuning calls closed too (the exact R4 moderations CR-1 defect).
     """
 
-    async def submit(self, credential: Any, request: dict[str, Any]) -> str:
+    async def submit(self, tenant_id: Any, credential: Any, request: dict[str, Any]) -> str:
         """Submit a new job; return the provider's own job id (unvalidated shape —
         the caller shape-validates via ``is_valid_provider_job_id`` before storing)."""
         ...
 
-    async def poll(self, credential: Any, provider_job_id: str) -> dict[str, Any]:
+    async def poll(self, tenant_id: Any, credential: Any, provider_job_id: str) -> dict[str, Any]:
         """Return ``{"status": <provider-status-string>, "fine_tuned_model": str|None}``."""
         ...
 
-    async def cancel(self, credential: Any, provider_job_id: str) -> None:
+    async def cancel(self, tenant_id: Any, credential: Any, provider_job_id: str) -> None:
         """Cancel a job at the provider. Raises on failure (caller maps to 502)."""
         ...
 

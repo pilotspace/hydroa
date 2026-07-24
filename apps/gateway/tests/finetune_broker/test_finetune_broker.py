@@ -36,6 +36,8 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
+from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -125,10 +127,19 @@ class _PortCall:
     op: str
     secret: str
     payload: dict[str, Any] = field(default_factory=dict)
+    # HEAL (D1): the tenant_id the broker threaded through to this call — additive
+    # field (default None), so no existing assertion on _PortCall's other fields
+    # changes shape; new D1 coverage reads this to prove per-call tenant identity.
+    tenant_id: Any = None
 
 
 class FakeFinetuneProvider:
-    """In-memory FinetuneProviderPort recording every call + the credential used."""
+    """In-memory FinetuneProviderPort recording every call + the credential used.
+
+    HEAL (D1): submit/poll/cancel now take ``tenant_id`` FIRST (matches the healed
+    ``FinetuneProviderPort`` protocol) — additive to the fake's own behavior, every
+    existing assertion on ``.calls[i].op/.secret/.payload`` is unchanged.
+    """
 
     def __init__(self) -> None:
         self.calls: list[_PortCall] = []
@@ -141,31 +152,42 @@ class FakeFinetuneProvider:
     def _secret_of(credential: object) -> str:
         return str(getattr(credential, "secret", credential))
 
-    async def submit(self, credential: object, request: dict[str, Any]) -> str:
-        self.calls.append(_PortCall("submit", self._secret_of(credential), dict(request)))
+    async def submit(self, tenant_id: object, credential: object, request: dict[str, Any]) -> str:
+        self.calls.append(
+            _PortCall("submit", self._secret_of(credential), dict(request), tenant_id)
+        )
         if self.fail_submit:
             raise ConnectionError("injected submit failure")
         return f"ftjob-provider-{uuid.uuid4().hex[:8]}"
 
-    async def poll(self, credential: object, provider_job_id: str) -> dict[str, Any]:
-        self.calls.append(_PortCall("poll", self._secret_of(credential)))
+    async def poll(
+        self, tenant_id: object, credential: object, provider_job_id: str
+    ) -> dict[str, Any]:
+        self.calls.append(_PortCall("poll", self._secret_of(credential), tenant_id=tenant_id))
         return {
             "status": self.poll_status,
             "fine_tuned_model": self.poll_fine_tuned_model,
         }
 
-    async def cancel(self, credential: object, provider_job_id: str) -> None:
-        self.calls.append(_PortCall("cancel", self._secret_of(credential)))
+    async def cancel(self, tenant_id: object, credential: object, provider_job_id: str) -> None:
+        self.calls.append(_PortCall("cancel", self._secret_of(credential), tenant_id=tenant_id))
         if self.fail_cancel:
             raise ConnectionError("injected cancel failure")
 
 
 class RecordingPerTenantResolver:
-    """Structural TenantCredentialResolver double: DISTINCT secret per tenant, fail-closed."""
+    """Structural TenantCredentialResolver double: DISTINCT secret per tenant, fail-closed.
+
+    HEAL (D2): ``fail_corrupt_for`` additively simulates a corrupted stored
+    credential (Fernet decrypt failure) by raising ``ProviderCredentialError``
+    instead of ``ProviderKeyMissing`` — a DIFFERENT exception type the use-case must
+    also catch (it previously did not).
+    """
 
     def __init__(self) -> None:
         self.secrets: dict[str, str] = {}
         self.fail_for: set[str] = set()
+        self.fail_corrupt_for: set[str] = set()
 
     def secret_for(self, tenant_id: str) -> str:
         return self.secrets.setdefault(tenant_id, f"sk-tenant-{tenant_id}-{uuid.uuid4().hex[:6]}")
@@ -173,10 +195,13 @@ class RecordingPerTenantResolver:
     async def resolve(self, tenant_id: object, provider: str) -> object:
         from gateway.proxy.domain.provider_credentials import (
             BearerCredential,
+            ProviderCredentialError,
             ProviderKeyMissing,
         )
 
         tid = str(tenant_id)
+        if tid in self.fail_corrupt_for:
+            raise ProviderCredentialError("ERR_PROVIDER_CREDENTIAL_CORRUPT")
         if tid in self.fail_for:
             raise ProviderKeyMissing(provider)
         return BearerCredential(secret=self.secret_for(tid))
@@ -634,3 +659,218 @@ class TestFilesFineTunePurpose:
         )
         assert bogus.status_code == 422
         assert "ERR_FILE_PURPOSE_UNSUPPORTED" in bogus.text
+
+
+# ---------------------------------------------------------------------------
+# HEAL (2026-07-24) — additive coverage for 4 defects a dual security refute-read
+# found in build 58ca854. Existing 16 tests above are UNCHANGED; this section only
+# ADDS new red->green coverage. See use_cases.py module docstring "HEAL" note.
+# ---------------------------------------------------------------------------
+
+
+class _FlakyOpenAIFinetuneClient(OpenAIFinetuneClient):
+    """D1 test double: subclasses the REAL ``OpenAIFinetuneClient`` so it reuses the
+    ACTUAL production per-tenant ``CircuitBreaker`` registry (``_breaker_for``) —
+    only the HTTP transport is replaced with a controllable stub. This proves the
+    PRODUCTION breaker code isolates failures per tenant; a dumb fake with no
+    breaker at all (``FakeFinetuneProvider``) could never expose this defect.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail_for: set[str] = set()
+
+    async def submit(self, tenant_id: object, credential: object, request: dict[str, Any]) -> str:
+        breaker = self._breaker_for(tenant_id)  # type: ignore[arg-type]
+        breaker.guard()  # raises CircuitOpenError if THIS tenant's breaker is open
+        if str(tenant_id) in self.fail_for:
+            breaker.on_upstream_error()
+            raise ConnectionError("stub upstream failure")
+        breaker.record_success()
+        return f"ftjob-provider-{uuid.uuid4().hex[:8]}"
+
+    async def cancel(self, tenant_id: object, credential: object, provider_job_id: str) -> None:
+        breaker = self._breaker_for(tenant_id)  # type: ignore[arg-type]
+        breaker.guard()
+        if str(tenant_id) in self.fail_for:
+            breaker.on_upstream_error()
+            raise ConnectionError("stub upstream failure")
+        breaker.record_success()
+
+
+class TestHealD1PerTenantBreaker:
+    async def test_tripped_breaker_does_not_502_other_tenant(
+        self,
+        client: Any,
+        app: Any,
+        tenant_a: dict[str, str],
+        tenant_b: dict[str, str],
+    ) -> None:
+        """D1: tenant A's breaker tripping (5 consecutive submit failures — the real
+        CircuitBreaker's _FAILURE_THRESHOLD) must NOT 502/degrade tenant B's
+        fine-tuning — proves the per-tenant breaker registry, not a shared one."""
+        flaky = _FlakyOpenAIFinetuneClient()
+        app.state.finetune_provider = flaky
+        flaky.fail_for.add(tenant_a["tenant_id"])
+
+        # Trip tenant A's breaker: 5 consecutive submit failures.
+        for _ in range(5):
+            file_id = await _upload_training_file(client, tenant_a["key"])
+            resp = await _create_job(client, tenant_a["key"], training_file=file_id)
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["status"] == "failed"
+
+        # A's breaker is now OPEN — a further call for A still honestly degrades
+        # (never a 500/uncaught error), status quo for A.
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        resp = await _create_job(client, tenant_a["key"], training_file=file_id)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "failed"
+
+        # Tenant B — a DIFFERENT tenant, never in fail_for — must succeed normally:
+        # its breaker was never touched by A's failures (this is the D1 assertion).
+        file_b = await _upload_training_file(client, tenant_b["key"])
+        resp_b = await _create_job(client, tenant_b["key"], training_file=file_b)
+        assert resp_b.status_code == 200, resp_b.text
+        assert resp_b.json()["status"] == "queued", (
+            "tenant B's fine-tuning must not be affected by tenant A's tripped breaker"
+        )
+
+
+class TestHealD2CorruptedCredential:
+    async def test_create_with_corrupted_credential_returns_402(
+        self,
+        client: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """D2: a corrupted stored credential (ProviderCredentialError, e.g. a Fernet
+        decrypt failure) must fail-closed 402 on create — previously uncaught,
+        propagating as an unhandled 500."""
+        resolver.fail_corrupt_for.add(tenant_a["tenant_id"])
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        resp = await _create_job(client, tenant_a["key"], training_file=file_id)
+        assert resp.status_code == 402, resp.text
+        assert provider_port.calls == [], "no outbound call on a corrupted credential"
+
+    async def test_cancel_with_corrupted_credential_returns_402(
+        self,
+        client: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """D2: cancel also fail-closes 402 on a corrupted credential (status unchanged)."""
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        job_id = (await _create_job(client, tenant_a["key"], training_file=file_id)).json()["id"]
+        resolver.fail_corrupt_for.add(tenant_a["tenant_id"])
+        resp = await client.post(
+            f"/v1/fine_tuning/jobs/{job_id}/cancel", headers=_bearer(tenant_a["key"])
+        )
+        assert resp.status_code == 402, resp.text
+
+    async def test_get_with_corrupted_credential_is_stale_ok(
+        self,
+        client: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """D2: GET refresh-on-read with a corrupted credential is stale-ok — never a
+        5xx (or 402) on a read (M7's read-path guarantee)."""
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        job_id = (await _create_job(client, tenant_a["key"], training_file=file_id)).json()["id"]
+        resolver.fail_corrupt_for.add(tenant_a["tenant_id"])
+        resp = await client.get(
+            f"/v1/fine_tuning/jobs/{job_id}", headers=_bearer(tenant_a["key"])
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "queued"
+
+
+class TestHealD3SubmitFailureLeakSweep:
+    async def test_submit_failure_leaves_no_secret_in_error_or_events(
+        self,
+        client: Any,
+        app: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """D3: sweep finetune_jobs.error + finetune_job_events.data after a
+        submit-time provider failure — the credential must appear NOWHERE. Locks
+        the invariant against a future adapter change that might echo raw
+        exception/response text containing the Authorization header."""
+        provider_port.fail_submit = True
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        resp = await _create_job(client, tenant_a["key"], training_file=file_id)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "failed"
+        secret = resolver.secret_for(tenant_a["tenant_id"])
+        assert secret not in resp.text
+
+        async with app.state.sessionmaker() as session:
+            error_rows = (
+                await session.execute(text("SELECT error FROM finetune_jobs"))
+            ).scalars().all()
+            for err in error_rows:
+                assert err is None or secret not in err, (
+                    f"credential leaked into finetune_jobs.error: {err}"
+                )
+            event_rows = (
+                await session.execute(text("SELECT data FROM finetune_job_events"))
+            ).scalars().all()
+            for data in event_rows:
+                assert secret not in str(data), (
+                    f"credential leaked into finetune_job_events.data: {data}"
+                )
+
+
+class ThrowingCompletionListener:
+    """D4 test double: the finetune-model-registry extension point, but it always
+    raises — proves a broken registry write can never roll back the broker's own
+    already-decided terminal state."""
+
+    async def on_succeeded(self, job: Any) -> None:
+        raise RuntimeError("simulated finetune-model-registry write failure")
+
+
+class TestHealD4ListenerRollback:
+    async def test_throwing_listener_does_not_roll_back_terminal_cas(
+        self,
+        client: Any,
+        app: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """D4: a throwing completion listener must NOT roll back the terminal CAS —
+        the job reaches "succeeded" on the FIRST read (no 500) and STAYS there (a
+        second read must not re-poll the provider or lose fine_tuned_model)."""
+        app.state.finetune_completion_listener = ThrowingCompletionListener()
+
+        file_id = await _upload_training_file(client, tenant_a["key"])
+        job_id = (await _create_job(client, tenant_a["key"], training_file=file_id)).json()["id"]
+
+        ft_model = f"ft:{_MODEL}:acme::{uuid.uuid4().hex[:6]}"
+        provider_port.poll_status = "succeeded"
+        provider_port.poll_fine_tuned_model = ft_model
+
+        got = await client.get(
+            f"/v1/fine_tuning/jobs/{job_id}", headers=_bearer(tenant_a["key"])
+        )
+        assert got.status_code == 200, got.text
+        assert got.json()["status"] == "succeeded"
+        assert got.json()["fine_tuned_model"] == ft_model
+
+        # A SECOND read: flip poll_status back to "running" — if the CAS had been
+        # rolled back by the throwing listener, this read would re-poll the
+        # provider and observe "running" again (or worse, crash). It must not.
+        provider_port.poll_status = "running"
+        again = await client.get(
+            f"/v1/fine_tuning/jobs/{job_id}", headers=_bearer(tenant_a["key"])
+        )
+        assert again.status_code == 200
+        assert again.json()["status"] == "succeeded"
+        assert again.json()["fine_tuned_model"] == ft_model

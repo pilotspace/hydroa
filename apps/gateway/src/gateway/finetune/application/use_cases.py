@@ -17,10 +17,24 @@ Retry/timeout ownership: the PORT (OpenAIFinetuneClient) owns the bounded-timeou
 retry policy per operation (submit=1 attempt, poll<=2 retries, cancel=1 retry) — this
 service calls each port method exactly once and reacts to success/failure, so the
 retry count is never duplicated between layers.
+
+HEAL (2026-07-24, dual security refute-read — 4 defects):
+  D1 every ``self._provider_port.submit/poll/cancel`` call now passes ``tenant_id``
+     FIRST so the port can key its outbound-IO circuit breaker per tenant (mirrors
+     the moderations CR-1 heal) — one tenant's provider outage can no longer 502
+     every other tenant.
+  D2 credential resolution now catches ``ProviderCredentialError`` (a corrupted
+     stored credential / Fernet decrypt failure) alongside ``ProviderKeyMissing`` at
+     all 3 entry points: create/cancel -> contracted 402 (never an uncaught 500);
+     get -> stale-ok (never a 5xx read, M7).
+  D4 a winning terminal CAS transition in ``get_job`` is committed BEFORE the
+     completion listener is invoked, and any listener exception is caught+logged —
+     never rolled back, never re-fired (the CAS itself is still exactly-once).
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
@@ -43,7 +57,9 @@ from gateway.finetune.domain.provider_port import (
 from gateway.finetune.infrastructure.orm import FinetuneJobEventRow, FinetuneJobRow
 from gateway.finetune.infrastructure.repository import FinetuneJobRepository
 from gateway.finetune.wire_id import parse_job_wire_id
-from gateway.proxy.domain.provider_credentials import ProviderKeyMissing
+from gateway.proxy.domain.provider_credentials import ProviderCredentialError, ProviderKeyMissing
+
+_log = logging.getLogger(__name__)
 
 _FINETUNE_PURPOSE = "fine-tune"
 
@@ -104,12 +120,15 @@ class FinetuneBrokerService:
             )
 
         # M2 fail-closed: own-key-or-402. Platform fallback is NEVER consulted here —
-        # no row is created and ZERO outbound IO occurs on a miss.
+        # no row is created and ZERO outbound IO occurs on a miss. D2 heal: a
+        # corrupted stored credential (ProviderCredentialError, e.g. Fernet decrypt
+        # failure) is ALSO fail-closed 402 here — previously uncaught -> 500. The
+        # static detail string never includes the exception (no secret in it).
         try:
             credential = await self._credential_resolver.resolve(tenant_id, provider)
-        except ProviderKeyMissing as pkm:
+        except (ProviderKeyMissing, ProviderCredentialError) as exc:
             raise ProblemError(
-                402, pkm.code, "Provider key not configured for this tenant"
+                402, exc.code, "Provider key not configured for this tenant"
             ) from None
 
         row = await self._repo.create(
@@ -137,7 +156,7 @@ class FinetuneBrokerService:
         }
         try:
             provider_job_id = await self._provider_port.submit(
-                unwrap_credential_secret(credential), request_payload
+                tenant_id, unwrap_credential_secret(credential), request_payload
             )
             if not is_valid_provider_job_id(provider_job_id):
                 raise ValueError(f"malformed provider_job_id shape: {provider_job_id!r}")
@@ -178,15 +197,17 @@ class FinetuneBrokerService:
             # job has nothing to refresh against.
             return row
 
-        # Refresh-on-read: ANY inability to poll — credential-resolution failure OR
-        # provider failure — serves the last-known LOCAL state (stale-ok, M7).
+        # Refresh-on-read: ANY inability to poll — credential-resolution failure
+        # (ProviderKeyMissing, OR a corrupted stored credential -> D2 heal:
+        # ProviderCredentialError) OR provider failure — serves the last-known
+        # LOCAL state (stale-ok, M7). Never a 5xx/402 on a read.
         try:
             credential = await self._credential_resolver.resolve(tenant_id, row.provider)
-        except ProviderKeyMissing:
+        except (ProviderKeyMissing, ProviderCredentialError):
             return row
         try:
             poll_result = await self._provider_port.poll(
-                unwrap_credential_secret(credential), row.provider_job_id
+                tenant_id, unwrap_credential_secret(credential), row.provider_job_id
             )
         except Exception:  # noqa: BLE001 — stale-ok, never a 5xx read
             return row
@@ -220,8 +241,23 @@ class FinetuneBrokerService:
             await self._repo.add_event(
                 job_id=refreshed.id, tenant_id=tenant_id, level="info", message="succeeded"
             )
-            if self._completion_listener is not None:
+
+        # D4 heal: commit the terminal CAS transition (+ the "succeeded" event, if
+        # any) BEFORE invoking the completion listener. A throwing listener must
+        # never roll back an already-won, already-decided terminal state — without
+        # this, an exception here would propagate through the router and the
+        # request's rollback would undo the CAS too, leaving the job stuck stale
+        # forever (every subsequent GET would keep re-polling the real provider).
+        await self._repo.commit()
+
+        if new_status == "succeeded" and self._completion_listener is not None:
+            try:
                 await self._completion_listener.on_succeeded(refreshed)
+            except Exception:  # noqa: BLE001 — never roll back a committed CAS
+                _log.exception(
+                    "finetune_completion_listener_failed",
+                    extra={"job_id": str(refreshed.id)},
+                )
         return refreshed
 
     async def list_jobs(
@@ -244,13 +280,15 @@ class FinetuneBrokerService:
             # on failure so cancel remains retryable — R:provider_unreachable).
             try:
                 credential = await self._credential_resolver.resolve(tenant_id, row.provider)
-            except ProviderKeyMissing as pkm:
+            except (ProviderKeyMissing, ProviderCredentialError) as exc:
+                # D2 heal: a corrupted stored credential is ALSO fail-closed 402 here
+                # (previously uncaught -> 500).
                 raise ProblemError(
-                    402, pkm.code, "Provider key not configured for this tenant"
+                    402, exc.code, "Provider key not configured for this tenant"
                 ) from None
             try:
                 await self._provider_port.cancel(
-                    unwrap_credential_secret(credential), row.provider_job_id
+                    tenant_id, unwrap_credential_secret(credential), row.provider_job_id
                 )
             except Exception:  # noqa: BLE001 — status unchanged, cancel stays retryable
                 raise FINETUNE_PROVIDER_UNREACHABLE.exc() from None

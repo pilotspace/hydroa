@@ -25,6 +25,16 @@ class FinetuneJobRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def commit(self) -> None:
+        """Durably commit whatever this repository has flushed so far.
+
+        HEAL (D4): used by ``FinetuneBrokerService.get_job`` to commit a winning
+        terminal CAS transition INDEPENDENTLY of the completion-listener call that
+        follows it — so a throwing listener can never roll back an already-decided
+        terminal state.
+        """
+        await self._session.commit()
+
     async def create(
         self,
         *,
