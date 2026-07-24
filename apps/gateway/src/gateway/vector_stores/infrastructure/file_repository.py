@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, update
@@ -48,6 +49,18 @@ from gateway.vector_stores.infrastructure.orm import (
 )
 
 _TERMINAL_STATUSES = ("completed", "failed")
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievedChunk:
+    """One chunk returned by top-k retrieval (file-search-tool PLAN.md §3).
+
+    Deliberately a thin projection — the grounding seam only needs the chunk text;
+    it never mutates a live ORM row nor holds the (heavy) embedding vector in memory.
+    """
+
+    content: str
+    chunk_index: int
 
 
 class VectorStoreFileRepository:
@@ -231,6 +244,34 @@ class VectorStoreFileRepository:
                 counts[status] = int(n)
             counts["total"] += int(n)
         return counts
+
+    async def search_chunks(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        store_id: uuid.UUID,
+        query_embedding: list[float],
+        top_k: int,
+    ) -> list[RetrievedChunk]:
+        """Top-k cosine-nearest chunks for one store, tenant + store scoped (M1).
+
+        ZERO DDL — rides the FROZEN wave-1/2 ``vector_store_chunks`` schema + its HNSW
+        cosine index (``vector_cosine_ops``). Nearest-first (``embedding <=> :q`` ASC),
+        bounded by ``top_k``. The WHERE clause filters BOTH ``tenant_id`` AND
+        ``vector_store_id`` (both denormalized onto the chunk row) so a store owned by
+        another tenant — or an unknown store — returns ``[]`` with ZERO leak; the caller
+        maps ``[]``/absent-store to a uniform 404 (never an enumeration oracle).
+        """
+        result = await self._session.execute(
+            select(VectorStoreChunkRow.content, VectorStoreChunkRow.chunk_index)
+            .where(
+                VectorStoreChunkRow.tenant_id == tenant_id,
+                VectorStoreChunkRow.vector_store_id == store_id,
+            )
+            .order_by(VectorStoreChunkRow.embedding.cosine_distance(query_embedding))
+            .limit(top_k)
+        )
+        return [RetrievedChunk(content=row[0], chunk_index=row[1]) for row in result.all()]
 
 
 __all__ = ["VectorStoreFileRepository", "_TERMINAL_STATUSES"]
