@@ -1408,3 +1408,31 @@ RESPONSES_TOOL_UNSUPPORTED = ErrorSpec(
 RESPONSES_STORE_UNSUPPORTED = ErrorSpec(
     400, "ERR_RESPONSES_STORE_UNSUPPORTED", "stored/chained responses are not supported"
 )
+
+# ---------------------------------------------------------------------------
+# Moderations endpoint (moderations-endpoint TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/moderations — ``model`` field missing or empty. A dedicated code (NOT the
+#: shared PAYLOAD_MODEL_REQUIRED/ERR_PAYLOAD_INVALID symbol other proxy endpoints reuse)
+#: because this task's frozen §3 contract names the literal wire code
+#: ``ERR_PAYLOAD_MODEL_REQUIRED`` explicitly.
+MODERATION_MODEL_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_MODEL_REQUIRED", "Field 'model' is required and non-empty"
+)
+
+#: POST /v1/moderations — ``input`` field missing, empty string, or empty list. A
+#: dedicated code for the same reason as MODERATION_MODEL_REQUIRED above — the frozen
+#: §3 contract names ``ERR_PAYLOAD_INPUT_REQUIRED`` literally.
+MODERATION_INPUT_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_INPUT_REQUIRED", "Field 'input' is required and non-empty"
+)
+
+#: POST /v1/moderations — ``input`` is a list containing a non-string item (e.g. an
+#: image content-part). Image/content-part moderation is out of v1 scope; rejected with
+#: a named code rather than silently mis-parsed.
+MODERATION_INPUT_UNSUPPORTED = ErrorSpec(
+    422,
+    "ERR_MODERATION_INPUT_UNSUPPORTED",
+    "Field 'input' must be a string or a list of strings",
+)

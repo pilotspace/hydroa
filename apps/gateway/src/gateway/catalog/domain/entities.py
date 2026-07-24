@@ -15,10 +15,13 @@ from typing import Literal
 #: Frozen set of valid modality values.  Stored as TEXT in the DB; validated at
 #: the application boundary.  Using Literal + TEXT (not a PostgreSQL ENUM) avoids
 #: ALTER TYPE migrations when new modalities are added in a future slice.
-Modality = Literal["chat", "embedding", "image", "audio_stt", "audio_tts"]
+#: "moderation" added additively by moderations-endpoint TASK.md §3 — confirmed
+#: [OBSERVED] this set has zero live enforcement call sites today (documentation-only
+#: hygiene, not a behavior change).
+Modality = Literal["chat", "embedding", "image", "audio_stt", "audio_tts", "moderation"]
 
 VALID_MODALITIES: frozenset[str] = frozenset(
-    {"chat", "embedding", "image", "audio_stt", "audio_tts"}
+    {"chat", "embedding", "image", "audio_stt", "audio_tts", "moderation"}
 )
 
 # ---------------------------------------------------------------------------

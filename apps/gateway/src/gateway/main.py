@@ -174,6 +174,7 @@ from gateway.proxy.api.discovery_router import discovery_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.messages_router import messages_router
+from gateway.proxy.api.moderations_router import moderations_router
 from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
@@ -246,9 +247,9 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
 from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.billing_owner_router import billing_owner_router
 from gateway.tenants.api.cache_router import cache_router
-from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.domain_invite_links_router import domain_invite_links_router
 from gateway.tenants.api.domain_invite_redeem_router import domain_invite_redeem_router
+from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.plan_router import plan_router
@@ -1685,6 +1686,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(discovery_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
+    app.include_router(moderations_router)
     app.include_router(audio_router)
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)

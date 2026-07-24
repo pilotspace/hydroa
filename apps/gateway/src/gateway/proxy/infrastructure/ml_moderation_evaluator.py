@@ -1,6 +1,9 @@
 """ML moderation guardrail check — provider-backed, default-off, pre-call only.
 
-ml-moderation-layer TASK.md §3 CONTRACT — FROZEN @ v1.
+ml-moderation-layer TASK.md §3 CONTRACT — FROZEN @ v1. Additively extended by
+moderations-endpoint TASK.md §3 (FROZEN @ v1) with ``OpenAiModerationClient.
+moderate_raw`` — the frozen ``evaluate_pre`` 2-arg shape, ``ModerationVerdict``, and
+``MlModerationGuardrailEvaluator``/``CompositeGuardrailEvaluator`` are UNTOUCHED.
 
 Live-verify evidence (mandatory pre-build gate, §3 least-sure flag): OpenAI's
 ``POST /v1/moderations`` endpoint was confirmed on 2026-07-10 to be FREE — it does
@@ -184,6 +187,44 @@ class OpenAiModerationClient:
         raw_categories = result.get("categories") or {}
         categories = [name for name, hit in raw_categories.items() if hit]
         return ModerationVerdict(flagged=bool(result.get("flagged", False)), categories=categories)
+
+    async def moderate_raw(
+        self, input_value: str | list[str], *, model: str = _MODERATION_MODEL
+    ) -> dict[str, Any]:
+        """Return the FULL upstream wire body for a client-facing moderation call.
+
+        moderations-endpoint TASK.md §3 (FROZEN @ v1) M3 — additive sibling of
+        ``moderate()`` above. NEVER normalizes to the narrow ``ModerationVerdict``
+        (``flagged`` + ``categories: list[str]``) the internal guardrail path uses —
+        the client-facing endpoint needs the full 13-key ``categories``/
+        ``category_scores``/``category_applied_input_types`` shape and the top-level
+        ``id``/``model`` envelope, byte-identical to what OpenAI itself returns.
+
+        Uses the SAME dedicated breaker/timeout instance and the SAME
+        ``post_json_with_retry`` seam ``moderate()`` uses — one isolated breaker for
+        the whole moderation IO seam (§1 Framing A). Raises ``UpstreamUnavailableError``
+        on any non-2xx status or a 200 whose body doesn't match the wire contract
+        (missing/malformed ``results``) — NEVER a fabricated "safe" result (M6).
+        """
+        payload: dict[str, Any] = {"model": model, "input": input_value}
+
+        status, body = await self._provider.post_json_with_retry(
+            _MODERATION_PATH,
+            payload,
+            max_retries=MODERATION_MAX_RETRIES,
+            backoff_base=MODERATION_BACKOFF_BASE_S,
+            deadline_s=MODERATION_RETRY_DEADLINE_S,
+            provider_label="openai_moderation",
+        )
+        if status >= 400:
+            raise UpstreamUnavailableError(f"Moderation upstream returned {status}")
+
+        results = body.get("results")
+        if not isinstance(results, list) or not results:
+            raise UpstreamUnavailableError(
+                "Moderation upstream returned 200 with a malformed body (missing results)"
+            )
+        return body
 
 
 class MlModerationGuardrailEvaluator:
