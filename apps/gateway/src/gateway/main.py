@@ -44,6 +44,8 @@ from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers S
     SamlProviderConfigRow as _SamlProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
+from gateway.finetune.api.router import finetune_router
+from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
 from gateway.batches.api.stats_router import batch_stats_router
 from gateway.batches.application.window_flusher import (
     DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
@@ -1529,6 +1531,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         enabled=settings.platform_credential_fallback_enabled,
     )
 
+    # finetune-broker PLAN.md §3 (FROZEN @ v1): the real FinetuneProviderPort adapter.
+    # Platform fallback is deliberately NOT wired for fine-tuning anywhere in this
+    # module — the broker resolves ONLY app.state.tenant_credential_resolver (own-key-
+    # or-402). Tests override via app.state.finetune_provider (FakeFinetuneProvider).
+    app.state.finetune_provider = OpenAIFinetuneClient(base_url=settings.openai_base_url)
+    # The finetune-model-registry extension point (default None -> byte-identical);
+    # tests override via app.state.finetune_completion_listener.
+    app.state.finetune_completion_listener = None
+
     # ml-moderation-layer (§3 CONTRACT — FROZEN @ v1): a DEDICATED OpenAIDirectProvider
     # + CircuitBreaker instance for the moderation IO seam, isolated from _openai_direct
     # (chat/embeddings) so a moderation-provider outage can never trip real completions
@@ -1741,6 +1752,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)
+    app.include_router(finetune_router)
 
     # RequestIdMiddleware must be added AFTER routers are included so it wraps
     # the full ASGI app and captures final status codes including those set by

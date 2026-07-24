@@ -1456,6 +1456,12 @@ async def test_guardrails_core_migration_column_exists(
     # vector_stores/ context, registered on Base.metadata via the router's import chain
     # (repository -> orm, same precedent as every entry above). Guardrails-core still adds
     # no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (finetune-broker PLAN.md §3 two-manifest rule, 2026-07-24): added
+    # 'finetune_jobs', 'finetune_job_events' — additive migration 6f2a9c1e3b7d, two NEW
+    # tables owned by the finetune-broker task's own finetune/ context, registered on
+    # Base.metadata via the router's import chain (repository -> orm, same precedent as
+    # every entry above). Guardrails-core still adds no tables of its own; invariant
+    # intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1481,7 +1487,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'domain_invite_links','domain_invite_redemptions',"
                 " 'pending_personal_signups','access_requests','files',"
                 " 'stored_responses','vector_stores','vector_store_files',"
-                " 'vector_store_chunks')"
+                " 'vector_store_chunks','finetune_jobs','finetune_job_events')"
             )
         )
     ).fetchall()

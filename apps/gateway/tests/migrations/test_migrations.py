@@ -85,6 +85,8 @@ EXPECTED_TABLES = frozenset(
         "vector_stores",  # SANCTIONED EDIT — vector-store-core PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 55dc3f920a38 adds this table
         "vector_store_files",  # SANCTIONED EDIT — vector-store-core PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 55dc3f920a38 adds this table
         "vector_store_chunks",  # SANCTIONED EDIT — vector-store-core PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 55dc3f920a38 adds this table (pgvector substrate: embedding vector(1536) + HNSW cosine index)
+        "finetune_jobs",  # SANCTIONED EDIT — finetune-broker PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 6f2a9c1e3b7d adds this table
+        "finetune_job_events",  # SANCTIONED EDIT — finetune-broker PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 6f2a9c1e3b7d adds this table
     }
 )
 

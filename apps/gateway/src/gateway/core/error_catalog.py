@@ -1466,10 +1466,14 @@ IMAGE_EDIT_MODEL_UNKNOWN = ErrorSpec(
 # Files / uploads (files-uploads-api PLAN.md §3 — FROZEN @ v1)
 # ---------------------------------------------------------------------------
 
-#: POST /v1/files with a purpose outside {batch, vision, user_data} (e.g. fine-tune,
+#: POST /v1/files with a purpose outside {batch, vision, user_data, fine-tune} (e.g.
 #: assistants) — out of this milestone's vocabulary (M6 / R:purpose_unsupported).
+#: finetune-broker PLAN.md §3 M8 (FROZEN @ v1, ADDITIVE): "fine-tune" joins the
+#: vocabulary; every existing purpose stays byte-identical.
 FILE_PURPOSE_UNSUPPORTED = ErrorSpec(
-    422, "ERR_FILE_PURPOSE_UNSUPPORTED", "purpose must be one of: batch, vision, user_data"
+    422,
+    "ERR_FILE_PURPOSE_UNSUPPORTED",
+    "purpose must be one of: batch, vision, user_data, fine-tune",
 )
 
 #: POST /v1/files with a zero-byte / missing file part — no row created (R:file_empty).
@@ -1525,6 +1529,41 @@ BATCH_INPUT_AMBIGUOUS = ErrorSpec(
     422,
     "ERR_BATCH_INPUT_AMBIGUOUS",
     "exactly one of line_items or input_file_id must be provided",
+)
+
+# ---------------------------------------------------------------------------
+# Fine-tuning broker (finetune-broker PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/fine_tuning/jobs training_file OR validation_file absent, cross-tenant,
+#: or wrong-purpose — ONE uniform code across ALL cases and BOTH fields (T2: no
+#: enumeration oracle distinguishes absent / another tenant's / wrong-purpose).
+FINETUNE_TRAINING_FILE_INVALID = ErrorSpec(
+    422,
+    "ERR_FINETUNE_TRAINING_FILE_INVALID",
+    "training_file or validation_file is invalid, not found, or not purpose='fine-tune'",
+)
+
+#: POST /v1/fine_tuning/jobs model that resolves to no finetune-capable provider
+#: (v1: only OpenAI base models) — 422, zero outbound IO.
+FINETUNE_MODEL_UNSUPPORTED = ErrorSpec(
+    422, "ERR_FINETUNE_MODEL_UNSUPPORTED", "model is not supported for fine-tuning"
+)
+
+#: GET/cancel/events on an unknown OR cross-tenant fine-tuning job id — deliberately
+#: indistinguishable (T3: never 403, never a leak).
+FINETUNE_JOB_NOT_FOUND = ErrorSpec(404, "ERR_FINETUNE_JOB_NOT_FOUND", "Fine-tuning job not found")
+
+#: POST /v1/fine_tuning/jobs/{id}/cancel on an already-terminal job
+#: (succeeded|failed|cancelled) — 409, status unchanged.
+FINETUNE_JOB_NOT_CANCELLABLE = ErrorSpec(
+    409, "ERR_FINETUNE_JOB_NOT_CANCELLABLE", "Fine-tuning job is already in a terminal state"
+)
+
+#: POST /v1/fine_tuning/jobs/{id}/cancel when the provider is unreachable — 502,
+#: job status stays UNCHANGED so cancel remains retryable.
+FINETUNE_PROVIDER_UNREACHABLE = ErrorSpec(
+    502, "ERR_FINETUNE_PROVIDER_UNREACHABLE", "Fine-tuning provider is unreachable"
 )
 
 # ---------------------------------------------------------------------------
