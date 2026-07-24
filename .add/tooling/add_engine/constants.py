@@ -2,10 +2,9 @@
 
 Pure module-level constants. add.py re-exports these so `import add; add.STAGES`
 (and the 6 _-prefixed names) still resolve. `__all__` lists the public names so
-`from add_engine.constants import *` brings exactly them (not the Path import).
+`from add_engine.constants import *` brings exactly them.
 """
 import re
-from pathlib import Path
 
 __all__ = [
     "BOOK_URL",
@@ -32,8 +31,6 @@ __all__ = [
     "PERSONA_HINT",
     "PERSONA_FIT_HINT_TEMPLATE",
     "GUIDELINE_FILES",
-    "RULES_FILE_REL",
-    "WORKFLOW_HEADINGS",
     "_GATE_MODES",
     "_SKIPPABLE_PHASES",
     "_DIALECT_CLASSES",
@@ -223,15 +220,14 @@ GUIDELINE_FILES = ("AGENTS.md", "CLAUDE.md", ".clinerules")
 _GUIDE_BEGIN = "<!-- ADD:BEGIN — managed by `add.py sync-guidelines`; do not edit inside -->"
 _GUIDE_END = "<!-- ADD:END -->"
 
-# Rule-file mode (ccsk-style projects): instead of inlining the block into CLAUDE.md,
-# write it to a dedicated rule file under .claude/rules/ and leave a one-line reference
-# in CLAUDE.md's Workflows section. .claude/rules/ is a CLAUDE-only convention, so this
-# mode only ever relocates CLAUDE.md — AGENTS.md/.clinerules keep the inline block.
-RULES_FILE_REL = Path(".claude") / "rules" / "add-workflows.md"
-# Headings (most→least specific) a project may already use to group rule/workflow links.
-# Match is case-insensitive on the heading TEXT, at any `#` level.
-WORKFLOW_HEADINGS = ("Rules & Workflows", "Workflows", "Rules")
-_RULE_REF_LINE = "- ADD (AI-Driven Development) Workflows rules: ./.claude/rules/add-workflows.md"
+# PROJECT.md specs-pointer markers (foundation-specs-refs). PROJECT.md stays the thin
+# read-first index; this managed, SPEC_DDS-driven block routes to the standing 5-DD picture
+# in `.add/specs/`. `init` scaffolds it, `migrate` wires it into a pre-pointer PROJECT.md;
+# both refresh it idempotently in place. Same never-change rule as the guideline markers:
+# a re-run finds the old block by exact match, so changing these would orphan every block a
+# prior version wrote.
+_SPECS_BEGIN = "<!-- ADD:SPECS — the 5-DD standing picture; managed by add.py — do not edit inside -->"
+_SPECS_END = "<!-- /ADD:SPECS -->"
 
 # Minimal embedded fallback so the tool still works if templates/ is missing
 # (circuit breaker: never hard-fail just because a template file was deleted).
@@ -252,14 +248,13 @@ Boundary:
   ⚠ <the ONE assumption most likely to be wrong — if wrong: <cost>>
 </assumptions>
 
-## 2 · SCENARIOS
 ## 3 · PLAN
 ### Contract
 Status: DRAFT
 ### Build-strategy
 Scope (may touch):
 Regression floor:
-## 4 · TESTS
+## 4 · TESTS & SCENARIOS
 ## 5 · BUILD
 ## 6 · VERIFY
 ### GATE RECORD

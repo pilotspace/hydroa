@@ -192,14 +192,14 @@
     },
     "responses-state-store": {
       "title": "Stored responses + previous_response_id chaining (tenant-isolated, ZDR-composing)",
-      "phase": "build",
-      "gate": "HARD-STOP",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "api-surface-parity",
       "depends_on": [
         "responses-api-core"
       ],
       "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T06:15:03+00:00",
+      "updated": "2026-07-24T06:24:52+00:00",
       "freeze": {
         "version": "v1",
         "frozen_at": "2026-07-24T04:48:59+00:00",
@@ -220,7 +220,7 @@
         "tests": {
           "apps/gateway/tests/responses_state_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
           "apps/gateway/tests/responses_state_store/conftest.py": "50efc107ff2f1a79bdb5f2f8c167ec1f",
-          "apps/gateway/tests/responses_state_store/test_responses_state_store.py": "3cda4bfd74b4f15620e6c11d5a54222d"
+          "apps/gateway/tests/responses_state_store/test_responses_state_store.py": "52bff72433ff808ef4da6468080693db"
         }
       },
       "scope": {
@@ -237,13 +237,39 @@
           "apps/gateway/tests/responses_api_core/test_responses_api_core.py",
           "apps/gateway/tests/responses_state_store/"
         ],
-        "snapshot_md5": "9a6c3bbd3aa8e0ed64a9ebfb052c71f9"
+        "snapshot_md5": "8362db2c47190297e395fb748c0dcb84"
       },
       "gate_actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
-      }
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-24T06:24:35+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/responses_state_store/test_responses_state_store.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-24T06:24:35+00:00",
+            "source": "tamper",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-07-24T06:24:47+00:00",
+        "from_phase": "build"
+      },
+      "target_hit": "yes"
     },
     "files-uploads-api": {
       "title": "OpenAI-wire /v1/files + multipart upload on the ObjectStore port",
@@ -501,9 +527,9 @@
       "title": "OpenAI API-surface parity",
       "goal": "",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-24T03:27:26+00:00",
-      "updated": "2026-07-24T03:29:40+00:00",
+      "updated": "2026-07-24T06:30:01+00:00",
       "confirmed": true,
       "confirmed_at": "2026-07-24T03:29:40+00:00",
       "confirmed_by": "tindang",
@@ -522,11 +548,16 @@
         "moderations-endpoint": [],
         "image-edits-variations": [],
         "tenant-usage-costs-api": []
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T06:15:03+00:00",
+  "updated": "2026-07-24T06:30:01+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

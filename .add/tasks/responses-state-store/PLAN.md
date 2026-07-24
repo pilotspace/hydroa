@@ -3,8 +3,8 @@
 slug: responses-state-store · created: 2026-07-24 · stage: production · risk: high
 sensitivity: security
 milestone: api-surface-parity
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: conservative
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -48,8 +48,6 @@ Boundary: `previous_response_id` arrives as a JSON string on the frozen wire (no
   - Materialized context costs O(chain²) storage vs walk-the-chain O(n) — [DERIVED] acceptable under the 64-depth/1 MiB caps + retention sweep; if wrong: internal storage-strategy swap behind the same wire, contract unmoved.
   - Retiring the one superseded core test (§3 Ownership-transfer note) is pre-authorized by core's frozen §3 transfer clause — [OBSERVED] — not a tamper; if the tripwire disagrees: re-cross tests→build per the tamper-ordering lesson.
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -158,8 +156,6 @@ Least-sure flag surfaced at freeze: [contract] the cascade-vs-concurrent-create 
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
 
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
-
 ---
 
 ## 4 · TESTS & SCENARIOS — failing-first suite or acceptance checks (red) ▸ docs/06-step-4-tests.md
@@ -193,8 +189,6 @@ Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cas
 
 Tests live in: `apps/gateway/tests/responses_state_store/` · MUST run red (missing implementation) before Build.
 RED evidence (2026-07-24, post-Tin-decisions fold — ZDR 403 fail-closed · cascade DELETE): `GATEWAY_TEST_DATABASE_URL=…responses_state_store uv run pytest tests/responses_state_store/ -q` → **20 failed in 18.60s**, against a tree where responses-api-core has MERGED (`2a7c402`) — store/chain tests fail on the parent's frozen `400 ERR_RESPONSES_STORE_UNSUPPORTED` terminal (the exact extension point this contract flips); DB-arrange/sweeper tests fail `asyncpg.exceptions.UndefinedTableError: relation "stored_responses" does not exist` (missing schema/migration); GET/DELETE tests fail on absent routes (`404 != 401`, `{"detail":"Not Found"}` never satisfies the required `code`); ZDR test fails `expected 403, got 400` (gate unbuilt). Red for the RIGHT reason across all 20; anti-vacuity held (every 404 assert requires `code == "ERR_RESPONSE_NOT_FOUND"`).
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0. The test_plan bullets' `covers:` tails are machine-read too: `add.py locate path::test_name` resolves a failing test to the frozen §3 clause it proves -->
-<!-- NON-CODING task (kind: docs · release · infra, or a non-coding project)? §4 is a failing-first ACCEPTANCE CHECK, not a script — verifiable pass/fail evidence (mkdocs build succeeds · §X covers A/B/C · every internal link resolves), red before the artifact exists and green after. Set `Tests live in: evidence` (no `./tests/`). The red→green discipline holds; only the must-be-executable-code requirement is lifted. -->
 
 ---
 
@@ -227,10 +221,10 @@ By: two independent add-advisor security agents (fresh context, disjoint lenses,
 
 ### GATE RECORD
 Reported: yes — sensitivity: security gate presented to Tin (never auto-passed) with both CLEAR verdicts + the MEDIUM coverage gap, lowest-confidence-first
-Outcome: HARD-STOP (Tin, 2026-07-24 — dual security verify both CLEAR, but Tin requires the MEDIUM gap closed before ship: add automated coverage for the ERR_RESPONSES_STORE_FAILED post-serve path and the streaming response.failed durability path. Not a security finding — a coverage completion the human chose not to defer.)
+Outcome (initial): HARD-STOP (Tin, 2026-07-24 — dual security verify both CLEAR, but the MEDIUM store-failure coverage gap must close before ship).
+Coverage HEAL (test-only, commit 4daa223): +2 durability tests — non-stream store-failure → 500 ERR_RESPONSES_STORE_FAILED with the served-completion usage row standing + zero stored_responses rows; streaming store-failure → terminal response.failed carrying ERR_RESPONSES_STORE_FAILED (no fabricated response.completed), usage row standing. Product code untouched (no defect); non-vacuity confirmed. Suite 22/22.
+Outcome (final): PASS (Tin's HARD-STOP condition met — dual security verify CLEAR + the required coverage now present and green).
 Reviewed by: Tin Dang · date: 2026-07-24
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. This task is sensitivity: security — DUAL adversarial security verify required (milestone Exit criterion); the Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 
 ---
 
