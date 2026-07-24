@@ -1381,3 +1381,30 @@ BILLING_OWNER_INELIGIBLE = ErrorSpec(
     "ERR_BILLING_OWNER_INELIGIBLE",
     "Target user must be an active, billing-capable (owner or billing_admin) member of this tenant",
 )
+
+# ---------------------------------------------------------------------------
+# Responses wire — POST /v1/responses boundary rejects (responses-api-core §3)
+# ---------------------------------------------------------------------------
+
+#: Non-JSON / non-object body · missing or empty `input` · unknown input-item
+#: type. A 400 (not the shared 422 PAYLOAD_INVALID) so the OpenAI Responses SDK
+#: sees the same bad-request status its own server returns; runs to completion
+#: BEFORE any governance call (malformed body never partially consumes a hold).
+RESPONSES_PAYLOAD_INVALID = ErrorSpec(400, "ERR_PAYLOAD_INVALID", "Request payload is invalid")
+
+#: `background: true` — the stateless core never dials an async/background run.
+RESPONSES_BACKGROUND_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_BACKGROUND_UNSUPPORTED", "background mode is not supported"
+)
+
+#: Any hosted/built-in tool type (web_search, file_search, code_interpreter,
+#: mcp, …) — the seam bills on chat-shape frames and never proxies a hosted tool.
+RESPONSES_TOOL_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_TOOL_UNSUPPORTED", "hosted tool type is not supported"
+)
+
+#: `store: true` OR any `previous_response_id` — the wave-2 extension point
+#: (responses-state-store) owns acceptance; the stateless core terminates both.
+RESPONSES_STORE_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_STORE_UNSUPPORTED", "stored/chained responses are not supported"
+)
