@@ -31,6 +31,7 @@ from gateway.core.error_catalog import (
     USAGE_PAGE_INVALID,
     USAGE_RANGE_TOO_LARGE,
     USAGE_START_TIME_INVALID,
+    ErrorSpec,
 )
 from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -110,8 +111,18 @@ def _decode_cursor(cursor: str) -> int:
         raise UsageQueryError(USAGE_PAGE_INVALID) from exc
 
 
-def _unix_to_naive_utc(unix_seconds: int) -> datetime:
-    return datetime.fromtimestamp(unix_seconds, tz=UTC).replace(tzinfo=None)
+def _unix_to_naive_utc(unix_seconds: int, spec: ErrorSpec) -> datetime:
+    """Convert Unix seconds → naive-UTC datetime, mapping any out-of-range value to ``spec``.
+
+    ``datetime.fromtimestamp`` raises for timestamps outside the supported epoch range
+    (OverflowError past platform ``time_t``; ValueError past year 9999; OSError on some
+    platforms). A validly-parsed but astronomically large integer must therefore be a 422
+    (R3/R4/R8), NOT an uncaught 500 — so the conversion is guarded at every call site.
+    """
+    try:
+        return datetime.fromtimestamp(unix_seconds, tz=UTC).replace(tzinfo=None)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise UsageQueryError(spec) from exc
 
 
 def _naive_utc_to_unix(dt: datetime) -> int:
@@ -226,7 +237,10 @@ class OpenAiUsageQueryUseCase:
         # page (R8): opaque cursor over the last returned bucket start_time.
         after_bucket: datetime | None = None
         if params.page:
-            after_bucket = _unix_to_naive_utc(_decode_cursor(params.page))
+            # A validly-base64-decoded but out-of-range cursor int maps to the SAME
+            # USAGE_PAGE_INVALID as a malformed cursor — no oracle distinguishing a forged
+            # far-future cursor from garbage (R8, anti-enumeration).
+            after_bucket = _unix_to_naive_utc(_decode_cursor(params.page), USAGE_PAGE_INVALID)
 
         models = _split_csv(params.models)
         api_key_ids = _split_csv(params.api_key_ids)
@@ -234,8 +248,8 @@ class OpenAiUsageQueryUseCase:
         return _ValidatedParams(
             unit=unit,
             width_seconds=width_seconds,
-            start=_unix_to_naive_utc(start_unix),
-            end=_unix_to_naive_utc(end_unix),
+            start=_unix_to_naive_utc(start_unix, USAGE_START_TIME_INVALID),
+            end=_unix_to_naive_utc(end_unix, USAGE_END_TIME_INVALID),
             models=models,
             api_key_ids=api_key_ids,
             group_model=group_model,
