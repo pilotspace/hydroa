@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "finetune-model-registry",
+  "active_task": "finetune-broker",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -140,23 +140,99 @@
     },
     "vector-store-core": {
       "title": "/v1/vector_stores CRUD + pgvector substrate",
-      "phase": "direction",
+      "phase": "build",
       "gate": "none",
       "milestone": "managed-rag-finetune",
       "depends_on": [],
       "created": "2026-07-24T08:21:22+00:00",
-      "updated": "2026-07-24T08:21:22+00:00",
-      "sensitivity": "architecture"
+      "updated": "2026-07-24T08:44:12+00:00",
+      "sensitivity": "architecture",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T08:44:11+00:00",
+        "approved_by": "Tin",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "13d0c0dcd0c98c7c5e33f2057e55df19",
+        "tests": {
+          "apps/gateway/tests/vector_store_core/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/vector_store_core/test_vector_store_core.py": "56c50359ddbbae6828b0b2f1a1ce29ac"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/vector_stores/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/pyproject.toml",
+          "apps/gateway/uv.lock",
+          "apps/gateway/tests/vector_store_core/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py",
+          "apps/gateway/tests/conftest.py",
+          "infra/docker-compose.dev.yml",
+          "infra/docker-compose.e2e.yml",
+          "infra/docker-compose.prod.yml",
+          "charts/ai-proxy/values.yaml"
+        ],
+        "snapshot_md5": "0fafd51500aa80b809a1f17a3150d888"
+      }
     },
     "finetune-broker": {
       "title": "/v1/fine_tuning/jobs brokered to BYOK provider",
-      "phase": "direction",
+      "phase": "build",
       "gate": "none",
       "milestone": "managed-rag-finetune",
       "depends_on": [],
       "created": "2026-07-24T08:21:22+00:00",
-      "updated": "2026-07-24T08:21:22+00:00",
-      "sensitivity": "security"
+      "updated": "2026-07-24T08:44:12+00:00",
+      "sensitivity": "security",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T08:44:12+00:00",
+        "approved_by": "Tin",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "e63ca17cb755e05412021a504bc56c36",
+        "tests": {
+          "apps/gateway/tests/finetune_broker/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/finetune_broker/test_finetune_broker.py": "718c2daf0c23dc60cda2bc82db291f5f"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/finetune/",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/files/api/router.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/finetune_broker/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/guardrails/test_guardrails_core.py"
+        ],
+        "snapshot_md5": "0fafd51500aa80b809a1f17a3150d888"
+      }
     },
     "vector-store-files": {
       "title": "Attach a /v1/files file: chunk, embed, index",
@@ -234,7 +310,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T08:21:23+00:00",
+  "updated": "2026-07-24T08:44:12+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1388,7 +1464,7 @@
     "managed-rag-finetune"
   ],
   "active_tasks": {
-    "managed-rag-finetune": "finetune-model-registry"
+    "managed-rag-finetune": "finetune-broker"
   },
   "todos": [
     {
