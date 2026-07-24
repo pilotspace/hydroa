@@ -20,9 +20,18 @@ its release-notes credit is pending.
   and MiniMax (OpenAI-wire-compatible). Provider is catalog metadata, never client-specified.
 - **BYOK** — tenant-managed provider credentials, Fernet-encrypted at rest, resolved per
   request; no shared platform key for completions.
-- **Endpoints**: chat completions (streaming + non-streaming), embeddings, images, audio
+- **Endpoints**: chat completions (streaming + non-streaming), the OpenAI **Responses API**
+  (`/v1/responses`, streaming + non-streaming, translated onto the same chat seam — with
+  optional stored responses and `previous_response_id` chaining, `GET`/`DELETE`), embeddings,
+  images (generations + **edits + variations**), **moderations** (`/v1/moderations`), audio
   (speech-to-text, text-to-speech, translations), turn-based realtime voice (WebSocket), and
   full-duplex realtime voice relay (bidirectional WS pump, provider-agnostic).
+- **Files API** — an OpenAI-compatible `/v1/files` surface (multipart upload, list/retrieve/
+  delete/content; purposes batch·vision·user_data) on the provider-agnostic ObjectStore port;
+  `/v1/batches` accepts `input_file_id`. A stored response is a tenant-isolated payload store
+  that composes with ZDR (loud 403 pre-dial) and the retention sweeper.
+- **Tenant usage/costs API** — an OpenAI-organization-style read API over the usage ledger
+  (time-bucketed usage + costs, filterable, keyset-paginated, hard tenant isolation).
 - **Batch API** — an OpenAI-compatible `/v1/batches` surface (durable job store, line-item
   validation, background processing), plus an admin batch-diversion policy that can divert
   eligible traffic into batch windows.

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.12.0 — 2026-07-24 — OpenAI API-surface parity
+
+R4 milestone (PR #87). Any application built on the OpenAI SDK can point its base
+URL at Hydroa and its Responses / Files / Moderations / Images-edit / Usage calls
+work — tenant-scoped, exactly billed, honoring every existing governance gate.
+
+### Added
+- **`POST /v1/responses`** (+ streaming SSE) — the modern OpenAI Responses wire,
+  translated onto the existing ChatTranslator seam; `store` defaults false; billing
+  and usage identical to chat, byte-identical default path.
+- **Stored responses** — `store:true` persistence, `previous_response_id` chaining,
+  `GET`/`DELETE /v1/responses/{id}` (cascade delete), tenant-isolated; ZDR tenants
+  are refused `store:true` with a loud 403 pre-dial; composes with the retention
+  sweeper. (sensitivity: security — dual adversarial security verify, both CLEAR.)
+- **`/v1/files`** — multipart upload + list/retrieve/delete/content on the ObjectStore
+  port (purposes: batch·vision·user_data); `/v1/batches` now accepts `input_file_id`.
+- **`POST /v1/moderations`** — the ml-moderation detector as an OpenAI-wire endpoint,
+  metered; circuit breaker keyed per tenant so one tenant's provider failures can't
+  degrade another tenant's guardrail.
+- **`/v1/images/edits` + `/v1/images/variations`** — multipart image editing on the
+  images seam, billed per returned image; seeds `dall-e-2`.
+- **Tenant usage/costs read API** — OpenAI-organization-style bucketed usage + costs
+  over `usage_records`, keyset-paginated, hard tenant isolation.
+
+### Fixed (caught by adversarial verify before merge)
+- Streaming Responses billing zeroed on split-usage frames (now derives terminal
+  usage from joined frames).
+- `/v1/files` uploads in the 20 MiB–512 MiB range rejected with the wrong error code
+  (dedicated route body-cap + bounded read; contracted 413 now fires across the range).
+- Usage API timestamp overflow returned 500 instead of the contracted 422.
+
 ## 0.11.0 — 2026-07-20
 
 - Account tiers & billing: personal/individual + business/enterprise base fee + payer of record — 0 carried · 0 key decision(s)
