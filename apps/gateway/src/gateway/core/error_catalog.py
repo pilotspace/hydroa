@@ -1436,3 +1436,28 @@ MODERATION_INPUT_UNSUPPORTED = ErrorSpec(
     "ERR_MODERATION_INPUT_UNSUPPORTED",
     "Field 'input' must be a string or a list of strings",
 )
+
+# ---------------------------------------------------------------------------
+# Image edits + variations (image-edits-variations TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/images/edits | /v1/images/variations — the required `image` multipart
+#: file field is absent or empty (mirrors PAYLOAD_FILE_REQUIRED's STT idiom).
+PAYLOAD_IMAGE_REQUIRED = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Field 'image' is required")
+
+#: POST /v1/images/edits | /v1/images/variations — the uploaded `image` (or `mask`,
+#: edits only) exceeds `Settings.image_edit_max_bytes`. Raised BEFORE governance/
+#: upstream/bill (no partial charge) — mirrors PAYLOAD_INPUT_TOO_LONG's pre-bill 413
+#: idiom.
+PAYLOAD_IMAGE_TOO_LARGE = ErrorSpec(
+    413, "ERR_PAYLOAD_IMAGE_TOO_LARGE", "Uploaded image exceeds the maximum allowed size"
+)
+
+#: POST /v1/images/edits | /v1/images/variations — model unknown/inactive in the
+#: catalog. Deliberately a TASK-LOCAL 404 (not the shared 400 MODEL_UNKNOWN used by
+#: chat/embeddings/generations/audio) — the frozen §4 red suite (test_ie7/IV-analog)
+#: asserts 404 for this endpoint pair; the shared MODEL_UNKNOWN constant stays 400
+#: for every other call site untouched by this task.
+IMAGE_EDIT_MODEL_UNKNOWN = ErrorSpec(
+    404, "ERR_MODEL_UNKNOWN", "Model '{model_id}' is not available"
+)
