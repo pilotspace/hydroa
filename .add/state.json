@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
-  "active_milestone": null,
+  "active_task": "finetune-model-registry",
+  "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -137,6 +137,60 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "vector-store-core": {
+      "title": "/v1/vector_stores CRUD + pgvector substrate",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [],
+      "created": "2026-07-24T08:21:22+00:00",
+      "updated": "2026-07-24T08:21:22+00:00",
+      "sensitivity": "architecture"
+    },
+    "finetune-broker": {
+      "title": "/v1/fine_tuning/jobs brokered to BYOK provider",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [],
+      "created": "2026-07-24T08:21:22+00:00",
+      "updated": "2026-07-24T08:21:22+00:00",
+      "sensitivity": "security"
+    },
+    "vector-store-files": {
+      "title": "Attach a /v1/files file: chunk, embed, index",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [
+        "vector-store-core"
+      ],
+      "created": "2026-07-24T08:21:22+00:00",
+      "updated": "2026-07-24T08:21:22+00:00"
+    },
+    "file-search-tool": {
+      "title": "file_search tool in /v1/responses + chat; per_query metering",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [
+        "vector-store-files"
+      ],
+      "created": "2026-07-24T08:21:22+00:00",
+      "updated": "2026-07-24T08:21:22+00:00"
+    },
+    "finetune-model-registry": {
+      "title": "Register fine-tuned model in tenant catalog + pricing snapshot",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [
+        "finetune-broker"
+      ],
+      "created": "2026-07-24T08:21:23+00:00",
+      "updated": "2026-07-24T08:21:23+00:00",
+      "sensitivity": "data"
     }
   },
   "milestones": {
@@ -147,10 +201,40 @@
       "status": "queued",
       "created": "2026-07-03T16:30:16+00:00",
       "updated": "2026-07-03T16:30:16+00:00"
+    },
+    "managed-rag-finetune": {
+      "title": "Managed RAG + fine-tune brokering",
+      "goal": "",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-24T08:07:15+00:00",
+      "updated": "2026-07-24T08:21:11+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-24T08:21:11+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "planned": {
+        "vector-store-core": [],
+        "vector-store-files": [
+          "vector-store-core"
+        ],
+        "file-search-tool": [
+          "vector-store-files"
+        ],
+        "finetune-broker": [],
+        "finetune-model-registry": [
+          "finetune-broker"
+        ]
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T08:04:13+00:00",
+  "updated": "2026-07-24T08:21:23+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1300,8 +1384,12 @@
       "archived": "2026-07-24"
     }
   ],
-  "active_milestones": [],
-  "active_tasks": {},
+  "active_milestones": [
+    "managed-rag-finetune"
+  ],
+  "active_tasks": {
+    "managed-rag-finetune": "finetune-model-registry"
+  },
   "todos": [
     {
       "id": 1,
