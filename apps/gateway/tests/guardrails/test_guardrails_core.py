@@ -1434,6 +1434,15 @@ async def test_guardrails_core_migration_column_exists(
     # its own; invariant intent unchanged. (Surfaced again by the SAME M1/M2 cross-manifest lesson —
     # this manifest lives separately from tests/migrations EXPECTED_TABLES, which both tasks
     # already updated.)
+    # SANCTIONED EDIT (files-uploads-api PLAN.md §3 manifest maintenance, 2026-07-24):
+    # added 'files' to this manifest — additive migration f9d3b1a7c2e4, a NEW table owned
+    # by the files-uploads-api task's own files/ context, registered on Base.metadata via
+    # main.py's side-effect ORM import (same precedent as every entry above). Guardrails-core
+    # still adds no tables of its own; invariant intent unchanged. NOTE: the files-uploads-api
+    # §3 scope-token list named tests/retention_zdr for "manifest #2" — a scrivener's error
+    # about WHERE the second manifest lives (retention_zdr has no pg_tables NOT-IN assertion;
+    # THIS guardrails inventory is manifest #2). The §1 Must "lands in BOTH manifests" + §5
+    # "the cross-manifest lesson" pre-authorize this additive edit; intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1457,7 +1466,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'agent_principals','tenant_report_schedules','compliance_report_runs',"
                 " 'checkout_sessions',"
                 " 'domain_invite_links','domain_invite_redemptions',"
-                " 'pending_personal_signups','access_requests')"
+                " 'pending_personal_signups','access_requests','files')"
             )
         )
     ).fetchall()

@@ -1461,3 +1461,46 @@ PAYLOAD_IMAGE_TOO_LARGE = ErrorSpec(
 IMAGE_EDIT_MODEL_UNKNOWN = ErrorSpec(
     404, "ERR_MODEL_UNKNOWN", "Model '{model_id}' is not available"
 )
+
+# ---------------------------------------------------------------------------
+# Files / uploads (files-uploads-api PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/files with a purpose outside {batch, vision, user_data} (e.g. fine-tune,
+#: assistants) — out of this milestone's vocabulary (M6 / R:purpose_unsupported).
+FILE_PURPOSE_UNSUPPORTED = ErrorSpec(
+    422, "ERR_FILE_PURPOSE_UNSUPPORTED", "purpose must be one of: batch, vision, user_data"
+)
+
+#: POST /v1/files with a zero-byte / missing file part — no row created (R:file_empty).
+FILE_EMPTY = ErrorSpec(422, "ERR_FILE_EMPTY", "Uploaded file is empty")
+
+#: POST /v1/files whose size exceeds Settings.files_max_bytes (>0) — rejected BEFORE any
+#: object-store put or DB row (R:file_too_large). 413 Payload Too Large.
+FILE_TOO_LARGE = ErrorSpec(
+    413, "ERR_FILE_TOO_LARGE", "Uploaded file exceeds the maximum allowed size"
+)
+
+#: GET/DELETE/content on an unknown OR cross-tenant OR deleted OR malformed file id —
+#: deliberately indistinguishable (R:file_not_found; never 403, never a leak).
+FILE_NOT_FOUND = ErrorSpec(404, "ERR_FILE_NOT_FOUND", "File not found")
+
+# ---------------------------------------------------------------------------
+# Batches input_file_id seam (files-uploads-api PLAN.md §3 — FROZEN @ v1, additive to
+# the frozen batch-job-store v1 contract)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/batches input_file_id that is absent OR cross-tenant OR not purpose='batch'
+#: OR malformed — ONE uniform code so no enumeration oracle distinguishes the cases
+#: (R:batch_input_invalid).
+BATCH_INPUT_FILE_INVALID = ErrorSpec(
+    422, "ERR_BATCH_INPUT_FILE_INVALID", "input_file_id is invalid, not found, or not a batch file"
+)
+
+#: POST /v1/batches with BOTH line_items and input_file_id, or NEITHER — exactly one of
+#: the two submission shapes must be present (R:batch_ambiguous).
+BATCH_INPUT_AMBIGUOUS = ErrorSpec(
+    422,
+    "ERR_BATCH_INPUT_AMBIGUOUS",
+    "exactly one of line_items or input_file_id must be provided",
+)

@@ -137,6 +137,7 @@ from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLi
 from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
+from gateway.files.api.router import files_router
 from gateway.guardrail_analytics.api.router import guardrail_analytics_router
 from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
     GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -1706,6 +1707,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)
+    app.include_router(files_router)
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)

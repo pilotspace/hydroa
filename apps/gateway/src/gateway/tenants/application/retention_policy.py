@@ -34,13 +34,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.error_catalog import ZDR_PAYLOAD_BLOCKED
 
-# The 5 newly-swept payload tables (tenant-retention-zdr TASK.md §3 M3).
+# The newly-swept payload tables (tenant-retention-zdr TASK.md §3 M3). files-uploads-api
+# PLAN.md §3 registers `files` as payload store #6 here — so GET /admin/retention-policy
+# reports a finite effective window for it AND the RetentionSweeper actually purges it
+# (both the per-tenant window pass and the ZDR purge pass sweep files; see
+# usage/application/retention_sweep.py). Reporting a window without sweeping would be the
+# exact CRIT honesty bug the sweeper's own docstring warns against.
 NEW_PAYLOAD_TABLES: tuple[str, ...] = (
     "artifacts",
     "conversations",
     "memories",
     "batch_job_items",
     "video_generation_jobs",
+    "files",
 )
 
 # The 2 pre-existing swept tables (data-retention-controls v1) — each carries its own

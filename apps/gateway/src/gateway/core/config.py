@@ -925,6 +925,12 @@ class Settings(BaseSettings):
     # as JSON, so a bare CSV env var would raise; str avoids that trap.
     artifact_allowed_content_types: str = Field(default="")
 
+    # ── Files store (files-uploads-api PLAN.md §3 — OpenAI-wire /v1/files) ─────
+    # GATEWAY_FILES_MAX_BYTES — per-file upload size cap (raw decoded bytes). 0 = disabled
+    # (no limit). Default 512 MiB (OpenAI's own /v1/files cap). Reject BEFORE any store put
+    # or DB row (no partial write) -> 413 ERR_FILE_TOO_LARGE.
+    files_max_bytes: int = Field(default=536_870_912, ge=0)  # GATEWAY_FILES_MAX_BYTES
+
     # ── Object store (S3/MinIO) for artifact bytes (v51 object-store-port) ─────
     # Unset/incomplete -> build_object_store() returns None -> artifacts honest-degrade
     # to inline Postgres BYTEA (the v45 behavior). Set ALL of enabled/endpoint/bucket/

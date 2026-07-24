@@ -324,6 +324,27 @@ _SELECT_ARTIFACTS_WINDOW = text(
 
 _DELETE_ARTIFACTS_BY_ID = text("DELETE FROM artifacts WHERE id = ANY(:ids)")
 
+# Pass 1 — files (files-uploads-api PLAN.md §3; object-store-aware, mirrors artifacts:
+# SELECT candidates, delete objects, then delete rows). files uses created_at for the
+# age cutoff and the same COALESCE(tenant window, operator ceiling) discipline.
+
+_SELECT_FILES_WINDOW = text(
+    """
+    SELECT f.id, f.object_key, f.storage_backend FROM files f
+    JOIN tenants tn ON tn.id = f.tenant_id
+     WHERE f.created_at < now() - (
+           COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+           )
+     LIMIT :batch
+    """
+)
+
+_DELETE_FILES_BY_ID = text("DELETE FROM files WHERE id = ANY(:ids)")
+
+_SELECT_FILES_ZDR_TENANT = text(
+    "SELECT id, object_key, storage_backend FROM files WHERE tenant_id = :tid LIMIT :batch"
+)
+
 # Pass 2 (per-tenant SHORTENING, the 2 pre-existing swept tables). Cutoff is
 # min(tenant_window, operator_default) — the operator's own per-table default (bound
 # in Python, passed as :operator_default) remains an outer bound; this pass can only
@@ -750,6 +771,61 @@ class RetentionSweeper:
             return total
         return total
 
+    async def _purge_files_batch(
+        self,
+        select_sql: Any,
+        batch_size: int,
+        extra_params: dict[str, Any] | None = None,
+    ) -> int:
+        """files-uploads-api PLAN.md §3 — SELECT candidate files rows, delete their s3
+        objects (if any), THEN delete the DB rows that were safe to drop. Mirrors
+        _purge_artifacts_batch verbatim (an s3-object-delete failure DEFERS the row to the
+        next tick rather than orphaning bytes; an inline row has no object to delete).
+
+        extra_params: additional bind params merged in ({"operator_ceiling_days": ...} for
+        the window variant, {"tid": tenant_id} for the per-tenant ZDR variant)."""
+        total = 0
+        params: dict[str, Any] = {**(extra_params or {}), "batch": batch_size}
+        try:
+            while True:
+                async with self._session_factory() as session:
+                    rows = (await session.execute(select_sql, params)).all()
+                if not rows:
+                    break
+                deletable_ids: list[Any] = []
+                for row_id, object_key, storage_backend in rows:
+                    if storage_backend == "s3" and object_key:
+                        if self._object_store is None:
+                            continue
+                        try:
+                            await self._object_store.delete(object_key)
+                        except ObjectStoreUnavailableError as exc:
+                            _log.warning(
+                                "retention_sweep: file object delete failed for "
+                                "key=%s (deferred to next tick): %s",
+                                object_key,
+                                exc,
+                            )
+                            continue
+                    deletable_ids.append(row_id)
+                if deletable_ids:
+                    async with self._session_factory() as session:
+                        async with session.begin():
+                            cursor: CursorResult[Any] = await session.execute(  # type: ignore[assignment]
+                                _DELETE_FILES_BY_ID, {"ids": deletable_ids}
+                            )
+                            total += cursor.rowcount or 0
+                if len(rows) < batch_size or not deletable_ids:
+                    break
+        except Exception as exc:
+            _log.warning(
+                "retention_sweep: file purge pass failed (swallowed): %s",
+                exc,
+                exc_info=exc,
+            )
+            return total
+        return total
+
     async def _purge_compliance_reports_batch(
         self,
         select_sql: Any,
@@ -840,6 +916,11 @@ class RetentionSweeper:
         )
         results["video_generation_jobs"] = await self._delete_batched_extra(
             "video_generation_jobs", _DELETE_VIDEO_JOBS_WINDOW, ceiling_params, batch_size
+        )
+        # files-uploads-api PLAN.md §3 — additive, same tenant-window-cutoff discipline as
+        # artifacts above (object-store-aware).
+        results["files"] = await self._purge_files_batch(
+            _SELECT_FILES_WINDOW, batch_size, extra_params=ceiling_params
         )
         # compliance-report-center TASK.md §3 M21 — additive, same tenant-window-
         # cutoff discipline as artifacts above.
@@ -947,6 +1028,15 @@ class RetentionSweeper:
                 "video_generation_jobs",
                 await self._delete_batched_extra(
                     "video_generation_jobs", _DELETE_VIDEO_JOBS_ZDR_TENANT, tid_params, batch_size
+                ),
+            )
+            # files-uploads-api PLAN.md §3 — a ZDR tenant's uploaded files must be purged
+            # unconditionally alongside the other payload tables (object-store-aware).
+            _fire_audit(
+                tenant_id,
+                "files",
+                await self._purge_files_batch(
+                    _SELECT_FILES_ZDR_TENANT, batch_size, extra_params=tid_params
                 ),
             )
             # payload-capture-store — MED fix: request_logs must be purged unconditionally

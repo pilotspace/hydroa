@@ -72,6 +72,15 @@ class BatchJobRow(Base):
         server_default=text("'validating'"),
     )
     item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # files-uploads-api PLAN.md §3 (FROZEN @ v1) — ADDITIVE, nullable: the files row a
+    # purpose='batch' upload drove this job from (NULL for every existing line_items job).
+    # NOT a hard cross-module FK — validated in the router against the caller-owned files
+    # row (same tenant, purpose='batch'); the JSONL->line-item expansion stays in v58.
+    input_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        "input_file_id",
+        UUID(as_uuid=True),
+        nullable=True,
+    )
     retry_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

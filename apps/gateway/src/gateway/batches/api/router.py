@@ -50,11 +50,15 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
     AUTH_KEY_INVALID,
+    BATCH_INPUT_AMBIGUOUS,
+    BATCH_INPUT_FILE_INVALID,
     BATCH_ITEM_INVALID,
     BATCH_ITEMS_EMPTY,
     BATCH_ITEMS_TOO_MANY,
     BATCH_JOB_NOT_FOUND,
 )
+from gateway.files.infrastructure.repository import FileRepository
+from gateway.files.wire_id import parse_wire_id, to_wire_id
 from gateway.keys.application.use_cases import AuthzUseCase
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -139,7 +143,12 @@ class LineItemRequest(BaseModel):
 
 
 class CreateBatchJobRequest(BaseModel):
-    line_items: list[LineItemRequest]
+    # files-uploads-api PLAN.md §3 (ADDITIVE): line_items is now optional — exactly ONE of
+    # {line_items, input_file_id} must be present (enforced in create_batch_job, not by
+    # pydantic, so the miss is an app-level named code, not a generic 422). A pre-additive
+    # client sending only line_items is byte-identical (input_file_id defaults to None).
+    line_items: list[LineItemRequest] | None = None
+    input_file_id: str | None = None
 
 
 class BatchJobItemResponse(BaseModel):
@@ -161,6 +170,10 @@ class BatchJobResponse(BaseModel):
     error: str | None
     created_at: datetime
     updated_at: datetime
+    # files-uploads-api PLAN.md §3 (ADDITIVE) — the file-<hex> the job was created from,
+    # or None for a line_items job. Default None keeps every existing construction
+    # (list_batch_jobs, the line_items create path) byte-identical.
+    input_file_id: str | None = None
     # Additive extension (batch-auto-grouping TASK.md §3, M7) — defaults to [] so
     # list_batch_jobs's existing per-job construction (no item-level query there,
     # by design — avoids an N+1 per list page) stays byte-identical.
@@ -354,13 +367,47 @@ async def create_batch_job(
     Returns the job envelope immediately (non-blocking). 401 on auth failure.
     """
     settings: Settings = _get_settings(request)
-    _validate_line_items(body.line_items, max_items=settings.batch_max_items_per_job)
 
-    line_items = [{"custom_id": item.custom_id, "body": item.body} for item in body.line_items]
+    # files-uploads-api PLAN.md §3 (ADDITIVE): exactly ONE of {line_items, input_file_id}.
+    # BOTH present or NEITHER present -> 422 ERR_BATCH_INPUT_AMBIGUOUS.
+    has_line_items = body.line_items is not None
+    has_input_file = body.input_file_id is not None
+    if has_line_items == has_input_file:
+        raise BATCH_INPUT_AMBIGUOUS.exc()
+
+    resolved_input_file_id: uuid.UUID | None = None
+    input_file_wire: str | None = None
+    line_items: list[dict[str, Any]] = []
+
+    if has_input_file:
+        # Validate the file reference. ONE uniform code (no enumeration oracle) for
+        # malformed / absent / cross-tenant / wrong-purpose — a cross-tenant file is
+        # indistinguishable from an absent one because get_active is tenant-scoped.
+        assert body.input_file_id is not None
+        file_uuid = parse_wire_id(body.input_file_id)
+        if file_uuid is None:
+            raise BATCH_INPUT_FILE_INVALID.exc()
+        file_row = await FileRepository(session).get_active(
+            tenant_id=authz.tenant_id, file_id=file_uuid
+        )
+        if file_row is None or file_row.purpose != "batch":
+            raise BATCH_INPUT_FILE_INVALID.exc()
+        resolved_input_file_id = file_uuid
+        input_file_wire = to_wire_id(file_uuid)
+        # JSONL -> line-item EXPANSION + provider dispatch stay in v58's scope; this task
+        # records the reference and creates the job (line_items empty, item_count=0).
+    else:
+        assert body.line_items is not None
+        _validate_line_items(body.line_items, max_items=settings.batch_max_items_per_job)
+        line_items = [
+            {"custom_id": item.custom_id, "body": item.body} for item in body.line_items
+        ]
+
     row = await repo.create(
         tenant_id=authz.tenant_id,
         key_id=authz.key_id,
         line_items=line_items,
+        input_file_id=resolved_input_file_id,
     )
     await session.commit()
 
@@ -383,6 +430,7 @@ async def create_batch_job(
         error=row.error,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        input_file_id=input_file_wire,
     )
 
 
@@ -416,6 +464,7 @@ async def get_batch_job(
         error=row.error,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        input_file_id=to_wire_id(row.input_file_id) if row.input_file_id else None,
         items=[
             BatchJobItemResponse(
                 custom_id=item.custom_id,
