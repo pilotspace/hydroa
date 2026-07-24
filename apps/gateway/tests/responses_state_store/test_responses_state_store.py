@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 import httpx
-from sqlalchemy import text
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from gateway.responses_store.infrastructure.repository import StoredResponseRepository
 
 from .conftest import (
     RESPONSES,
@@ -706,3 +709,120 @@ async def test_get_delete_unauthenticated_401(
 
     for resp in (got_naked, got_garbage, del_naked):
         _assert_problem_code(resp, 401, "ERR_AUTH_INVALID_KEY")
+
+
+# ===========================================================================
+# M1 / M2 durability — store-persist FAILURE after the completion was served
+# (PLAN.md §1 M1/M2, §3 Contract 500 ERR_RESPONSES_STORE_FAILED, prose build-
+# guidance: "ERR_RESPONSES_STORE_FAILED (500 post-serve persist failure, non-
+# stream) and the streaming persist-failure → response.failed branch (M2) are
+# contract-named but not red-gated — they need DB-fault injection"). These two
+# tests close that MEDIUM coverage gap (verify B, 2026-07-24). The fault is
+# injected at the repository seam — StoredResponseRepository.create raises —
+# so the REAL persistence orchestration (own-session open, router/stream try/
+# except → contracted terminal) runs; only the DB write is faulted.
+# ===========================================================================
+
+
+def _fault_store_create(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every stored_responses INSERT fail (simulated durability fault).
+
+    Patches the repository method the persist orchestration actually calls, so
+    persist_stored_response opens its own session, constructs the repo, then the
+    write raises — exercising the contracted post-serve failure handling, not a
+    stubbed-away persist. Nothing is committed (the raise precedes flush), so no
+    partial row can survive.
+    """
+
+    async def _boom(self: StoredResponseRepository, **_kwargs: Any) -> None:
+        raise RuntimeError("injected stored_responses persistence fault")
+
+    monkeypatch.setattr(StoredResponseRepository, "create", _boom)
+
+
+async def _poll_min_records(recorder: FakeUsageRecorder, minimum: int = 1, timeout: float = 5.0) -> None:
+    """Poll until the fire-and-forget usage task lands (fixed-sleep-flake lesson)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(recorder.records) >= minimum:
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError(
+        f"usage record never landed within {timeout}s (have {len(recorder.records)})"
+    )
+
+
+async def test_nonstream_store_failure_500_usage_row_stands(
+    client: httpx.AsyncClient,
+    app: Any,
+    api_key: dict[str, str],
+    active_model: str,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M1 durability: a persist failure AFTER the non-stream completion was served
+    surfaces 500 ERR_RESPONSES_STORE_FAILED; the one usage row recorded for the
+    served completion STANDS (provider was billed) and ZERO stored rows exist
+    (the failed insert never committed — nothing half-written)."""
+    upstream = FakeCompletionUpstream()
+    recorder = _inject(app, upstream)
+    _fault_store_create(monkeypatch)
+
+    resp = await client.post(
+        RESPONSES,
+        json=responses_payload(active_model, input_="serve me then fail to persist", store=True),
+        headers=auth_bearer(api_key["key"]),
+    )
+
+    # Contracted terminal — a bare re-raised exception (no mapping) would NOT carry
+    # this code, so the assert is non-vacuous.
+    _assert_problem_code(resp, 500, "ERR_RESPONSES_STORE_FAILED")
+    # The provider WAS dialed and served — its cost is real, its usage row stands.
+    assert upstream.calls == 1, "the completion was served before the persist failed"
+    assert len(recorder.records) == 1, "the served completion's usage row must STAND (billed)"
+    # Nothing half-written: the failed insert committed no row.
+    assert await count_stored_rows(db_session) == 0, "a failed persist must leave zero rows"
+    # No payload leakage into the error body (v22 no-payload-in-traceback floor).
+    assert "serve me then fail to persist" not in resp.text
+
+
+async def test_streaming_store_failure_emits_response_failed_not_completed(
+    client: httpx.AsyncClient,
+    app: Any,
+    api_key: dict[str, str],
+    active_model: str,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M2 durability: a persist failure at the terminal frame emits a terminal
+    response.failed carrying ERR_RESPONSES_STORE_FAILED INSTEAD of a fabricated
+    response.completed; the usage row recorded inside use_case.stream() stands and
+    no stored row is written."""
+    upstream = FakeCompletionUpstream()
+    recorder = _inject(app, upstream)
+    _fault_store_create(monkeypatch)
+
+    resp = await client.post(
+        RESPONSES,
+        json=responses_payload(active_model, input_="stream then fail", store=True, stream=True),
+        headers=auth_bearer(api_key["key"]),
+    )
+
+    assert resp.status_code == 200, resp.text  # stream opened before the terminal fault
+    frames = parse_named_sse(resp.content)
+    event_names = [name for name, _ in frames]
+    # No fabricated success — the terminal is response.failed, response.completed absent.
+    assert "response.completed" not in event_names, (
+        f"a failed persist must NEVER emit a fabricated completion: {event_names}"
+    )
+    assert "response.failed" in event_names, f"missing terminal response.failed: {event_names}"
+    failed = next(data for name, data in frames if name == "response.failed")
+    assert failed["response"]["error"]["code"] == "ERR_RESPONSES_STORE_FAILED", (
+        f"terminal failure must carry the contracted code: {failed}"
+    )
+    # No payload leaked into the failure frame's error text.
+    assert "stream then fail" not in resp.text
+    # The usage row recorded inside use_case.stream() stands (fire-and-forget → poll).
+    await _poll_min_records(recorder, minimum=1)
+    # Nothing persisted — the faulted insert committed no row.
+    assert await count_stored_rows(db_session) == 0, "a failed stream persist must leave zero rows"
