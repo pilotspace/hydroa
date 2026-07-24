@@ -102,12 +102,29 @@ async def _ensure_worker_database() -> AsyncIterator[None]:
     by an existence check AND an idempotent DuplicateDatabase catch (two workers can race),
     and a best-effort FORCE drop on teardown so runs don't accumulate stale databases.
     """
+    import asyncpg  # local import: the raw driver is only needed for DB/extension setup
+
     idx = _redis_env._worker_index()
     if idx is None:
+        # Non-xdist (serial) run: the base gateway_test DB already exists, but suites
+        # with their OWN engine/create_all fixture (the *_db.py store tests) bypass the
+        # `app` fixture's CREATE EXTENSION. Since vector-store-core put a Vector column on
+        # the shared Base.metadata, EVERY create_all now needs the pgvector extension —
+        # ensure it on the base test DB here so serial runs of those suites don't fail
+        # with `type "vector" does not exist`. Idempotent, bounded timeout (design for failure).
+        base_dsn = _redis_env.TEST_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+        try:
+            base_conn = await asyncpg.connect(dsn=base_dsn, timeout=10)
+            try:
+                await base_conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            finally:
+                await base_conn.close()
+        except (OSError, asyncpg.PostgresError):
+            # Best-effort: if the extension can't be created (e.g. non-pgvector image),
+            # the suites that need it will fail loudly with a clear error, as before.
+            pass
         yield
         return
-
-    import asyncpg  # local import: only the xdist path needs the raw driver
 
     admin_dsn = _redis_env._BASE_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     dbname = _redis_env.TEST_DATABASE_URL.rpartition("/")[2]
