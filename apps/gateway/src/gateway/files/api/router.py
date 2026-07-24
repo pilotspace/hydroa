@@ -66,11 +66,12 @@ _log = logging.getLogger(__name__)
 # Singleton stateless hasher — safe to share
 _hasher = Sha256SecretHasher()
 
-# The exact OpenAI purpose vocabulary this milestone supports (M6). assistants and
-# every other value are rejected 422 ERR_FILE_PURPOSE_UNSUPPORTED. "fine-tune" added
-# additively (finetune-broker PLAN.md §3 M8, FROZEN @ v1) — every existing purpose
-# stays byte-identical.
-_SUPPORTED_PURPOSES = frozenset({"batch", "vision", "user_data", "fine-tune"})
+# The exact OpenAI purpose vocabulary this milestone supports (M6); every other value
+# is rejected 422 ERR_FILE_PURPOSE_UNSUPPORTED. "fine-tune" added additively
+# (finetune-broker PLAN.md §3 M8, FROZEN @ v1). "assistants" added additively
+# (vector-store-files PLAN.md §3 M9, FROZEN @ v1) — every existing purpose stays
+# byte-identical.
+_SUPPORTED_PURPOSES = frozenset({"batch", "vision", "user_data", "fine-tune", "assistants"})
 
 
 def _not_found() -> ProblemError:

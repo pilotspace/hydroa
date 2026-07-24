@@ -1,0 +1,680 @@
+"""RED suite for vector-store-files (async attach: enqueue -> background worker ingests).
+
+Contract under test (vector-store-files PLAN.md §3, DRAFT — Tin-directed ASYNC model):
+  POST /v1/vector_stores/{vsid}/files   {file_id: "file-<32hex>"}   NON-BLOCKING
+    200 -> { id:"file-<32hex>", object:"vector_store.file", created_at:<unix int>,
+             vector_store_id:"vs_<32hex>", usage_bytes, status:"in_progress", last_error }
+    (validates + inserts the row + enqueues; NO chunk/embed work in the request path)
+    422 ERR_VECTOR_STORE_FILE_ID_REQUIRED · 400 ERR_VECTOR_STORE_FILE_PURPOSE_INVALID
+    403 ERR_ZDR_PAYLOAD_BLOCKED · 404 ERR_VECTOR_STORE_NOT_FOUND | ERR_FILE_NOT_FOUND
+  BACKGROUND: VectorStoreIngestWorker (batches/video durable-queue shape: Redis
+    LPUSH/BRPOP + run_forever/process_once/recover_orphans) chunks -> ONE batched embed
+    via the ChunkEmbedder port -> atomic finalize tx (chunks + CAS in_progress->completed)
+    or CAS in_progress->failed(last_error) — never a half-written index.
+  GET  /v1/vector_stores/{vsid}/files/{file_id} -> current status | 404 (uniform)
+  GET  /v1/vector_stores/{vsid}/files           -> {object:"list", data, has_more}
+
+Tests drive the worker DETERMINISTICALLY via worker.process_once() — the exact test
+seam the batches suite uses (tests/batches/test_batch_durable_queue.py) — never a
+sleep/poll race. The embed leg is a fake at ``app.state.vector_store_embedder``.
+
+INVARIANTS under test:
+  NON-BLOCKING — attach returns in_progress with the embedder UNCALLED, zero chunks.
+  ZDR      — 403 at attach; raise_if_zdr FIRST in the worker chunk-write path
+             (ZDR flipped after attach -> failed/zdr_blocked, zero chunks, fail-closed).
+  TENANT   — cross-tenant store OR file -> uniform 404, never a leak.
+  IDEMPOTENT — UNIQUE(store,file): re-attach returns the same row; retry only from failed.
+  CLAIM    — two workers, one job: BRPOP hands the id to exactly one; no double chunks.
+  BILLING  — exactly ONE usage_records row per COMPLETED ingest (CAS-gated); zero on failure.
+
+RED until the ingestion worker module + files sub-router are wired. Every test targets
+a route/module that does not exist yet, so the suite fails for the RIGHT reason
+(missing implementation: 404-no-route / ModuleNotFoundError), not a broken harness.
+DO NOT edit to make pass — that is Build's job.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+import pytest
+from sqlalchemy import text
+
+from gateway.proxy.domain.errors import UpstreamUnavailableError
+
+pytestmark = pytest.mark.asyncio
+
+_DIM = 1536
+
+
+# ---------------------------------------------------------------------------
+# Helpers / fixtures (mirror tests/vector_store_core + tests/batches durable-queue)
+# ---------------------------------------------------------------------------
+
+
+def _bearer(key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {key}"}
+
+
+async def _signup_and_key(
+    client: Any, *, tenant_name: str, email: str, password: str
+) -> dict[str, str]:
+    signup = await client.post(
+        "/admin/auth/signup",
+        json={"tenant_name": tenant_name, "email": email, "password": password},
+    )
+    assert signup.status_code == 201, f"signup failed: {signup.text}"
+    tenant_id: str = signup.json()["tenant_id"]
+    token = (
+        await client.post("/admin/auth/login", json={"email": email, "password": password})
+    ).json()["access_token"]
+    created = await client.post(
+        "/admin/keys",
+        json={"name": f"ci-key-{tenant_name}"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert created.status_code == 201, f"key creation failed: {created.text}"
+    return {
+        "key": created.json()["key"],
+        "key_id": created.json()["key_id"],
+        "tenant_id": tenant_id,
+    }
+
+
+@pytest.fixture
+async def tenant_a(client: Any) -> dict[str, str]:
+    return await _signup_and_key(
+        client, tenant_name="VsfA", email="vsf-a@example.io", password="vsf-a-battery"
+    )
+
+
+@pytest.fixture
+async def tenant_b(client: Any) -> dict[str, str]:
+    return await _signup_and_key(
+        client, tenant_name="VsfB", email="vsf-b@example.io", password="vsf-b-battery"
+    )
+
+
+class FakeChunkEmbedder:
+    """Deterministic ChunkEmbedder port fake — one call per file, dim-1536 vectors.
+
+    ``fail_next`` raises UpstreamUnavailableError once (the port's contracted
+    failure type) then succeeds — used by the failed-then-retry tests.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.fail_next = False
+
+    async def embed(
+        self, tenant_id: uuid.UUID, model: str, texts: list[str]
+    ) -> tuple[list[list[float]], dict[str, object] | None]:
+        if self.fail_next:
+            self.fail_next = False
+            raise UpstreamUnavailableError("embeddings upstream down (fake)")
+        self.calls.append({"tenant_id": tenant_id, "model": model, "texts": list(texts)})
+        vectors = [[float((i + 1) % 7) / 7.0] * _DIM for i in range(len(texts))]
+        n_tokens = sum(len(t.split()) for t in texts)
+        return vectors, {"prompt_tokens": n_tokens, "total_tokens": n_tokens}
+
+
+@pytest.fixture
+def fake_embedder(app: Any) -> FakeChunkEmbedder:
+    fake = FakeChunkEmbedder()
+    app.state.vector_store_embedder = fake
+    return fake
+
+
+def _build_worker(app: Any) -> Any:
+    """Construct queue + worker from app.state — the batches-suite fixture shape.
+
+    Imported INSIDE the helper so each async-lifecycle test fails individually with
+    ModuleNotFoundError (missing implementation), not a collection-time error.
+    Wires the queue onto app.state so the router's attach enqueue targets the same
+    Redis list the worker drains (mirrors app.state.batch_job_queue).
+    """
+    from gateway.vector_stores.application.ingest_worker import (  # noqa: PLC0415
+        RedisVectorStoreIngestQueue,
+        VectorStoreIngestWorker,
+    )
+
+    queue = RedisVectorStoreIngestQueue(app.state.redis_client)
+    app.state.vector_store_ingest_queue = queue
+    return VectorStoreIngestWorker(
+        sessionmaker=app.state.sessionmaker,
+        queue=queue,
+        settings=app.state.settings,
+        get_embedder=lambda: getattr(app.state, "vector_store_embedder", None),
+    )
+
+
+async def _upload(
+    client: Any,
+    key: str,
+    *,
+    filename: str = "kb.txt",
+    data: bytes = b"hydroa retrieval corpus " * 300,  # ~7.2KB -> >1 chunk at 2400 chars
+    purpose: str = "assistants",
+) -> str:
+    resp = await client.post(
+        "/v1/files",
+        files={"file": (filename, data, "text/plain")},
+        data={"purpose": purpose},
+        headers=_bearer(key),
+    )
+    assert resp.status_code == 200, f"file upload failed: {resp.status_code} {resp.text}"
+    return str(resp.json()["id"])
+
+
+async def _create_store(client: Any, key: str, name: str = "kb-main") -> str:
+    resp = await client.post("/v1/vector_stores", json={"name": name}, headers=_bearer(key))
+    assert resp.status_code == 200, f"store create failed: {resp.status_code} {resp.text}"
+    return str(resp.json()["id"])
+
+
+async def _attach(client: Any, key: str, vsid: str, file_id: Any) -> Any:
+    body: dict[str, Any] = {} if file_id is None else {"file_id": file_id}
+    return await client.post(
+        f"/v1/vector_stores/{vsid}/files", json=body, headers=_bearer(key)
+    )
+
+
+async def _get_file(client: Any, key: str, vsid: str, file_id: str) -> Any:
+    return await client.get(
+        f"/v1/vector_stores/{vsid}/files/{file_id}", headers=_bearer(key)
+    )
+
+
+async def _set_tenant_zdr(app: Any, tenant_id: str) -> None:
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            text("UPDATE tenants SET zdr_enabled = true WHERE id = :tid"),
+            {"tid": tenant_id},
+        )
+        await session.commit()
+
+
+async def _count(app: Any, table: str, tenant_id: str) -> int:
+    async with app.state.sessionmaker() as session:
+        result = await session.execute(
+            text(f"SELECT count(*) FROM {table} WHERE tenant_id = :tid"),  # noqa: S608
+            {"tid": tenant_id},
+        )
+        return int(result.scalar_one())
+
+
+async def _drain(worker: Any) -> None:
+    """Drain the ingest queue deterministically (process_once until empty)."""
+    while await worker.process_once():
+        pass
+
+
+# ---------------------------------------------------------------------------
+# M1 — attach is NON-BLOCKING: 200 in_progress immediately, no embed work inline
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_returns_in_progress_immediately(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M1 — 200 + status in_progress; embedder UNCALLED; zero chunks at return."""
+    _build_worker(app)  # wires the queue the router enqueues to
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+
+    resp = await _attach(client, tenant_a["key"], vsid, file_id)
+    assert resp.status_code == 200, f"attach failed: {resp.status_code} {resp.text}"
+    obj = resp.json()
+    assert obj["object"] == "vector_store.file"
+    assert obj["id"] == file_id
+    assert obj["vector_store_id"] == vsid
+    assert obj["status"] == "in_progress", "attach must NOT ingest inline"
+    assert obj["last_error"] is None
+    assert isinstance(obj["created_at"], int)
+
+    # NON-BLOCKING invariants: the request path did zero embed/chunk work.
+    assert fake_embedder.calls == [], "embed must happen in the worker, not the request"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# M2 — the background worker ingests: chunk -> embed -> index -> completed (atomic)
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_completes_ingestion(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M2 — process_once() drives the job to completed with dim-1536 chunks."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+
+    drained = await worker.process_once()
+    assert drained is True, "the attach must have enqueued exactly one job"
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "completed", f"worker did not complete: {obj}"
+    assert obj["usage_bytes"] > 0
+
+    # exactly ONE batched embed call carried every chunk text
+    assert len(fake_embedder.calls) == 1
+    n_chunks = len(fake_embedder.calls[0]["texts"])
+    assert n_chunks >= 2, "a 7KB file must produce >1 chunk at 2400 chars"
+
+    async with app.state.sessionmaker() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT tenant_id::text, vector_store_id::text, chunk_index,"
+                    " vector_dims(embedding) AS dim FROM vector_store_chunks"
+                    " WHERE tenant_id = :tid ORDER BY chunk_index"
+                ),
+                {"tid": tenant_a["tenant_id"]},
+            )
+        ).mappings().all()
+        assert len(rows) == n_chunks
+        assert all(r["dim"] == _DIM for r in rows)
+        assert all(r["tenant_id"] == tenant_a["tenant_id"] for r in rows)
+        # wave-3 extension point: the frozen HNSW cosine substrate answers top-k NOW,
+        # zero schema change, ZERO status join (chunk existence implies completed).
+        probe = "[" + ",".join(["0.1"] * _DIM) + "]"
+        topk = (
+            await session.execute(
+                text(
+                    "SELECT chunk_index FROM vector_store_chunks"
+                    " WHERE tenant_id = :tid ORDER BY embedding <=> :q LIMIT 3"
+                ),
+                {"tid": tenant_a["tenant_id"], "q": probe},
+            )
+        ).all()
+        assert 1 <= len(topk) <= 3
+
+    # parent store object reflects the ingest
+    store = (
+        await client.get(f"/v1/vector_stores/{vsid}", headers=_bearer(tenant_a["key"]))
+    ).json()
+    assert store["usage_bytes"] > 0
+
+
+# ---------------------------------------------------------------------------
+# M7/M2 — idempotent re-attach (no re-ingest of a completed row, no double bill)
+# ---------------------------------------------------------------------------
+
+
+async def test_reattach_is_idempotent(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M7, M2 — re-attach of a completed row: same id, no re-embed, one bill."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    first = (await _attach(client, tenant_a["key"], vsid, file_id)).json()
+    await worker.process_once()
+    chunks_after_first = await _count(app, "vector_store_chunks", tenant_a["tenant_id"])
+
+    second_resp = await _attach(client, tenant_a["key"], vsid, file_id)
+    assert second_resp.status_code == 200
+    second = second_resp.json()
+    assert second["id"] == first["id"]
+    assert second["status"] == "completed", "re-attach returns the CURRENT status"
+
+    # a completed row may have been re-enqueued (healing semantics) — drain the queue;
+    # the worker's terminal-skip + CAS finalize must make it a no-op.
+    await _drain(worker)
+    assert len(fake_embedder.calls) == 1, "a completed row must NOT be re-embedded"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == chunks_after_first
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# M3 / M4 — pollable status + list
+# ---------------------------------------------------------------------------
+
+
+async def test_get_status_returns_object(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M3 — GET shows in_progress BEFORE the worker runs, completed after."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+
+    before = await _get_file(client, tenant_a["key"], vsid, file_id)
+    assert before.status_code == 200, f"get failed: {before.status_code} {before.text}"
+    assert before.json()["status"] == "in_progress"
+    assert before.json()["object"] == "vector_store.file"
+
+    await worker.process_once()
+
+    after = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert after["status"] == "completed"
+
+    malformed = await _get_file(client, tenant_a["key"], vsid, "not-a-file-id")
+    assert malformed.status_code == 404
+    assert malformed.json()["error"]["code"] == "ERR_FILE_NOT_FOUND"
+
+
+async def test_list_files_newest_first(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M4 — list envelope, newest first, has_more via probe."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    f1 = await _upload(client, tenant_a["key"], filename="one.txt", data=b"alpha " * 50)
+    f2 = await _upload(client, tenant_a["key"], filename="two.txt", data=b"beta " * 50)
+    await _attach(client, tenant_a["key"], vsid, f1)
+    await _attach(client, tenant_a["key"], vsid, f2)
+    await _drain(worker)
+
+    resp = await client.get(
+        f"/v1/vector_stores/{vsid}/files", headers=_bearer(tenant_a["key"])
+    )
+    assert resp.status_code == 200, f"list failed: {resp.status_code} {resp.text}"
+    body = resp.json()
+    assert body["object"] == "list"
+    assert body["has_more"] is False
+    ids = [row["id"] for row in body["data"]]
+    assert ids == [f2, f1], "newest first"
+
+
+# ---------------------------------------------------------------------------
+# M5 — ZDR fail-closed at BOTH gates: attach entry AND the worker chunk-write path
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_zdr_tenant_403_zero_residue(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M5, R:zdr_payload_blocked — 403 + NO vsf row + NO chunks + NO embed call."""
+    _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _set_tenant_zdr(app, tenant_a["tenant_id"])
+
+    resp = await _attach(client, tenant_a["key"], vsid, file_id)
+    assert resp.status_code == 403, f"expected 403, got {resp.status_code} {resp.text}"
+    assert "ERR_ZDR_PAYLOAD_BLOCKED" in resp.text
+    assert await _count(app, "vector_store_files", tenant_a["tenant_id"]) == 0
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+    assert fake_embedder.calls == []
+
+
+async def test_worker_zdr_flipped_after_attach_fails_closed(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M5 — ZDR flips ON between attach and drive: failed/zdr_blocked, 0 chunks.
+
+    raise_if_zdr is the FIRST line of the worker's chunk-write path — a ZDR tenant's
+    queued ingestion must fail-closed, never silently store payload at rest.
+    """
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _set_tenant_zdr(app, tenant_a["tenant_id"])
+
+    await worker.process_once()
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed", f"ZDR ingest must fail closed: {obj}"
+    assert obj["last_error"] is not None
+    assert obj["last_error"]["code"] == "zdr_blocked"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# M6 — exactly one usage record per COMPLETED ingest (CAS-gated, duplicate-drive safe)
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_records_exactly_one_usage_record(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M6 — one usage_records row (model_id = embedding model); re-drive adds none."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await worker.process_once()
+
+    async with app.state.sessionmaker() as session:
+        rows = (
+            await session.execute(
+                text("SELECT model_id FROM usage_records WHERE tenant_id = :tid"),
+                {"tid": tenant_a["tenant_id"]},
+            )
+        ).all()
+    assert len(rows) == 1, f"expected exactly one usage record, got {len(rows)}"
+    assert rows[0][0] == "text-embedding-3-small"
+
+    # re-attach re-enqueues (healing semantics); the terminal skip + CAS-gated
+    # usage record must keep the bill at exactly one after a full drain.
+    second = await _attach(client, tenant_a["key"], vsid, file_id)
+    assert second.status_code == 200
+    await _drain(worker)
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# M7 — honest worker failure + retry via re-attach
+# ---------------------------------------------------------------------------
+
+
+async def test_embed_failure_marks_failed_no_chunks(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M7 — upstream down in the WORKER -> failed + last_error, 0 chunks, 0 bills."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    fake_embedder.fail_next = True
+
+    attach = (await _attach(client, tenant_a["key"], vsid, file_id)).json()
+    assert attach["status"] == "in_progress", "attach itself never fails on embed outage"
+    await worker.process_once()
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed"
+    assert obj["last_error"] is not None
+    assert obj["last_error"]["code"] == "embedding_unavailable"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 0
+
+
+async def test_reattach_after_failure_retries(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M7 — re-attach CAS-flips failed->in_progress, re-enqueues, completes."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    fake_embedder.fail_next = True
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await worker.process_once()
+    failed = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert failed["status"] == "failed"
+
+    retry = (await _attach(client, tenant_a["key"], vsid, file_id)).json()
+    assert retry["status"] == "in_progress", "re-attach of failed row restarts the job"
+    await worker.process_once()
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "completed"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# M2/M6 — claim safety: two workers never double-process one job
+# ---------------------------------------------------------------------------
+
+
+async def test_two_workers_never_double_process(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M2, M6 — BRPOP hands one job to exactly one worker; one bill, no dup chunks.
+
+    Mirrors tests/batches/test_batch_durable_queue.py::test_two_workers_never_double_process.
+    """
+    worker_1 = _build_worker(app)
+    worker_2 = _build_worker(app)  # same queue key, second consumer
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+
+    claimed_1 = await worker_1.process_once()
+    claimed_2 = await worker_2.process_once()
+    assert claimed_1 is True
+    assert claimed_2 is False, "queue must be empty for the second worker"
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "completed"
+    assert len(fake_embedder.calls) == 1, "exactly one worker embedded the file"
+    n_chunks = len(fake_embedder.calls[0]["texts"])
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == n_chunks
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# M8 — the store object's file_counts go live
+# ---------------------------------------------------------------------------
+
+
+async def test_store_file_counts_live(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: M8 — GET /v1/vector_stores/{id} counts the attached file post-ingest."""
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await worker.process_once()
+
+    store = (
+        await client.get(f"/v1/vector_stores/{vsid}", headers=_bearer(tenant_a["key"]))
+    ).json()
+    assert store["file_counts"]["completed"] == 1
+    assert store["file_counts"]["total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# M9 — /v1/files additively accepts purpose=assistants
+# ---------------------------------------------------------------------------
+
+
+async def test_upload_purpose_assistants_accepted(
+    client: Any, tenant_a: dict[str, str]
+) -> None:
+    """covers: M9 — purpose 'assistants' joins the vocabulary additively (200)."""
+    resp = await client.post(
+        "/v1/files",
+        files={"file": ("kb.txt", b"hello corpus", "text/plain")},
+        data={"purpose": "assistants"},
+        headers=_bearer(tenant_a["key"]),
+    )
+    assert resp.status_code == 200, f"upload failed: {resp.status_code} {resp.text}"
+    assert resp.json()["purpose"] == "assistants"
+
+
+# ---------------------------------------------------------------------------
+# M10 — the production embedder adapter keeps a PER-TENANT breaker
+# ---------------------------------------------------------------------------
+
+
+async def test_embedder_breaker_is_per_tenant() -> None:
+    """covers: M10 — two tenants never share a CircuitBreaker (moderations CR-1 / finetune D1)."""
+    from gateway.vector_stores.infrastructure.embedding_client import (  # noqa: PLC0415
+        VectorStoreEmbeddingClient,
+    )
+
+    adapter = VectorStoreEmbeddingClient()
+    t1, t2 = uuid.uuid4(), uuid.uuid4()
+    b1 = adapter._breaker_for(t1)  # noqa: SLF001 — structural invariant probe
+    b2 = adapter._breaker_for(t2)  # noqa: SLF001
+    assert b1 is not b2, "breaker MUST be per-tenant, never shared"
+    assert adapter._breaker_for(t1) is b1  # noqa: SLF001 — stable per tenant
+
+
+# ---------------------------------------------------------------------------
+# Rejects — file_id required · unknown/cross-tenant file · cross-tenant store · purpose
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_missing_file_id_422(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: R:vector_store_file_id_required — {} body -> 422, nothing persisted."""
+    vsid = await _create_store(client, tenant_a["key"])
+    resp = await _attach(client, tenant_a["key"], vsid, None)
+    assert resp.status_code == 422, f"expected 422, got {resp.status_code} {resp.text}"
+    assert resp.json()["error"]["code"] == "ERR_VECTOR_STORE_FILE_ID_REQUIRED"
+    assert await _count(app, "vector_store_files", tenant_a["tenant_id"]) == 0
+
+
+async def test_attach_unknown_or_malformed_file_404(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: R:file_not_found — absent AND malformed file ids -> ONE uniform 404."""
+    vsid = await _create_store(client, tenant_a["key"])
+    for bad in (f"file-{uuid.uuid4().hex}", "not-a-file-id"):
+        resp = await _attach(client, tenant_a["key"], vsid, bad)
+        assert resp.status_code == 404, f"{bad}: {resp.status_code} {resp.text}"
+        assert resp.json()["error"]["code"] == "ERR_FILE_NOT_FOUND"
+    assert await _count(app, "vector_store_files", tenant_a["tenant_id"]) == 0
+
+
+async def test_attach_cross_tenant_file_404(
+    client: Any,
+    app: Any,
+    tenant_a: dict[str, str],
+    tenant_b: dict[str, str],
+    fake_embedder: FakeChunkEmbedder,
+) -> None:
+    """covers: R:file_not_found — tenant A attaching B's file is 404, zero residue."""
+    vsid = await _create_store(client, tenant_a["key"])
+    file_b = await _upload(client, tenant_b["key"])
+    resp = await _attach(client, tenant_a["key"], vsid, file_b)
+    assert resp.status_code == 404, f"expected 404, got {resp.status_code} {resp.text}"
+    assert resp.json()["error"]["code"] == "ERR_FILE_NOT_FOUND"
+    assert await _count(app, "vector_store_files", tenant_a["tenant_id"]) == 0
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+
+
+async def test_attach_cross_tenant_store_404(
+    client: Any,
+    app: Any,
+    tenant_a: dict[str, str],
+    tenant_b: dict[str, str],
+    fake_embedder: FakeChunkEmbedder,
+) -> None:
+    """covers: R:vector_store_not_found — A's file into B's store -> 404, B untouched."""
+    store_b = await _create_store(client, tenant_b["key"])
+    file_a = await _upload(client, tenant_a["key"])
+
+    resp = await _attach(client, tenant_a["key"], store_b, file_a)
+    assert resp.status_code == 404, f"expected 404, got {resp.status_code} {resp.text}"
+    assert resp.json()["error"]["code"] == "ERR_VECTOR_STORE_NOT_FOUND"
+    assert await _count(app, "vector_store_files", tenant_b["tenant_id"]) == 0
+
+    malformed = await _attach(client, tenant_a["key"], "vs_zz", file_a)
+    assert malformed.status_code == 404
+    assert malformed.json()["error"]["code"] == "ERR_VECTOR_STORE_NOT_FOUND"
+
+
+async def test_attach_wrong_purpose_400(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: FakeChunkEmbedder
+) -> None:
+    """covers: R:vector_store_file_purpose_invalid — a purpose=batch file is refused."""
+    vsid = await _create_store(client, tenant_a["key"])
+    jsonl = b'{"custom_id":"r1","method":"POST","url":"/v1/chat/completions","body":{}}\n'
+    file_id = await _upload(
+        client, tenant_a["key"], filename="batch.jsonl", data=jsonl, purpose="batch"
+    )
+    resp = await _attach(client, tenant_a["key"], vsid, file_id)
+    assert resp.status_code == 400, f"expected 400, got {resp.status_code} {resp.text}"
+    assert resp.json()["error"]["code"] == "ERR_VECTOR_STORE_FILE_PURPOSE_INVALID"
+    assert await _count(app, "vector_store_files", tenant_a["tenant_id"]) == 0

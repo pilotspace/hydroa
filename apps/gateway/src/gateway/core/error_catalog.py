@@ -1512,6 +1512,24 @@ VECTOR_STORE_METADATA_INVALID = ErrorSpec(
 VECTOR_STORE_NOT_FOUND = ErrorSpec(404, "ERR_VECTOR_STORE_NOT_FOUND", "Vector store not found")
 
 # ---------------------------------------------------------------------------
+# Vector store files (vector-store-files PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/vector_stores/{id}/files with a missing/non-string file_id — 422,
+#: nothing persisted (R:vector_store_file_id_required).
+VECTOR_STORE_FILE_ID_REQUIRED = ErrorSpec(
+    422, "ERR_VECTOR_STORE_FILE_ID_REQUIRED", "file_id is required"
+)
+
+#: POST /v1/vector_stores/{id}/files whose referenced file's purpose is not in
+#: {assistants, user_data} — 400, nothing persisted (R:vector_store_file_purpose_invalid).
+VECTOR_STORE_FILE_PURPOSE_INVALID = ErrorSpec(
+    400,
+    "ERR_VECTOR_STORE_FILE_PURPOSE_INVALID",
+    "file purpose must be one of: assistants, user_data",
+)
+
+# ---------------------------------------------------------------------------
 # Batches input_file_id seam (files-uploads-api PLAN.md §3 — FROZEN @ v1, additive to
 # the frozen batch-job-store v1 contract)
 # ---------------------------------------------------------------------------

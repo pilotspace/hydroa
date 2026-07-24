@@ -643,6 +643,15 @@ class Settings(BaseSettings):
     # shrunk in tests after app construction. Default 3.0s.
     batch_window_seconds: float = Field(default=3.0, ge=0)
 
+    # ── Vector store file ingestion (vector-store-files PLAN.md §3 — FROZEN @ v1) ──
+    # GATEWAY_VECTOR_STORE_INGEST_WORKER_ENABLED — starts the durable-queue
+    # VectorStoreIngestWorker in the lifespan. Unlike batch/video's default-OFF
+    # opt-in (an alternate to an existing inline path), ingestion IS this feature's
+    # only code path, so this defaults True; an operator escape hatch remains for
+    # ops emergencies. Fail-open: an enqueue failure at attach falls back to an
+    # inline asyncio.create_task drive so no job is ever dropped either way.
+    vector_store_ingest_worker_enabled: bool = Field(default=True)
+
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
     def _coerce_negative_retry_after(cls, v: object) -> object:

@@ -307,6 +307,13 @@ from gateway.usage.infrastructure.orm import (
     UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.vector_stores.api.router import vector_stores_router
+from gateway.vector_stores.application.ingest_worker import (
+    RedisVectorStoreIngestQueue,
+    VectorStoreIngestWorker,
+    recover_orphans as recover_vector_store_ingest_orphans,
+    should_start_vector_store_ingest_worker,
+)
+from gateway.vector_stores.infrastructure.embedding_client import VectorStoreEmbeddingClient
 from gateway.video.api.router import video_router
 from gateway.video.application.worker import (
     RedisVideoJobQueue,
@@ -852,6 +859,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.batch_worker = _batch_worker
             app.state.batch_worker_task = asyncio.create_task(_batch_worker.run_forever())
 
+        # VectorStoreIngestWorker — durable Redis-backed background ingestion worker
+        # (vector-store-files PLAN.md §3, FROZEN @ v1). Unlike batch/video (an
+        # opt-in ALTERNATE to an existing inline path), async ingestion IS this
+        # feature's only code path — default-ON, operator escape hatch via
+        # vector_store_ingest_worker_enabled. recover_orphans() runs BEFORE
+        # run_forever so restart-orphaned in_progress rows are re-enqueued first.
+        # app.state.vector_store_embedder defaults to the production adapter here;
+        # tests override it with a fake AFTER app creation (same idiom as
+        # app.state.batch_processor / app.state.video_generator).
+        app.state.vector_store_worker_task = None
+        if should_start_vector_store_ingest_worker(_settings):
+            _vector_store_queue = RedisVectorStoreIngestQueue(_redis)
+            app.state.vector_store_ingest_queue = _vector_store_queue
+            if not hasattr(app.state, "vector_store_embedder"):
+                app.state.vector_store_embedder = VectorStoreEmbeddingClient()
+            await recover_vector_store_ingest_orphans(_sessionmaker, _vector_store_queue)
+            _vector_store_worker = VectorStoreIngestWorker(
+                sessionmaker=_sessionmaker,
+                queue=_vector_store_queue,
+                settings=_settings,
+                get_embedder=lambda: getattr(app.state, "vector_store_embedder", None),
+                object_store=getattr(app.state, "object_store", None),
+            )
+            app.state.vector_store_worker = _vector_store_worker
+            app.state.vector_store_worker_task = asyncio.create_task(
+                _vector_store_worker.run_forever()
+            )
+
         # BatchWindowFlusher — background drain of due BatchWindowBuffer windows
         # (batch-window-grouping §3). The buffer itself (app.state.batch_window_buffer)
         # is constructed in create_app()'s synchronous body (above) so it's always
@@ -993,6 +1028,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             batch_worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await batch_worker_task
+
+        vector_store_worker_task: asyncio.Task[None] | None = getattr(
+            app.state, "vector_store_worker_task", None
+        )
+        if vector_store_worker_task is not None:
+            vector_store_worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await vector_store_worker_task
 
         batch_window_flusher_task: asyncio.Task[None] | None = getattr(
             app.state, "batch_window_flusher_task", None
