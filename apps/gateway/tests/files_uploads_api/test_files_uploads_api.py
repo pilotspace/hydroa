@@ -242,13 +242,15 @@ class TestFilesRejections:
         self, client: Any, tenant_a: dict[str, str]
     ) -> None:
         """R:purpose_unsupported — a purpose outside the vocabulary is rejected.
-        NOTE (R5 reconciliation, 2026-07-24): "fine-tune" became a SUPPORTED purpose
-        when finetune-broker PLAN.md §3 M8 was frozen (Tin-approved) — the R4 boundary
-        moved. This test now uses "assistants", which remains out of vocabulary, so it
-        still guards the rejection path without contradicting the approved R5 extension."""
+        NOTE (R5 reconciliation, 2026-07-24): the supported purpose set grew twice as
+        R5 tasks froze — finetune-broker §3 M8 added "fine-tune", vector-store-files §3 M9
+        added "assistants" (both Tin-approved). To stop this test churning each time the
+        set expands, it now asserts against a value that is NOT a real OpenAI purpose and
+        never will be — so it durably guards the rejection path regardless of which real
+        purposes we support."""
         resp = await _upload(
             client, tenant_a["key"], filename="ft.jsonl", data=_JSONL,
-            purpose="assistants", content_type="application/jsonl",
+            purpose="not_a_real_purpose", content_type="application/jsonl",
         )
         assert resp.status_code == 422, resp.text
         assert resp.json()["code"] == "ERR_FILE_PURPOSE_UNSUPPORTED"
