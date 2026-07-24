@@ -276,6 +276,7 @@ from gateway.tenants.infrastructure.orm import (
 )
 from gateway.tool_call_metering.infrastructure.observer import MeteringToolCallObserver
 from gateway.usage.api.margin_router import margin_router
+from gateway.usage.api.openai_usage_router import openai_usage_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -1692,6 +1693,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)
     app.include_router(usage_router)
+    app.include_router(openai_usage_router)
     app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
     app.include_router(compliance_router)

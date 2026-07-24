@@ -1504,3 +1504,49 @@ BATCH_INPUT_AMBIGUOUS = ErrorSpec(
     "ERR_BATCH_INPUT_AMBIGUOUS",
     "exactly one of line_items or input_file_id must be provided",
 )
+
+# ---------------------------------------------------------------------------
+# OpenAI-wire tenant usage/costs read API (tenant-usage-costs-api TASK.md §3)
+# ---------------------------------------------------------------------------
+# All 422 / ERR_PAYLOAD_INVALID (distinct messages), mirroring the PAYLOAD_*_INVALID
+# family. NOTE: the /v1/organization/* endpoints render the OpenAI-SDK error envelope
+# ({"error": <code>}) directly, NOT this module's RFC-9457 problem+json body — they use
+# these specs only as the single source of truth for (status, code). Auth failures on that
+# surface reuse AUTH_KEY_INVALID / AUTH_KEY_EXPIRED above.
+
+#: start_time absent / non-integer / negative.
+USAGE_START_TIME_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "start_time is required and must be a non-negative Unix-second integer",
+)
+
+#: end_time non-integer, or end_time <= start_time.
+USAGE_END_TIME_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "end_time must be a Unix-second integer greater than start_time",
+)
+
+#: bucket_width not allowed for the endpoint (e.g. 1w, or 1h on /costs).
+USAGE_BUCKET_WIDTH_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "bucket_width is not supported for this endpoint"
+)
+
+#: group_by contains an unknown field for the endpoint.
+USAGE_GROUP_BY_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "group_by contains an unsupported field"
+)
+
+#: requested span exceeds the per-bucket_width cap (1m>7d · 1h>92d · 1d>366d).
+USAGE_RANGE_TOO_LARGE = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "requested time span is too large for the chosen bucket_width"
+)
+
+#: malformed page cursor.
+USAGE_PAGE_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "page cursor is malformed")
+
+#: limit non-integer or outside 1..180.
+USAGE_LIMIT_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "limit must be an integer in 1..180"
+)
