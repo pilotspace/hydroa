@@ -39,7 +39,7 @@ from gateway.core.ids import uuid7
 
 # revision identifiers, used by Alembic.
 revision: str = "b1d05565455e"
-down_revision: str | None = "b8c1f4a2d6e9"
+down_revision: str | None = "a3f0c9d17b4e"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
