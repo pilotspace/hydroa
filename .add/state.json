@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "responses-state-store",
-  "active_milestone": "api-surface-parity",
+  "active_task": null,
+  "active_milestone": null,
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -137,381 +137,6 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
-    },
-    "responses-api-core": {
-      "title": "Stateless /v1/responses wire on the chat seam",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [],
-      "created": "2026-07-24T03:29:40+00:00",
-      "updated": "2026-07-24T05:02:44+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T03:54:27+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "1d68a1cd725661894c9253f118d1595a",
-        "tests": {
-          "apps/gateway/tests/responses_api_core/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/responses_api_core/conftest.py": "4b4272f361eeb153c980ee7cc2b6e563",
-          "apps/gateway/tests/responses_api_core/test_responses_api_core.py": "7b2eb72955532a41acbc0732a4b7a217"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/api/responses_router.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/openai_responses_ingress.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/tests/responses_api_core/"
-        ],
-        "snapshot_md5": "2347b1075fefafc02abf1991ad7aaa0b"
-      },
-      "recross": {
-        "by": "Tin Dang",
-        "at": "2026-07-24T05:02:44+00:00",
-        "from_phase": "build"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "responses-state-store": {
-      "title": "Stored responses + previous_response_id chaining (tenant-isolated, ZDR-composing)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [
-        "responses-api-core"
-      ],
-      "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T06:24:52+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T04:48:59+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "c32d790452040d0ef9d26576a2dd5d50",
-        "tests": {
-          "apps/gateway/tests/responses_state_store/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/responses_state_store/conftest.py": "50efc107ff2f1a79bdb5f2f8c167ec1f",
-          "apps/gateway/tests/responses_state_store/test_responses_state_store.py": "52bff72433ff808ef4da6468080693db"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/responses_store/",
-          "apps/gateway/src/gateway/proxy/api/responses_router.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/openai_responses_ingress.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/migrations/test_migrations.py",
-          "apps/gateway/tests/guardrails/test_guardrails_core.py",
-          "apps/gateway/tests/responses_api_core/test_responses_api_core.py",
-          "apps/gateway/tests/responses_state_store/"
-        ],
-        "snapshot_md5": "8362db2c47190297e395fb748c0dcb84"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-24T06:24:35+00:00",
-            "reason": "tamper_detected:build_tampered:apps/gateway/tests/responses_state_store/test_responses_state_store.py",
-            "source": "tamper"
-          }
-        ]
-      },
-      "rounds": {
-        "count": 1,
-        "history": [
-          {
-            "at": "2026-07-24T06:24:35+00:00",
-            "source": "tamper",
-            "note": null
-          }
-        ]
-      },
-      "recross": {
-        "by": "Tin Dang",
-        "at": "2026-07-24T06:24:47+00:00",
-        "from_phase": "build"
-      },
-      "target_hit": "yes"
-    },
-    "files-uploads-api": {
-      "title": "OpenAI-wire /v1/files + multipart upload on the ObjectStore port",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [],
-      "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T05:27:03+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T03:54:28+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "f3c467b2b6d947359083ede8265ff65d",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/files/",
-          "apps/gateway/src/gateway/batches/api/router.py",
-          "apps/gateway/src/gateway/batches/infrastructure/orm.py",
-          "apps/gateway/src/gateway/batches/infrastructure/repository.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/tenants/application/retention_policy.py",
-          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/files_uploads_api/",
-          "apps/gateway/tests/migrations/test_migrations.py",
-          "apps/gateway/tests/guardrails/test_guardrails_core.py"
-        ],
-        "snapshot_md5": "8e547ef295c6ef3e07cbaa8df4868a25"
-      },
-      "recross": {
-        "by": "Tin Dang",
-        "at": "2026-07-24T05:27:02+00:00",
-        "from_phase": "build"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "moderations-endpoint": {
-      "title": "/v1/moderations exposing the ML-moderation evaluator, metered",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [],
-      "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T06:14:50+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T03:54:28+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "561ea91f4242d9ea2afed9d0f8262e28",
-        "tests": {
-          "apps/gateway/tests/moderations_endpoint/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/moderations_endpoint/conftest.py": "629132867909bac2eb6e8134f94fd2ad",
-          "apps/gateway/tests/moderations_endpoint/test_cr1_per_tenant_breaker.py": "e7c307e4f15e4ecb1e005c923d4caf6b",
-          "apps/gateway/tests/moderations_endpoint/test_moderations_endpoint.py": "f487713e5fbe2334c6fb72644866be87"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/api/moderations_router.py",
-          "apps/gateway/src/gateway/proxy/api/moderations_deps.py",
-          "apps/gateway/src/gateway/proxy/application/moderations_use_case.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/ml_moderation_evaluator.py",
-          "apps/gateway/src/gateway/catalog/domain/entities.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/moderations_endpoint/",
-          ".add/tasks/moderations-endpoint/"
-        ],
-        "snapshot_md5": "88938883f94bd4a47ca6f81e3116fc8a"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "target_hit": "yes"
-    },
-    "image-edits-variations": {
-      "title": "/v1/images/edits + variations on the images seam",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [],
-      "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T04:58:55+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T03:55:07+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "d7f2529fc64b82f54506caad3371e7ce",
-        "tests": {
-          "apps/gateway/tests/image_edits_variations/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/image_edits_variations/conftest.py": "e572015d99a64a84619e5f9712ec33cf",
-          "apps/gateway/tests/image_edits_variations/test_image_edits_variations.py": "621aacfc4634a90fe3e7d2ccbb1dc1f1"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/api/images_router.py",
-          "apps/gateway/src/gateway/proxy/api/images_deps.py",
-          "apps/gateway/src/gateway/proxy/application/images_use_case.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/image_edits_variations/",
-          "apps/gateway/src/gateway/main.py"
-        ],
-        "snapshot_md5": "03c2a54603edae90a46c10b340c58c78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-24T04:58:37+00:00",
-            "reason": "scope_violation: task 'image-edits-variations' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/batches/api/router.py \u00b7 apps/gateway/src/gateway/batches/infrastructure/orm.py \u00b7 apps/gateway/src/gateway/batches/infrastructure/repository.py \u00b7 apps/gateway/src/gateway/catalog/domain/entities.py \u00b7 apps/gateway/src/gateway/core/config.py (32 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "rounds": {
-        "count": 1,
-        "history": [
-          {
-            "at": "2026-07-24T04:58:37+00:00",
-            "source": "scope",
-            "note": null
-          }
-        ]
-      },
-      "recross": {
-        "by": "Tin Dang",
-        "at": "2026-07-24T04:58:54+00:00",
-        "from_phase": "build"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "tenant-usage-costs-api": {
-      "title": "Tenant-scoped usage/costs read API over usage_records",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "api-surface-parity",
-      "depends_on": [],
-      "created": "2026-07-24T03:29:47+00:00",
-      "updated": "2026-07-24T05:01:38+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-24T03:54:29+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "route": {
-        "lane": "unrouted",
-        "by": null
-      },
-      "tripwire": {
-        "contract_md5": "779758f48c35ec588cd6a62abb443894",
-        "tests": {
-          "apps/gateway/tests/tenant_usage_costs_api/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/tenant_usage_costs_api/conftest.py": "4cd901b5e07286fbe650bd3e7015942e",
-          "apps/gateway/tests/tenant_usage_costs_api/test_completions.py": "071bcbb9af01657cb8a58a20e550c527",
-          "apps/gateway/tests/tenant_usage_costs_api/test_costs_and_security.py": "fe116c2a033e4b06e8234fc7c5c8e6f5",
-          "apps/gateway/tests/tenant_usage_costs_api/test_pagination.py": "d7a611c79f77112a0a3b7edefd166e11",
-          "apps/gateway/tests/tenant_usage_costs_api/test_timestamp_overflow.py": "66d60865771514268933cb66c9b577f0"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/usage/api/openai_usage_router.py",
-          "apps/gateway/src/gateway/usage/api/openai_usage_schemas.py",
-          "apps/gateway/src/gateway/usage/application/openai_usage_query.py",
-          "apps/gateway/src/gateway/usage/infrastructure/usage_aggregation_repository.py",
-          "apps/gateway/src/gateway/usage/domain/openai_usage.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/tests/tenant_usage_costs_api/"
-        ],
-        "snapshot_md5": "dcffd0a5ab1c873975224f91021ea081"
-      },
-      "recross": {
-        "by": "Tin Dang",
-        "at": "2026-07-24T05:01:37+00:00",
-        "from_phase": "build"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "milestones": {
@@ -522,42 +147,10 @@
       "status": "queued",
       "created": "2026-07-03T16:30:16+00:00",
       "updated": "2026-07-03T16:30:16+00:00"
-    },
-    "api-surface-parity": {
-      "title": "OpenAI API-surface parity",
-      "goal": "",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-07-24T03:27:26+00:00",
-      "updated": "2026-07-24T06:30:01+00:00",
-      "confirmed": true,
-      "confirmed_at": "2026-07-24T03:29:40+00:00",
-      "confirmed_by": "tindang",
-      "await_confirm": true,
-      "actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      },
-      "planned": {
-        "responses-api-core": [],
-        "responses-state-store": [
-          "responses-api-core"
-        ],
-        "files-uploads-api": [],
-        "moderations-endpoint": [],
-        "image-edits-variations": [],
-        "tenant-usage-costs-api": []
-      },
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T06:30:01+00:00",
+  "updated": "2026-07-24T08:04:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1691,14 +1284,24 @@
         "impersonation-live-session-guard"
       ],
       "archived": "2026-07-24"
+    },
+    {
+      "slug": "api-surface-parity",
+      "title": "OpenAI API-surface parity",
+      "tasks": 6,
+      "task_slugs": [
+        "responses-api-core",
+        "responses-state-store",
+        "files-uploads-api",
+        "moderations-endpoint",
+        "image-edits-variations",
+        "tenant-usage-costs-api"
+      ],
+      "archived": "2026-07-24"
     }
   ],
-  "active_milestones": [
-    "api-surface-parity"
-  ],
-  "active_tasks": {
-    "api-surface-parity": "responses-state-store"
-  },
+  "active_milestones": [],
+  "active_tasks": {},
   "todos": [
     {
       "id": 1,

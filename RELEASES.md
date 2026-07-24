@@ -1,5 +1,12 @@
 # Releases
 
+## 0.12.0 — 2026-07-24
+milestones: api-surface-parity
+loose tasks: none
+waivers: none
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: R4 "OpenAI API-surface parity" (6/6 tasks gated PASS, PR #87 merged to main `71e55c3`). New surfaces: /v1/responses (+ stored responses/chaining), /v1/files + batches input_file_id, /v1/moderations, /v1/images/edits+variations, tenant usage/costs read API. Independent adversarial refute-reads caught+healed 4 real defects (split-usage-frame billing, files body-cap 413, timestamp-overflow 422, moderations shared-breaker→CR-1 per-tenant); responses-state-store dual security verify CLEAR. Pre-merge suite: 6 new suites 122/122 + adjacent regressions 201/201 + guardrails 36/36 serial (xdist collision parallel-only). Admin-merged past org-billing 0-step CI on local evidence (precedent: 0.10.0/0.11.0). Tag/publish/deploy human-run.
+
 ## 0.11.0 — 2026-07-20
 milestones: account-tiers-billing, enterprise-domain-onboarding, domain-onboarding-softening
 loose tasks: none
