@@ -140,12 +140,12 @@
     },
     "vector-store-core": {
       "title": "/v1/vector_stores CRUD + pgvector substrate",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "managed-rag-finetune",
       "depends_on": [],
       "created": "2026-07-24T08:21:22+00:00",
-      "updated": "2026-07-24T08:44:12+00:00",
+      "updated": "2026-07-24T10:06:14+00:00",
       "sensitivity": "architecture",
       "freeze": {
         "version": "v1",
@@ -186,17 +186,47 @@
           "infra/docker-compose.prod.yml",
           "charts/ai-proxy/values.yaml"
         ],
-        "snapshot_md5": "0fafd51500aa80b809a1f17a3150d888"
+        "snapshot_md5": "85bc2b3118eab1e19cd9387047bb1b44"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-24T10:05:45+00:00",
+            "reason": "scope_violation: task 'vector-store-core' touched outside its declared \u00a75 Scope \u2014 apps/gateway/src/gateway/files/api/router.py \u00b7 apps/gateway/src/gateway/finetune/__init__.py \u00b7 apps/gateway/src/gateway/finetune/api/__init__.py \u00b7 apps/gateway/src/gateway/finetune/api/router.py \u00b7 apps/gateway/src/gateway/finetune/application/__init__.py (21 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-24T10:05:45+00:00",
+            "source": "scope",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin",
+        "at": "2026-07-24T10:06:14+00:00",
+        "from_phase": "build"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "finetune-broker": {
       "title": "/v1/fine_tuning/jobs brokered to BYOK provider",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "managed-rag-finetune",
       "depends_on": [],
       "created": "2026-07-24T08:21:22+00:00",
-      "updated": "2026-07-24T08:44:12+00:00",
+      "updated": "2026-07-24T10:06:31+00:00",
       "sensitivity": "security",
       "freeze": {
         "version": "v1",
@@ -217,7 +247,7 @@
         "contract_md5": "e63ca17cb755e05412021a504bc56c36",
         "tests": {
           "apps/gateway/tests/finetune_broker/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/finetune_broker/test_finetune_broker.py": "718c2daf0c23dc60cda2bc82db291f5f"
+          "apps/gateway/tests/finetune_broker/test_finetune_broker.py": "697737710dbf2e8e96d863f56c9dab41"
         }
       },
       "scope": {
@@ -231,7 +261,37 @@
           "apps/gateway/tests/migrations/test_migrations.py",
           "apps/gateway/tests/guardrails/test_guardrails_core.py"
         ],
-        "snapshot_md5": "0fafd51500aa80b809a1f17a3150d888"
+        "snapshot_md5": "85bc2b3118eab1e19cd9387047bb1b44"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-24T10:06:21+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/finetune_broker/test_finetune_broker.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-24T10:06:21+00:00",
+            "source": "tamper",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin",
+        "at": "2026-07-24T10:06:31+00:00",
+        "from_phase": "build"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     },
     "vector-store-files": {
@@ -310,7 +370,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T08:44:12+00:00",
+  "updated": "2026-07-24T10:06:31+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1807,6 +1867,12 @@
       "id": 57,
       "text": "R5 candidate: multi-provider moderation detectors \u2014 second adapter behind the ml-moderation verdict seam (Llama Guard 3 via OpenRouter/Bedrock, or Gemini safety classifier); enterprise differentiator vs OpenAI-only; approved-in-principle by Tin 2026-07-24",
       "created": "2026-07-24T04:40:27+00:00",
+      "status": "open"
+    },
+    {
+      "id": 58,
+      "text": "Pagination tiebreaker: list_active endpoints (vector_stores, files, +siblings) ORDER BY created_at DESC with no secondary key \u2014 rows sharing a timestamp can paginate unstably. Inherited from the files module template; a cross-module consistency pass, not task-specific. Refute-read note from vector-store-core verify 2026-07-24.",
+      "created": "2026-07-24T09:20:02+00:00",
       "status": "open"
     }
   ]

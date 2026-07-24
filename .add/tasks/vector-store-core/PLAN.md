@@ -2,8 +2,8 @@
 
 slug: vector-store-core · created: 2026-07-24 · stage: production
 milestone: managed-rag-finetune
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: auto
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -40,8 +40,6 @@ Boundary: wire id `vs_<32hex>` vs internal UUID (mirror of files `wire_id.py`, u
   ⚠ embedding dimension fixed at 1536 (text-embedding-3-small) — lowest confidence because the tenant's embedding model is a server-side config, and a 3072-dim model (text-embedding-3-large) cannot use a `vector(1536)` column NOR an HNSW index over `vector` >2000 dims; if wrong: a new additive migration (halfvec/second column) + re-embed, but NOT an API-wire change — the wire never exposes the dimension. Mitigated by recording embedding_model + embedding_dim per store row.
   ⚠ swapping every postgres image to `pgvector/pgvector:pg16` is drop-in — if wrong (volume init mismatch, alpine->debian): dev/e2e stacks need a volume reset; data loss is nil (dev/e2e only, prod is operator-managed).
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -158,8 +156,6 @@ Least-sure flag surfaced at freeze: [contract] the fixed 1536 embedding dimensio
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
 
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
-
 ---
 
 ## 4 · TESTS & SCENARIOS — failing-first suite or acceptance checks (red) ▸ docs/06-step-4-tests.md
@@ -201,8 +197,6 @@ Every failure is a missing route (FastAPI default 404) or missing table — RED 
 Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cases — is the gated floor. Minor/secondary behaviors are DESCRIBED in prose below as build-guidance — no `covers:` tag, no red test, not gated. Add a Given/When/Then line inline ONLY when a human stakeholder needs a readable case — never as ceremony; the test_plan is the canonical encoding of every scenario.
 
 Tests live in: `apps/gateway/tests/vector_store_core/` · MUST run red (missing implementation) before Build. ✅ ran red 2026-07-24 (17/17, evidence above).
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0. The test_plan bullets' `covers:` tails are machine-read too: `add.py locate path::test_name` resolves a failing test to the frozen §3 clause it proves -->
-<!-- NON-CODING task (kind: docs · release · infra, or a non-coding project)? §4 is a failing-first ACCEPTANCE CHECK, not a script — verifiable pass/fail evidence (mkdocs build succeeds · §X covers A/B/C · every internal link resolves), red before the artifact exists and green after. Set `Tests live in: evidence` (no `./tests/`). The red→green discipline holds; only the must-be-executable-code requirement is lifted. -->
 
 ---
 
@@ -232,18 +226,19 @@ By: <self | agent-id> · adversarially checked: <what was probed>
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reviewed by: Tin Dang · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose substrate-first freeze — tables + extension + CRUD in ONE contract so wave-2/3 never re-freeze; rejected CRUD-only now, chunk schema later (rejected — violates the WAVE1 extension-point mandate) · extend `proxy/infrastructure/vector_cache.py` float8[]+cosine (rejected — DISPLACED prior art, Tin-locked pgvector 2026-07-24).
+- [human] freeze — froze §3 @ v1 (approved by Tin)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
