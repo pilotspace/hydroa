@@ -51,12 +51,18 @@ class BatchJobRepository:
         tenant_id: uuid.UUID,
         key_id: uuid.UUID,
         line_items: list[dict[str, Any]],
+        input_file_id: uuid.UUID | None = None,
     ) -> BatchJobRow:
         """Insert one batch_jobs row (status=validating) + one batch_job_items row per
         line item (status=pending), in the SAME transaction. Caller commits.
 
         line_items: [{"custom_id": str, "body": dict}, ...] — already validated (non-empty,
         under the cap, unique custom_id, model+messages present) by the caller.
+
+        input_file_id (files-uploads-api PLAN.md §3 — ADDITIVE, default None): when a
+        purpose='batch' file drove this job, the caller-validated files row id is recorded
+        here and line_items is empty (item_count=0); the JSONL->line-item expansion is v58.
+        For every existing line_items submission it stays None — byte-identical.
 
         Fail-closed ZDR gate (tenant-retention-zdr TASK.md §3 M5): raises 403
         ERR_ZDR_PAYLOAD_BLOCKED, checked fresh, BEFORE any row is constructed — every
@@ -68,6 +74,7 @@ class BatchJobRepository:
             key_id=key_id,
             status="validating",
             item_count=len(line_items),
+            input_file_id=input_file_id,
         )
         self._session.add(job)
         await self._session.flush()  # populate job.id (server default)

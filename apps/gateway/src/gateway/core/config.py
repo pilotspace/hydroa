@@ -567,6 +567,16 @@ class Settings(BaseSettings):
     # within-cap request is byte-identical to today. (tts-input-guardrails TASK.md §3.)
     tts_max_input_characters: int = Field(default=4096, ge=0)
 
+    # ── Image edit/variation upload size ceiling (image-edits-variations task) ───
+    # GATEWAY_IMAGE_EDIT_MAX_BYTES — default-ON cap on the uploaded `image` (and
+    # `mask`, edits only) multipart file size for POST /v1/images/edits and
+    # /v1/images/variations. Checked BEFORE governance/upstream/bill (no partial
+    # charge on an oversized upload) — mirrors tts_max_input_characters's escape-
+    # hatch convention. DEFAULT-SAFE: 4 MiB (4 * 1024 * 1024) mirrors dall-e-2's
+    # real documented limit; ge=0 with 0 ⇒ DISABLED (operator escape hatch). A
+    # within-cap upload is unaffected. (image-edits-variations TASK.md §3.)
+    image_edit_max_bytes: int = Field(default=4 * 1024 * 1024, ge=0)
+
     # ── Global back-pressure / concurrency cap (concurrency-load-guard task) ──────
     # GATEWAY_MAX_CONCURRENT_REQUESTS — per-worker global cap on simultaneous in-flight
     # HTTP requests. 0 (default) = disabled = today's unbounded behavior (opt-in, byte-
@@ -914,6 +924,12 @@ class Settings(BaseSettings):
     # NOTE: kept as str (not list[str]) — pydantic-settings parses complex env types
     # as JSON, so a bare CSV env var would raise; str avoids that trap.
     artifact_allowed_content_types: str = Field(default="")
+
+    # ── Files store (files-uploads-api PLAN.md §3 — OpenAI-wire /v1/files) ─────
+    # GATEWAY_FILES_MAX_BYTES — per-file upload size cap (raw decoded bytes). 0 = disabled
+    # (no limit). Default 512 MiB (OpenAI's own /v1/files cap). Reject BEFORE any store put
+    # or DB row (no partial write) -> 413 ERR_FILE_TOO_LARGE.
+    files_max_bytes: int = Field(default=536_870_912, ge=0)  # GATEWAY_FILES_MAX_BYTES
 
     # ── Object store (S3/MinIO) for artifact bytes (v51 object-store-port) ─────
     # Unset/incomplete -> build_object_store() returns None -> artifacts honest-degrade

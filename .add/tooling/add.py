@@ -34,7 +34,7 @@ except ModuleNotFoundError:   # < 3.11: the registry is unsupported → degrade 
 from add_engine.constants import *  # noqa: F401,F403  (public constants via __all__)
 from add_engine.constants import (  # the _-prefixed names (import * skips them)
     _GITIGNORE_BODY, _GUIDE_BEGIN, _GUIDE_END,
-    _RULE_REF_LINE, _FALLBACK_TASK,
+    _FALLBACK_TASK,
     _DEFAULT_WIDTH,
     _DELTA_RE, _PERSONA_TAG_RE, _EVIDENCE_RE, _SPEC_DELTA_RE,   # shared delta regexes (taskdoc + deltas-web lint)
     _SEED_POINTER_RE,   # shared (delta-task-backlink) — reads the `[→ slug]` seed stamp back
@@ -301,6 +301,177 @@ def _seeded_delta_pointers(text: str) -> list[str]:
     return out
 
 
+def _signals(root: Path) -> list[dict]:
+    """signal-model: project the three split observation primitives — todos
+    (state["todos"]), SPEC deltas and competency deltas (each task's §7) — into ONE
+    unified signal node list. A signal is {id, kind, text, status, edges}: status
+    rides the closed lifecycle {advisory, captured, evidenced, resolving, resolved,
+    dropped}; edges are (rel, target_slug) with rel in {observed-by, resolves-into,
+    blocks}. PURE projection — reads only, adds NO store, rewrites nothing (the graph
+    is a VIEW, not a table). Backward-reading: every pre-existing todo/delta maps to a
+    status; a malformed line or corrupt entry is SKIPPED, never raised."""
+    try:
+        state = load_state(root)
+    except Exception:
+        return []
+    out: list[dict] = []
+    # todos — state["todos"] {id, text, status: open|done}
+    for t in (state.get("todos") or []):
+        if not isinstance(t, dict) or "id" not in t:
+            continue
+        status = {"open": "captured", "done": "resolved"}.get(t.get("status"))
+        if status is None:
+            continue
+        out.append({"id": f"t{t['id']}", "kind": "todo", "text": t.get("text") or "",
+                    "status": status, "edges": []})
+    # §7 deltas per task — SPEC (open|seeded|dropped|carried) + competency (open|folded|rejected)
+    for slug in sorted(state.get("tasks") or {}):
+        body = _raw_phase_bodies(root, slug).get(7, "")
+        s_n = c_n = 0
+        for raw in body.splitlines():
+            line = raw.rstrip("\n")
+            ms = _SPEC_DELTA_RE.match(line)
+            if ms:
+                st, text = ms.group(2), ms.group(3)
+                edges: list = [("observed-by", slug)]
+                if st == "open":
+                    status = "evidenced" if _EVIDENCE_RE.match(text) else "captured"
+                elif st == "carried":            # still open, carried forward
+                    status = "captured"
+                elif st == "seeded":
+                    status = "resolving"
+                    p = _SEED_POINTER_RE.search(text)
+                    if p:
+                        edges.append(("resolves-into", p.group(1)))
+                elif st == "dropped":
+                    status = "dropped"
+                else:
+                    continue
+                s_n += 1
+                out.append({"id": f"s:{slug}:{s_n}", "kind": "spec-delta",
+                            "text": text, "status": status, "edges": edges})
+                continue
+            mc = _DELTA_RE.match(line)
+            if mc:
+                status = {"open": "evidenced", "folded": "resolved",
+                          "rejected": "dropped"}.get(mc.group(2))
+                if status is None:
+                    continue
+                c_n += 1
+                out.append({"id": f"c:{slug}:{c_n}", "kind": "competency-delta",
+                            "text": mc.group(3), "status": status,
+                            "edges": [("observed-by", slug)]})
+    return out
+
+
+_EXIT_CRITERION_RE = re.compile(r"^\s*- \[([ x])\]\s+(.*)$")
+_DELIVERED_BY_RE = re.compile(r"\(←\s*([A-Za-z0-9][A-Za-z0-9_-]*)\s*\)")
+
+
+def _exit_criterion_nodes(root: Path) -> list[dict]:
+    """exit-criterion-nodes: project every milestone's `## Exit criteria` section into
+    delivered-by signal nodes — one dict per criterion {ms, idx, text, met, delivered_by}.
+    `met` is the `[x]` box; `delivered_by` is the `(← <slug>)` pointer (None if absent).
+    PURE read of each MILESTONE.md (never state, never a store); a missing file/section
+    contributes nothing (fail-soft) — mirrors _exit_criteria, ADDITIVE beside it."""
+    try:
+        state = load_state(root)
+    except Exception:
+        return []
+    out: list[dict] = []
+    for mslug in sorted(state.get("milestones") or {}):
+        f = root / "milestones" / mslug / MILESTONE_FILE
+        if not f.exists():
+            continue
+        try:
+            text = f.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        m = re.search(r"## Exit criteria.*?(?=\n## |\Z)", text, re.S)
+        if not m:
+            continue
+        idx = 0
+        for line in m.group(0).splitlines():
+            cm = _EXIT_CRITERION_RE.match(line)
+            if not cm:
+                continue
+            idx += 1
+            body = cm.group(2)
+            p = _DELIVERED_BY_RE.search(body)
+            out.append({"ms": mslug, "idx": idx, "text": body,
+                        "met": cm.group(1) == "x",
+                        "delivered_by": p.group(1) if p else None})
+    return out
+
+
+_NUMBERED_BOLD_RE = re.compile(r"(?m)^\s*\d+\.\s+\*\*(.+?)\*\*")
+_PARTS_MARKER_RE = re.compile(r"\(\s*(\d+)\s+parts?\s*\)|(\d+)-part", re.I)
+_CATCHALL_KW_RE = re.compile(r"longtail|drain|sweep|catch-all|grab-bag", re.I)
+
+
+def _scope_parts(root: Path, slug: str) -> list[str]:
+    """atomicity-signal: PURE read of a task's §1/§3 body — return the ordered
+    independent-Part labels a scope enumerates. A junk-drawer / longtail / drain
+    catch-all reads as N>1 Parts; a normal atomic task reads as [] (silence = pass).
+    Signals (union, order-preserving, deduped): a numbered-bold list `N. **label**` ·
+    a `(N parts)` / `N-part` marker (N>=2) · a catch-all keyword in the slug or title.
+    Returns [] when fewer than 2 Parts — never raises (fail-soft on a missing task)."""
+    try:
+        bodies = _raw_phase_bodies(root, slug)
+    except Exception:
+        return []
+    body = (bodies.get(1, "") + "\n" + bodies.get(3, ""))
+    try:
+        state = load_state(root)
+        title = ((state.get("tasks") or {}).get(slug) or {}).get("title", "") or ""
+    except Exception:
+        title = ""
+    parts: list[str] = []
+    for m in _NUMBERED_BOLD_RE.finditer(body):
+        label = m.group(1).strip()
+        if label and label not in parts:
+            parts.append(label)
+    if len(parts) < 2:                       # no explicit bold list — try the marker
+        mk = _PARTS_MARKER_RE.search(body)
+        if mk:
+            n = int(mk.group(1) or mk.group(2) or 0)
+            if n >= 2:
+                parts = [f"part {i}" for i in range(1, n + 1)]
+    if len(parts) < 2 and _CATCHALL_KW_RE.search(f"{slug} {title}"):
+        parts = ["catch-all", "drain"]       # keyword fires the nudge (recall over a named list)
+    return parts if len(parts) >= 2 else []
+
+
+def _atomicity_signal_seed(root: Path, slug: str):
+    """atomicity-signal: when a task's scope reads as >1 independent Part, SEED a
+    persistent `captured` signal (a todo in state["todos"], the store _signals already
+    projects) instead of an ephemeral print — so the atomicity concern survives after
+    the freeze scrolls away and appears in `graph --signals`. Idempotent per slug (a
+    re-freeze adds no duplicate); returns the new todo id, or None when <2 Parts /
+    already seeded. Writes ONLY the existing todo store — no new store (thin-engine floor).
+    Measure-not-block: the freeze caller wraps this fail-open; it never gates a freeze."""
+    parts = _scope_parts(root, slug)
+    if len(parts) < 2:
+        return None
+    state = load_state(root)
+    todos = state.get("todos")
+    if not isinstance(todos, list):
+        todos = state["todos"] = []
+    tag = f"atomicity: {slug} —"
+    for t in todos:
+        if isinstance(t, dict) and t.get("status") == "open" \
+                and str(t.get("text", "")).startswith(tag):
+            return None                      # idempotent — already seeded for this slug
+    new_id = max((t.get("id", 0) for t in todos if isinstance(t, dict)), default=0) + 1
+    text = (f"{tag} §3 scope reads as {len(parts)} Parts ({', '.join(parts)}); "
+            f"consider new-milestone + one task per Part.")
+    todos.append({"id": new_id, "text": text, "created": _now(), "status": "open"})
+    save_state(root, state)
+    print(f"note: seeded atomicity signal #{new_id} — §3 scope reads as {len(parts)} "
+          f"Parts (addressable after this freeze)")
+    return new_id
+
+
 # --- tidy a closed PLAN.md (strip-scaffold-at-done) --------------------------
 # A live PLAN.md carries `<!-- … -->` instruction comments that guide the active phase; once the
 # task is `done` they are dead weight (PR40 audit). cmd_gate strips them on a COMPLETING gate.
@@ -545,8 +716,7 @@ def _stamp_adr_record(root: Path, state: dict, slug: str) -> None:
 
 # --- guidelines / CLAUDE.md-injection subsystem (moved to add_engine/guidelines.py) -
 from add_engine.guidelines import (
-    _guideline_block, _inject_block, _rule_file_mode, _strip_inline_block,
-    _insert_rule_reference, _ensure_claude_reference, _inject_guidelines, _is_brownfield,
+    _guideline_block, _inject_block, _inject_guidelines, _inject_specs_pointers, _is_brownfield,
 )
 def cmd_init(args: argparse.Namespace) -> None:
     base = Path(args.dir).resolve()
@@ -578,7 +748,11 @@ def cmd_init(args: argparse.Namespace) -> None:
     today = date.today().isoformat()
     proj_name = args.name or base.name
 
-    # survivor-layer files — never clobber an existing one, never write a blank one
+    # survivor-layer files — never clobber an existing one, never write a blank one.
+    # Remember whether PROJECT.md pre-existed: a --force reinit resets state but must NOT
+    # touch a hand-edited survivor, so the specs-pointer wiring below fires ONLY when this
+    # init actually scaffolds PROJECT.md fresh (a pre-existing one is retrofitted via `migrate`).
+    _project_md_existed = (root / "PROJECT.md").exists()
     for fname in SETUP_FILES:
         dest = root / fname
         if dest.exists():
@@ -602,6 +776,12 @@ def cmd_init(args: argparse.Namespace) -> None:
     # SETUP_FILES (never clobber, never write blank), ONE template rendered five ways.
     for dd in SPEC_DDS:
         _seed_spec_file(root, dd, project=proj_name, stage=args.stage, date_str=today)
+
+    # foundation-specs-refs: wire the freshly-scaffolded PROJECT.md's thin index to the five
+    # specs just seeded (a managed, SPEC_DDS-driven ADD:SPECS block). Guarded on freshness so a
+    # --force reinit never mutates a hand-edited survivor — that retrofit is `migrate`'s job.
+    if not _project_md_existed:
+        _inject_specs_pointers(root / "PROJECT.md")
 
     # --run-mode: seed the autonomy dial into PROJECT.md. Run mode IS the autonomy posture;
     # concurrency is a per-task subagent (doc-level), never an engine-managed streams line.
@@ -633,7 +813,7 @@ def cmd_init(args: argparse.Namespace) -> None:
         state["setup"] = {"locked": False, "locked_at": None, "locked_by": None, "layers": []}
     save_state(root, state)
     # zero-config: give any agent a stable pointer into the ADD runtime.
-    for name, action in _inject_guidelines(base, getattr(args, "rule_file", False)):
+    for name, action in _inject_guidelines(base):
         if action != "unchanged":
             print(f"{action:>9}  {name}")
     print(f"initialised ADD project '{state['project']}' (stage: {state['stage']}) at {root}")
@@ -673,7 +853,7 @@ def cmd_init(args: argparse.Namespace) -> None:
 
 def cmd_sync_guidelines(args: argparse.Namespace) -> None:
     project_root = _require_root().parent
-    for name, action in _inject_guidelines(project_root, getattr(args, "rule_file", False)):
+    for name, action in _inject_guidelines(project_root):
         print(f"{action:>9}  {name}")
 
 
@@ -761,7 +941,7 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     # later re-words the template itself (this sub is then a no-op on an updated template).
     rendered = re.sub(r"(?m)^phase:\s*\S+(\s*<!--.*?-->)?\s*$",
                       "phase: direction   <!-- direction→build→verify→done; direction drafts "
-                      "§1–§4 (rules · scenarios · change plan · red suite) to the ONE freeze -->",
+                      "§1–§4 (rules · change plan · red suite) to the ONE freeze -->",
                       rendered, count=1)
     if from_delta:                                           # delta-task-backlink: §0 reverse link
         # pre-fill the §0 Related-intent PLACEHOLDER only (the `<…>` line a fresh full template
@@ -824,8 +1004,9 @@ def cmd_new_task(args: argparse.Namespace) -> None:
         print(f"seeded from '{from_delta}' — its open SPEC delta is now "
               f"[SPEC · seeded] … [→ {slug}]; §1 Feature pre-filled.")
     print("active task set. phase: direction. Draft the whole Direction bundle top-to-bottom — "
-          "§1 rules · §2 scenarios · §3 the change PLAN (ground + contract + what this task "
-          "will do) · §4 red suite — then ONE freeze approval crosses it into build.")
+          "§1 rules · §3 the change PLAN (ground + contract + what this task "
+          "will do) · §4 red suite (cases live here, in TESTS & SCENARIOS) — then ONE "
+          "freeze approval crosses it into build.")
     print(_next_footer(root, state))   # converges the old "then: add.py advance" hint
     # kickoff-truth M2: the remaining engine-call recipe at task birth — the transcript
     # audit measured 6-11 status/guide/--help re-orientation calls per run that this
@@ -839,7 +1020,7 @@ def cmd_new_task(args: argparse.Namespace) -> None:
     if len(state.get("tasks") or {}) <= 1:
         print("recipe — this task's remaining engine calls:")
         print("  add.py freeze --by <name> --cross   [approval — freezes the Direction "
-              "bundle (§1–§4: rules · scenarios · change plan · red suite) and crosses "
+              "bundle (§1–§4: rules · change plan · red suite) and crosses "
               "straight to build]")
         print("  add.py gate PASS   (from build — crosses to verify and records the outcome)")
     else:
@@ -899,6 +1080,12 @@ def _scope_echo(root: Path, slug: str) -> None:
         marks = [(rel, (rootp / rel).exists()) for rel in resolved]
         for rel, ok in marks:
             print(f"scope: {rel} [{'ok' if ok else 'MISSING'}]")
+            # scope-first-freeze teach note: a MISSING token that resolved UNDER the task
+            # dir is almost always the `./…`-grammar trap (2026-07-23 WM1 census, rep1/2:
+            # declared `./app/`, built root app/) — name the rule at the freeze read.
+            if not ok and rel.startswith(".add/tasks/"):
+                print(f"note: {rel} resolves under THIS TASK's dir (the `./…` token rule) — "
+                      "a project file wants a root-relative token (e.g. `app/`)")
         missing_all = not any(ok for _, ok in marks)
         # scope-coverage-hint: the too-narrow class behind the measured re-cross
         # repairs — tokens resolve [ok] yet the build's real targets sit outside them.
@@ -1012,6 +1199,18 @@ def cmd_freeze(args: argparse.Namespace) -> None:
             _die(f"boundary_unfilled: {slug}'s §1 Boundary: line still carries the template "
                  f"placeholder — declare >=1 format-variant per external input shape "
                  f"(or an explicit \"none — ...\"), then re-freeze")
+    # scope-first-freeze (wm1-lean-to-twelve): a DECLARED §3 Scope resolving to the EMPTY
+    # allowlist would freeze a guaranteed scope_violation — the Scope line lives INSIDE the
+    # frozen §3, so every post-freeze fix costs a re-cross (2026-07-23 WM1 census: 3/3 reps
+    # paid 2-3 calls to this class). Fail-closed at the cheap seam, validate-then-write:
+    # nothing is written on this path. UNDECLARED (None) stays grandfathered; resolvable
+    # tokens — [ok] or greenfield [MISSING] — freeze exactly as today.
+    if _declared_scope(root, slug) == []:
+        _die(f"scope_unresolved: {slug} declares a §3 Scope but every token dropped — "
+             "backtick each token (`name/` = project root · `./…` = THIS task's dir · a "
+             "directory covers its whole subtree); unbackticked or outside-root tokens "
+             "grant NO cover, and the gate would refuse scope_violation after the build. "
+             "Fix the Scope line, then freeze again")
     # the human declares the risk-CLASS at freeze (risk-sensitivity-taxonomy): a present-but-
     # unknown sensitivity token is refused here (validate-then-write — nothing is written);
     # an absent token is grandfathered (allowed), a valid member proceeds. The engine never
@@ -1099,6 +1298,10 @@ def cmd_freeze(args: argparse.Namespace) -> None:
     print(f"froze §3 of {slug} @ {ver} — approved by {who}")
     try:                                # scope-echo-draft: fail-open, never blocks a freeze
         _scope_echo(root, slug)
+    except Exception:
+        pass
+    try:                                # atomicity-signal: SEED a signal when §3 reads as >1 Part
+        _atomicity_signal_seed(root, slug)
     except Exception:
         pass
     # compound-ticks: `--cross` compresses the freeze->build crossing into this same
@@ -1389,6 +1592,72 @@ def cmd_locate(args: argparse.Namespace) -> None:
                   f"floor (never weaken it to pass)")
 
 
+_MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
+
+
+def _graph_html_page(title: str, mermaid: str, done: int, total: int,
+                     met: int, ectot: int, show_ec: bool) -> str:
+    """graph-html: wrap the mermaid diagram in a self-rendering, theme-aware HTML page —
+    engine-authored chrome (title + done/met status chips + a legend) plus a `<pre
+    class="mermaid">` (HTML-escaped so no `<`/`>`/`&` breaks parsing) and a PINNED mermaid
+    CDN `<script>`. The 3 MB library rides the CDN, never the 4-way byte-twinned add.py;
+    the diagram source is fully embedded (readable offline, renders online)."""
+    esc = mermaid.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    t = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    ec_chip = (f'<span class="chip ok">{met}/{ectot} exit-criteria met</span>'
+               if show_ec else "")
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{t} · add graph</title>
+<style>
+  :root {{ --bg:#f6f7f9; --panel:#fff; --plate:#fbfcfd; --ink:#1a1f27; --soft:#5a6472;
+          --hair:#e3e7ec; --accent:#1971c2; --met:#2b8a3e;
+          --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+          --sans:system-ui,-apple-system,"Segoe UI",sans-serif; }}
+  @media (prefers-color-scheme:dark) {{ :root {{ --bg:#0e1116; --panel:#161b22;
+          --ink:#e6edf3; --soft:#8b949e; --hair:#262c34; --accent:#4a9eea; }} }}
+  :root[data-theme="light"] {{ --bg:#f6f7f9; --panel:#fff; --ink:#1a1f27; --soft:#5a6472; --hair:#e3e7ec; --accent:#1971c2; }}
+  :root[data-theme="dark"] {{ --bg:#0e1116; --panel:#161b22; --ink:#e6edf3; --soft:#8b949e; --hair:#262c34; --accent:#4a9eea; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.5; }}
+  .wrap {{ max-width:1100px; margin:0 auto; padding:36px 24px 56px; }}
+  .cmd {{ font-family:var(--mono); font-size:13px; color:var(--soft); }}
+  h1 {{ font-family:var(--mono); font-size:clamp(24px,4vw,34px); font-weight:600; margin:8px 0 14px; }}
+  .chips {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px; }}
+  .chip {{ font-family:var(--mono); font-size:12px; padding:4px 10px; border-radius:999px;
+          border:1px solid var(--hair); background:var(--panel); color:var(--soft); }}
+  .chip.ok {{ color:var(--met); border-color:color-mix(in srgb,var(--met) 35%,var(--hair)); }}
+  .plate {{ background:var(--plate); border:1px solid var(--hair); border-radius:14px;
+          padding:20px; overflow-x:auto; box-shadow:0 8px 28px rgba(20,30,50,.06); }}
+  .mermaid {{ display:flex; justify-content:center; min-width:560px; }}
+  .legend {{ display:flex; flex-wrap:wrap; gap:18px; margin-top:20px; font-family:var(--mono);
+          font-size:12px; color:var(--soft); }}
+  .legend b {{ color:var(--accent); font-weight:600; }}
+</style></head><body>
+<div class="wrap">
+  <div class="cmd">$ add.py graph</div>
+  <h1>{t}</h1>
+  <div class="chips">
+    <span class="chip ok">{done}/{total} tasks done</span>
+    {ec_chip}
+  </div>
+  <div class="plate"><pre class="mermaid">
+{esc}
+  </pre></div>
+  <div class="legend">
+    <span><b>--&gt;</b> depends-on</span>
+    <span><b>-.-&gt;</b> observed-by / delivered-by</span>
+    <span><b>==&gt;</b> blocks</span>
+    <span>green = done / met · blue = signal · grey = planned / unmet</span>
+  </div>
+</div>
+<script src="{_MERMAID_CDN}"></script>
+<script>mermaid.initialize({{ startOnLoad: true, securityLevel: "loose" }});</script>
+</body></html>
+"""
+
+
 def cmd_graph(args: argparse.Namespace) -> None:
     """graph-views W4: the live board as a mermaid flowchart — deterministic,
     read-only, print-only (paste into any mermaid renderer / GitHub fence).
@@ -1462,7 +1731,88 @@ def cmd_graph(args: argparse.Namespace) -> None:
         cls = "done" if tasks[slug].get("phase") == "done" else "live"
         lines.append(f"  class t_{slug} {cls}")
     lines.extend(f"  class p_{slug} planned" for slug in sorted(planned_shown))
-    print("\n".join(lines))
+    # signal overlay (graph-view-signals): opt-in `--signals` layer — LIVE signals
+    # (todos + open §7 deltas via _signals) as nodes edged to their task nodes. Pure
+    # read; the default (no flag) path above is byte-unchanged. Resolved/dropped omit.
+    if getattr(args, "signals", False):
+        live = [s for s in _signals(root) if s["status"] not in ("resolved", "dropped")]
+        sig_missing: dict[str, str] = {}
+        node_lines: list[str] = []
+        edge_lines: list[str] = []
+        class_lines: list[str] = []
+        for s in live:
+            obs = [t for r, t in s["edges"] if r == "observed-by"]
+            if obs and not any(t in shown for t in obs):
+                continue                        # observed-by task filtered out by --milestone
+            sid = "sig_" + re.sub(r"[^0-9A-Za-z]", "_", s["id"])
+            text = re.sub(r'["\[\]|\n]', " ", s["text"]).strip()[:40]
+            node_lines.append(f'  {sid}["{s["kind"]} · {s["status"]}: {text}"]')
+            class_lines.append(f"  class {sid} signal")
+            for rel, target in s["edges"]:
+                arrow = {"observed-by": "-.->", "resolves-into": "-->",
+                         "blocks": "==>"}.get(rel)
+                if not arrow:
+                    continue
+                if target in tasks:
+                    tid = node_id(target)
+                else:                           # missing/archived target -> x_ fallback (never dangling)
+                    tid = "x_" + target
+                    note = "archived" if target in archived else "missing"
+                    sig_missing[tid] = f'  {tid}["{target} · {note}"]'
+                edge_lines.append(f"  {sid} {arrow}|{rel}| {tid}")
+        if node_lines:
+            lines.extend(sorted(sig_missing.values()))
+            lines.extend(node_lines)
+            lines.extend(edge_lines)
+            lines.append("  classDef signal fill:#e7f5ff,stroke:#1971c2")
+            lines.extend(class_lines)
+        # exit-criterion overlay (exit-criterion-nodes): each milestone exit criterion
+        # as a delivered-by node — met/unmet classed, edged to the task that satisfies it
+        # (x_ fallback for an unknown slug, no edge when unpointed). Same `--signals` gate.
+        ec_nodes = [n for n in _exit_criterion_nodes(root) if not only or n["ms"] == only]
+        if ec_nodes:
+            ec_missing: dict[str, str] = {}
+            ec_node_lines: list[str] = []
+            ec_edge_lines: list[str] = []
+            ec_class_lines: list[str] = []
+            for n in ec_nodes:
+                nid = f"ec_{n['ms']}_{n['idx']}"
+                glyph = "✓" if n["met"] else "○"
+                text = re.sub(r'["\[\]|\n]', " ", n["text"]).strip()[:40]
+                ec_node_lines.append(f'  {nid}["{glyph} {text}"]')
+                ec_class_lines.append(f"  class {nid} {'ec_met' if n['met'] else 'ec_unmet'}")
+                slug = n["delivered_by"]
+                if slug:
+                    if slug in tasks:
+                        tid = node_id(slug)
+                    else:                       # unknown slug -> x_ fallback (never dangling)
+                        tid = "x_" + slug
+                        note = "archived" if slug in archived else "missing"
+                        ec_missing[tid] = f'  {tid}["{slug} · {note}"]'
+                    ec_edge_lines.append(f"  {nid} -.->|delivered-by| {tid}")
+            lines.extend(sorted(ec_missing.values()))
+            lines.extend(ec_node_lines)
+            lines.extend(ec_edge_lines)
+            lines.append("  classDef ec_met fill:#d3f9d8,stroke:#2b8a3e")
+            lines.append("  classDef ec_unmet fill:#f1f3f5,stroke:#868e96")
+            lines.extend(ec_class_lines)
+    mermaid = "\n".join(lines)
+    # graph-html: opt-in `--html` wraps the SAME mermaid in a self-rendering page written
+    # to a temp file (the board stays read-only; the only write is the requested output).
+    if getattr(args, "html", False):
+        done = sum(1 for s in shown if tasks[s].get("phase") == "done")
+        ecs = [n for n in _exit_criterion_nodes(root) if not only or n["ms"] == only]
+        met = sum(1 for n in ecs if n["met"])
+        page = _graph_html_page(only or "ADD graph", mermaid, done, len(shown),
+                                met, len(ecs), bool(only))
+        out = (Path(args.out) if getattr(args, "out", None)
+               else Path(tempfile.gettempdir()) / f"add-graph{'-' + only if only else ''}.html")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(page, encoding="utf-8")
+        print(f"wrote {out}")
+        print("open it in a browser to view the rendered graph")
+        return
+    print(mermaid)
 
 
 def _relations_health(root: Path, state: dict) -> list[dict]:
@@ -1640,12 +1990,16 @@ def _build_entry(root: Path, state: dict, slug: str, skip_freeze: bool = False,
         _rb5 = _raw_phase_bodies(root, slug)
         m5 = (re.search(r"^\s*Scope \(may touch\):.*$", _rb5.get(3, ""), re.M)
               or re.search(r"^\s*Scope \(may touch\):.*$", _rb5.get(5, ""), re.M))
-        if m5 and "<fill before the §3 freeze" in m5.group(0):
-            print(f"warning: task '{slug}' §5 Scope is still the template default — "
-                  "`./src/` resolves to THIS TASK's dir (.add/tasks/"
-                  f"{slug}/src/), not your project files. Edit the §5 Scope line to "
-                  "the real paths the build may touch, then re-snapshot: "
-                  "add.py re-cross --by <name>")
+        # scope-first-freeze: detection accepts BOTH hint eras — the original
+        # "<fill before the §3 freeze" wording AND the #38-relabeled "<HARD — fill
+        # before the freeze" (the relabel silently killed the original match).
+        if m5 and ("<fill before the §3 freeze" in m5.group(0)
+                   or "<HARD — fill before the freeze" in m5.group(0)):
+            print(f"warning: task '{slug}' §3 Scope is still the template default — "
+                  "edit it to the REAL write-set (the default `src/` covers only the "
+                  "project-root src/; `./…` = this task's dir) (a note, not a blocker — "
+                  "it clears only when the Scope line itself is edited; re-cross does "
+                  "not clear it)")
     else:
         state["tasks"][slug].pop("scope", None)
         try:
@@ -3004,7 +3358,7 @@ def cmd_status(args: argparse.Namespace) -> None:
             print(f"milestone-relations: {' · '.join(_ms_parts)} — run add.py check")
     # foundation pointer — read the cross-milestone context first (anti-rot)
     if (root / "PROJECT.md").exists():
-        print("context : .add/PROJECT.md  (foundation: domain · spec · UI/UX — read first)")
+        print("context : .add/PROJECT.md  (read-first foundation: goal · invariants · pointers to .add/specs/)")
     # voice pointer — the AI's SOUL (tone · style · trust); read each session, edit freely.
     # Existence-only: no open/parse, so the pointer adds no IO failure path (a non-file is no voice).
     if (root / "SOUL.md").exists():
@@ -3891,10 +4245,11 @@ def cmd_check(args: argparse.Namespace) -> None:
         # R:code convention is silently grandfathered — never retro-flagged.
         if _task_text is not None:
             _spans = _phase_spans(_task_text)
+            # sec2 still read for legacy §2-bearing boards (fold-scenarios-tests retired the
+            # standalone §2; cases now live in §4 — a new doc's §2 span is simply absent/empty).
             for _rid, _kind in _rule_coverage_gaps(_spans.get(1, ""), _spans.get(2, ""), _spans.get(4, "")):
-                warnings.append((f"task '{slug}'", f"rule '{_rid}' ({_kind}) has no §2 scenario tag "
-                                 "and no §4 test covering it (coverage gap) — add a scenario tag "
-                                 "or a covers: line"))
+                warnings.append((f"task '{slug}'", f"rule '{_rid}' ({_kind}) has no §4 test "
+                                 "covering it (coverage gap) — add a covers: line to the §4 test_plan"))
         # autonomy level (task explicit-autonomy-dial): a REAL out-of-set token is a hard
         # unknown_autonomy_level; a LIVE task (phase before done) with no `autonomy:`
         # line is implicit_autonomy — a WARN, never red. Done predecessors are SKIPPED
@@ -4759,7 +5114,11 @@ def _tripwire_divergence(root: Path, slug: str, tw: dict) -> list[str]:
 # task's declared source; without it, the walk descends into `.claude/worktrees/<wt>/` (linked
 # git worktrees: full branch checkouts) and their churn produces false `scope_violation`s.
 _SCOPE_EXCLUDE_DIRS = (".git", ".add", ".claude", "__pycache__", "node_modules", ".serena",
-                       ".next", "coverage", "test-results", ".pytest_cache")
+                       ".next", "coverage", "test-results", ".pytest_cache",
+                       # tool-owned python dirs (scope-walk-prune): an in-workspace
+                       # virtualenv read as out-of-scope writes in 3/3 re-measure reps.
+                       # dist/build stay WATCHED — they can be a project's real write-set.
+                       ".venv", "venv", ".tox", ".mypy_cache", ".ruff_cache", ".eggs")
 _SCOPE_EXCLUDE_FILES = (".DS_Store", ".coverage")      # plus *.pyc / *.tsbuildinfo by suffix
 _SCOPE_EXCLUDE_SUFFIXES = (".pyc", ".tsbuildinfo")
 
@@ -4855,7 +5214,10 @@ def _scope_walk(rootp: Path) -> dict[str, str]:
     reads as a touch (fail-closed at the biting end). Bytes only — no git."""
     files: dict[str, str] = {}
     for dirpath, dirnames, filenames in os.walk(rootp):
-        dirnames[:] = [d for d in dirnames if d not in _SCOPE_EXCLUDE_DIRS]
+        # *.egg-info is PROJECT-DERIVED (app.egg-info) — no literal covers it; suffix-prune
+        # (egg-info-prune: 3/3 run-3 reps tripped scope_violation on pip install -e .'s output).
+        dirnames[:] = [d for d in dirnames
+                       if d not in _SCOPE_EXCLUDE_DIRS and not d.endswith(".egg-info")]
         for name in filenames:
             if name in _SCOPE_EXCLUDE_FILES or name.endswith(_SCOPE_EXCLUDE_SUFFIXES):
                 continue
@@ -5479,13 +5841,15 @@ def _flag_well_formed(raw3: str) -> bool:
 # is a template placeholder (leading "<", or the bare "./src/" Scope default) is skipped; a
 # trailing "   <hint>" on a real value is stripped. PURE.
 _PLAN_FIELDS = ("Scope (may touch)", "Strategy (ordered batches)", "Approach (domain strategy)",
-                "Persona (required)", "Spawn isolation (default)", "Known-problem fixes")
+                "Persona (optional)", "Spawn isolation (default)", "Known-problem fixes")
 
 
 def _build_plan(raw3: str) -> list[dict]:
     out: list[dict] = []
     for label in _PLAN_FIELDS:
         m = re.search(rf"(?m)^{re.escape(label)}:[ \t]*(.*)$", raw3)   # this label's line ONLY
+        if not m and label == "Persona (optional)":                   # legacy tasks froze it "(required)"
+            m = re.search(r"(?m)^Persona \(required\):[ \t]*(.*)$", raw3)
         if not m:
             continue
         val = m.group(1).strip()
@@ -5494,7 +5858,8 @@ def _build_plan(raw3: str) -> list[dict]:
             val = val[:hint.start()].strip()
         if not val or val.startswith("<"):            # a bare placeholder is not a plan
             continue
-        if val.strip("`").strip().startswith("./src/"):   # the untouched Scope default
+        core = val.strip("`").strip()
+        if core.startswith("./src/") or core == "src/":   # the untouched Scope defaults (legacy `./src/` · current `src/`)
             continue
         out.append({"label": label, "value": val})
     return out
@@ -6366,13 +6731,19 @@ def cmd_migrate(args: argparse.Namespace) -> None:
                             stage=state.get("stage") or "mvp", date_str=today)
             if p.exists():
                 seeded.append(SPEC_DDS[dd][0])
-    if not renames and not seeded:
-        print("already 2.0 — nothing to migrate (task docs are PLAN.md; the 5 living specs exist)")
+    # foundation-specs-refs: wire PROJECT.md's thin index to the five specs (idempotent —
+    # a pre-pointer PROJECT.md gets the managed ADD:SPECS block; an up-to-date one is a no-op).
+    pointer_action = _inject_specs_pointers(root / "PROJECT.md")
+    if not renames and not seeded and pointer_action in ("unchanged", "absent"):
+        print("already 2.0 — nothing to migrate (task docs are PLAN.md; the 5 living specs exist; "
+              "PROJECT.md points at them)")
         return
     if renames:
         print(f"migrated {len(renames)} task doc(s) TASK.md -> PLAN.md")
     if seeded:
         print(f"seeded {len(seeded)} living spec(s): {', '.join(seeded)}")
+    if pointer_action in ("created", "updated"):
+        print(f"{pointer_action} PROJECT.md → .add/specs/ pointer block (the 5-DD standing picture)")
     print("next: add.py status — re-orient on the 2.0 board")
 
 
@@ -6564,9 +6935,6 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--force", action="store_true", help="reset state.json if present")
     pi.add_argument("--await-lock", dest="await_lock", action="store_true",
                     help="seed an unlocked setup; gates new-task/advance/gate until `add.py lock`")
-    pi.add_argument("--rule-file", dest="rule_file", action="store_true",
-                    help="write the ADD block to .claude/rules/add-workflows.md and reference it "
-                         "from CLAUDE.md (auto-on for ccsk projects with a .ccsk/ dir)")
     pi.add_argument("--run-mode", dest="run_mode", default=None,
                     choices=["auto", "conservative"],
                     help="seed autonomy+streams posture: auto→parallel, conservative→sequential "
@@ -6644,6 +7012,15 @@ def build_parser() -> argparse.ArgumentParser:
                          "(milestone subgraphs; edge style = edge type; dashed = "
                          "planned-but-never-created)")
     pgr.add_argument("--milestone", help="limit to one milestone's subgraph")
+    pgr.add_argument("--signals", action="store_true",
+                     help="overlay LIVE signals (todos + open §7 deltas) as nodes edged "
+                          "to their tasks (observed-by/resolves-into/blocks)")
+    pgr.add_argument("--html", action="store_true",
+                     help="write a self-rendering HTML page (chrome + pinned-CDN mermaid) "
+                          "to a temp file and print its path, instead of raw mermaid")
+    pgr.add_argument("--out", default=None,
+                     help="with --html, the output path (default: a stable file under the "
+                          "system temp dir; a missing parent dir is created)")
     pgr.set_defaults(func=cmd_graph)
 
     pdap = sub.add_parser("delta-append",
@@ -6832,9 +7209,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     psg = sub.add_parser("sync-guidelines",
                          help="(re)write the ADD guideline block into AGENTS.md + CLAUDE.md")
-    psg.add_argument("--rule-file", dest="rule_file", action="store_true",
-                     help="relocate CLAUDE.md's block to .claude/rules/add-workflows.md + reference "
-                          "it (auto-on for ccsk projects)")
     psg.set_defaults(func=cmd_sync_guidelines)
 
     pgd = sub.add_parser("guide", help="print the one concrete next step for the active task")

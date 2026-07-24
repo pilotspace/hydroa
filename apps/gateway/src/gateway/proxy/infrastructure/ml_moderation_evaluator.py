@@ -1,6 +1,9 @@
 """ML moderation guardrail check — provider-backed, default-off, pre-call only.
 
-ml-moderation-layer TASK.md §3 CONTRACT — FROZEN @ v1.
+ml-moderation-layer TASK.md §3 CONTRACT — FROZEN @ v1. Additively extended by
+moderations-endpoint TASK.md §3 (FROZEN @ v1) with ``OpenAiModerationClient.
+moderate_raw`` — the frozen ``evaluate_pre`` 2-arg shape, ``ModerationVerdict``, and
+``MlModerationGuardrailEvaluator``/``CompositeGuardrailEvaluator`` are UNTOUCHED.
 
 Live-verify evidence (mandatory pre-build gate, §3 least-sure flag): OpenAI's
 ``POST /v1/moderations`` endpoint was confirmed on 2026-07-10 to be FREE — it does
@@ -44,6 +47,7 @@ Isolation (M8, §0 R3): ``OpenAiModerationClient`` wraps a DEDICATED
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any, Protocol, TypedDict
 
 from gateway.proxy.domain.credential_context import (
@@ -54,6 +58,7 @@ from gateway.proxy.domain.entities import GuardrailEvent, GuardrailResult
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.guardrail_tenant_context import get_guardrail_tenant_id
 from gateway.proxy.domain.ports import GuardrailEvaluator, TenantCredentialResolver
+from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.guardrail_evaluator import mask_pii_in_messages
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 
@@ -71,6 +76,86 @@ MODERATION_READ_TIMEOUT_S = 2.5
 MODERATION_MAX_RETRIES = 1
 MODERATION_BACKOFF_BASE_S = 0.5
 MODERATION_RETRY_DEADLINE_S = 4.0
+
+# ---------------------------------------------------------------------------
+# CR-1 (moderations-endpoint PLAN.md §6 GATE RECORD — Tin HARD-STOP 2026-07-24,
+# "fix now"): the moderation IO seam's CircuitBreaker is now keyed PER TENANT.
+#
+# Why: a single process-wide breaker meant one tenant's 5 consecutive BYOK/
+# upstream failures opened the SAME breaker for every OTHER tenant's internal
+# ml_moderation guardrail check AND every other tenant's /v1/moderations call —
+# a cross-tenant availability leak through a shared failure-domain object.
+#
+# Fix shape: the isolation boundary named in the module docstring above
+# ("isolated from chat/embeddings") is UNCHANGED — still exactly one
+# OpenAIDirectProvider instance, one httpx.AsyncClient, dedicated to moderation
+# traffic. What changes is *within* that seam: instead of one CircuitBreaker
+# (OpenAIDirectProvider._breaker) shared by every tenant, OpenAiModerationClient
+# now owns a bounded per-tenant CircuitBreaker registry and passes the
+# resolved tenant's breaker into `post_json_with_retry(..., breaker=...)`
+# (openai_provider.py's new optional override, CR-1). `_breaker` on the
+# provider instance itself becomes the fallback for the (should-never-happen)
+# case where no tenant identity is available at all (see `_resolve_tenant_
+# breaker` below) — never removed, since it is still exercised by callers
+# that pass no tenant identity.
+# ---------------------------------------------------------------------------
+
+#: Bounded registry size. 4096 is comfortably above any realistic concurrent-
+#: active-tenant count for a single gateway replica, and each entry is a tiny
+#: CircuitBreaker (a handful of ints/enum/None fields) — the whole registry at
+#: capacity is a trivial memory footprint. Not a hard business limit — purely a
+#: "never grow unbounded" safety cap.
+_MAX_TENANT_BREAKERS = 4096
+
+
+class _TenantBreakerRegistry:
+    """Bounded LRU registry of per-tenant CircuitBreaker instances (CR-1).
+
+    Design choice — LRU (OrderedDict, move-to-end on every access) over a plain
+    size-capped dict with arbitrary/FIFO eviction: LRU's eviction victim is
+    ALWAYS the least-recently-used entry, so a "hot" tenant — one that keeps
+    driving requests through this seam — is, by construction, touched on every
+    call and therefore never becomes the least-recently-used entry. It cannot
+    be evicted while it stays active. Only a genuinely idle/cold tenant's entry
+    is ever reclaimed. This directly satisfies CR-1's invariant ("eviction must
+    not reset an OPEN breaker into effective CLOSED for a hot tenant") as a
+    structural property of the eviction policy, not an incidental side effect —
+    a FIFO or random-eviction cap could not make the same guarantee (a hot
+    tenant could be evicted purely by insertion-order bad luck).
+    Trade-off accepted: a COLD tenant whose breaker happened to be OPEN loses
+    that state on eviction — its next call starts a fresh CLOSED breaker. This
+    is an honest, bounded degrade (a stale circuit re-probing after being idle
+    long enough to fall out of a 4096-entry LRU is reasonable), never a
+    fabricated result and never observable for the tenant CR-1 is protecting.
+
+    Concurrency: every method here is synchronous (no `await`) — asyncio's
+    cooperative scheduling means a get-or-create is atomic within one event
+    loop tick, so two concurrent coroutines resolving the SAME new tenant's
+    first call can never race into creating two different breaker objects.
+    """
+
+    def __init__(self, max_size: int = _MAX_TENANT_BREAKERS) -> None:
+        self._max_size = max_size
+        self._breakers: OrderedDict[Any, CircuitBreaker] = OrderedDict()
+
+    def get_or_create(self, tenant_key: Any) -> CircuitBreaker:
+        """Return the breaker for `tenant_key`, creating one on first use.
+
+        Every call — hit or miss — moves the entry to the MRU end, so a tenant
+        making back-to-back calls (a "hot" tenant) never ages toward eviction.
+        """
+        existing = self._breakers.get(tenant_key)
+        if existing is not None:
+            self._breakers.move_to_end(tenant_key)
+            return existing
+        breaker = CircuitBreaker()
+        self._breakers[tenant_key] = breaker
+        if len(self._breakers) > self._max_size:
+            self._breakers.popitem(last=False)  # evict the LRU entry
+        return breaker
+
+    def __len__(self) -> int:
+        return len(self._breakers)
 
 
 class ModerationVerdict(TypedDict):
@@ -149,10 +234,43 @@ class OpenAiModerationClient:
     ``credential_context`` ContextVar (the SAME one ``OpenAIDirectProvider._auth_
     headers()`` reads internally) immediately before calling ``moderate()`` — this
     class never resolves credentials itself, it only sends the authenticated request.
+
+    CR-1 (moderations-endpoint PLAN.md §6 GATE RECORD): owns the per-tenant
+    CircuitBreaker registry for the WHOLE moderation IO seam. Both ``moderate()``
+    (internal guardrail pre-call check) and ``moderate_raw()`` (client-facing
+    /v1/moderations) resolve tenant identity from the SAME sibling ContextVar
+    (``guardrail_tenant_context`` — set by the internal-guardrail call sites
+    already; additively set by ``ModerationsUseCase`` for the client-facing path,
+    since M9 means it never routes through ``evaluate_nonchat_request_guardrails``
+    where the existing set-call would otherwise happen) and resolve their breaker
+    from THIS one registry — satisfying "for a given tenant, the internal check
+    and /v1/moderations share the same instance" structurally: there is only ever
+    ONE ``OpenAiModerationClient`` (``app.state.ml_moderation_provider``), and
+    both methods read ``self._tenant_breakers``, never a second registry.
     """
 
     def __init__(self, provider: OpenAIDirectProvider) -> None:
         self._provider = provider
+        self._tenant_breakers = _TenantBreakerRegistry()
+
+    def _resolve_tenant_breaker(self) -> CircuitBreaker | None:
+        """Return this request's per-tenant breaker, or None if tenant identity
+        is genuinely unavailable.
+
+        Honest fallback (CR-1: "if the internal path can't know the tenant
+        somewhere, say so honestly instead of faking it"): when
+        ``get_guardrail_tenant_id()`` returns None — the contextvar was never
+        set for this call — this returns None rather than inventing a shared
+        key. ``post_json_with_retry`` treats a None override as "no override",
+        falling back to the provider's own single ``_breaker`` — exactly the
+        pre-CR-1 behavior for the (should-never-happen in production; every
+        real call site sets the contextvar) untagged case, never a fabricated
+        per-tenant identity.
+        """
+        tenant_id = get_guardrail_tenant_id()
+        if tenant_id is None:
+            return None
+        return self._tenant_breakers.get_or_create(tenant_id)
 
     async def moderate(self, text: str) -> ModerationVerdict:
         payload: dict[str, Any] = {"model": _MODERATION_MODEL, "input": text}
@@ -164,6 +282,7 @@ class OpenAiModerationClient:
             backoff_base=MODERATION_BACKOFF_BASE_S,
             deadline_s=MODERATION_RETRY_DEADLINE_S,
             provider_label="openai_moderation",
+            breaker=self._resolve_tenant_breaker(),
         )
         if status >= 400:
             # Any non-2xx that execute_with_retry passed through terminally (e.g. a
@@ -184,6 +303,49 @@ class OpenAiModerationClient:
         raw_categories = result.get("categories") or {}
         categories = [name for name, hit in raw_categories.items() if hit]
         return ModerationVerdict(flagged=bool(result.get("flagged", False)), categories=categories)
+
+    async def moderate_raw(
+        self, input_value: str | list[str], *, model: str = _MODERATION_MODEL
+    ) -> dict[str, Any]:
+        """Return the FULL upstream wire body for a client-facing moderation call.
+
+        moderations-endpoint TASK.md §3 (FROZEN @ v1) M3 — additive sibling of
+        ``moderate()`` above. NEVER normalizes to the narrow ``ModerationVerdict``
+        (``flagged`` + ``categories: list[str]``) the internal guardrail path uses —
+        the client-facing endpoint needs the full 13-key ``categories``/
+        ``category_scores``/``category_applied_input_types`` shape and the top-level
+        ``id``/``model`` envelope, byte-identical to what OpenAI itself returns.
+
+        Uses the SAME dedicated timeout instance and the SAME
+        ``post_json_with_retry`` seam ``moderate()`` uses — one isolated moderation
+        IO seam (§1 Framing A), now keyed PER TENANT within it (CR-1) via the same
+        ``self._tenant_breakers`` registry ``moderate()`` resolves from — the
+        caller (``ModerationsUseCase.execute``) sets the ``guardrail_tenant_context``
+        ContextVar around this call so tenant identity reaches here the same way it
+        reaches the internal guardrail path. Raises ``UpstreamUnavailableError`` on
+        any non-2xx status or a 200 whose body doesn't match the wire contract
+        (missing/malformed ``results``) — NEVER a fabricated "safe" result (M6).
+        """
+        payload: dict[str, Any] = {"model": model, "input": input_value}
+
+        status, body = await self._provider.post_json_with_retry(
+            _MODERATION_PATH,
+            payload,
+            max_retries=MODERATION_MAX_RETRIES,
+            backoff_base=MODERATION_BACKOFF_BASE_S,
+            deadline_s=MODERATION_RETRY_DEADLINE_S,
+            provider_label="openai_moderation",
+            breaker=self._resolve_tenant_breaker(),
+        )
+        if status >= 400:
+            raise UpstreamUnavailableError(f"Moderation upstream returned {status}")
+
+        results = body.get("results")
+        if not isinstance(results, list) or not results:
+            raise UpstreamUnavailableError(
+                "Moderation upstream returned 200 with a malformed body (missing results)"
+            )
+        return body
 
 
 class MlModerationGuardrailEvaluator:

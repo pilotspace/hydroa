@@ -80,6 +80,8 @@ EXPECTED_TABLES = frozenset(
         "domain_invite_redemptions",  # SANCTIONED EDIT — invite-by-domain TASK.md §3 manifest maintenance; disposition: additive migration a4f2d9c17b3e adds this table
         "pending_personal_signups",  # SANCTIONED EDIT — scoped-self-serve-signup TASK.md §3 manifest maintenance; disposition: additive migration b8e1c4f2a9d6 adds this table
         "access_requests",  # SANCTIONED EDIT — signup-refusal-router TASK.md §3 manifest maintenance; disposition: additive migration b8c1f4a2d6e9 adds this table
+        "files",  # SANCTIONED EDIT — files-uploads-api PLAN.md §3 manifest maintenance; disposition: additive migration f9d3b1a7c2e4 adds this table (batch_jobs.input_file_id is an additive COLUMN, no new table)
+        "stored_responses",  # SANCTIONED EDIT — responses-state-store PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration c7e0a4b2d9f1 adds this table
     }
 )
 

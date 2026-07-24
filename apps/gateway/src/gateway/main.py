@@ -137,6 +137,7 @@ from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLi
 from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
+from gateway.files.api.router import files_router
 from gateway.guardrail_analytics.api.router import guardrail_analytics_router
 from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
     GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -174,10 +175,16 @@ from gateway.proxy.api.discovery_router import discovery_router
 from gateway.proxy.api.embeddings_router import embeddings_router
 from gateway.proxy.api.images_router import images_router
 from gateway.proxy.api.messages_router import messages_router
+from gateway.proxy.api.moderations_router import moderations_router
 from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
+from gateway.proxy.api.responses_router import responses_router
+from gateway.responses_store.api.router import stored_responses_router
+from gateway.responses_store.infrastructure.orm import (  # noqa: F401 — registers StoredResponseRow on Base.metadata
+    StoredResponseRow as _StoredResponseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -245,9 +252,9 @@ from gateway.teams.infrastructure.orm import (  # noqa: F401 — registers TeamR
 from gateway.tenants.api.batch_policy_router import batch_policy_router
 from gateway.tenants.api.billing_owner_router import billing_owner_router
 from gateway.tenants.api.cache_router import cache_router
-from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.domain_invite_links_router import domain_invite_links_router
 from gateway.tenants.api.domain_invite_redeem_router import domain_invite_redeem_router
+from gateway.tenants.api.guardrail_router import guardrail_router
 from gateway.tenants.api.invite_accept_router import invite_accept_router
 from gateway.tenants.api.invites_router import invites_router
 from gateway.tenants.api.plan_router import plan_router
@@ -273,6 +280,7 @@ from gateway.tenants.infrastructure.orm import (
 )
 from gateway.tool_call_metering.infrastructure.observer import MeteringToolCallObserver
 from gateway.usage.api.margin_router import margin_router
+from gateway.usage.api.openai_usage_router import openai_usage_router
 from gateway.usage.api.router import usage_router
 from gateway.usage.application.cost_recovery import OpenRouterCostRecoveryService
 from gateway.usage.application.drift_checker import (
@@ -445,6 +453,27 @@ def build_email_sender(settings: Settings) -> EmailSender:
     required) -> SmtpEmailSender.
     """
     return SmtpEmailSender(settings) if settings.email_smtp_enabled else ConsoleEmailSender()
+
+
+# files-uploads-api PLAN.md §3 — headroom the /v1/files BodySizeLimitMiddleware cap carries
+# over files_max_bytes so the coarse outer body guard never pre-empts the router's precise
+# per-file ERR_FILE_TOO_LARGE check: the multipart body (file part + `purpose` field + MIME
+# framing) is at most a few hundred bytes larger than the raw file, so 1 MiB is a generous
+# margin that keeps the router the sole decider for any raw file up to files_max_bytes.
+_FILES_MULTIPART_HEADROOM_BYTES = 1024 * 1024
+# When files_max_bytes=0 (operator-disabled per-file cap), the router applies NO size limit;
+# the outer guard then falls back to a large finite ceiling (Envoy enforces the real coarse
+# outer bound independently — body_size_guard.py docstring) rather than an unbounded cap.
+_FILES_UNLIMITED_ROUTE_CAP = 5 * 1024 * 1024 * 1024  # 5 GiB
+
+
+def _files_route_cap(files_max_bytes: int) -> int:
+    """The BodySizeLimitMiddleware cap for /v1/files: files_max_bytes + multipart headroom
+    (so the router owns the exact ERR_FILE_TOO_LARGE boundary), or a large finite ceiling
+    when the per-file cap is disabled (files_max_bytes=0)."""
+    if files_max_bytes <= 0:
+        return _FILES_UNLIMITED_ROUTE_CAP
+    return files_max_bytes + _FILES_MULTIPART_HEADROOM_BYTES
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -1680,13 +1709,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(messages_router)
+    app.include_router(responses_router)
+    app.include_router(stored_responses_router)
     app.include_router(discovery_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
+    app.include_router(moderations_router)
     app.include_router(audio_router)
     app.include_router(realtime_router)
     app.include_router(realtime_relay_router)
     app.include_router(usage_router)
+    app.include_router(openai_usage_router)
     app.include_router(guardrail_analytics_router)
     app.include_router(audit_export_router)
     app.include_router(compliance_router)
@@ -1702,6 +1735,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(conversations_router)
     app.include_router(memories_router)
     app.include_router(artifacts_router)
+    app.include_router(files_router)
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)
@@ -1735,6 +1769,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         BodySizeLimitMiddleware,
         route_caps={
+            # files-uploads-api PLAN.md §3: /v1/files uploads may be far larger than a JSON
+            # body (files_max_bytes default 512 MiB), so a dedicated longest-prefix cap
+            # overrides the wider "/v1/" JSON cap (20 MiB) — WITHOUT it, every upload in the
+            # 20 MiB→files_max_bytes range was rejected 413 ERR_REQUEST_BODY_TOO_LARGE and
+            # the contracted 413 ERR_FILE_TOO_LARGE could never fire (mirrors how
+            # "/v1/audio/" already overrides "/v1/" for multipart STT). The cap carries a
+            # small headroom over files_max_bytes so this coarse outer guard NEVER pre-empts
+            # the router's precise per-file check at the exact boundary — the multipart body
+            # (file part + purpose field + framing) is a few hundred bytes larger than the
+            # raw file, so a raw file of exactly files_max_bytes must still pass the outer
+            # guard and reach the router, which owns ERR_FILE_TOO_LARGE.
+            "/v1/files": _files_route_cap(settings.files_max_bytes),
             "/v1/audio/": settings.max_audio_upload_bytes,
             "/v1/": settings.max_json_body_bytes,
             "/admin/": settings.max_json_body_bytes,

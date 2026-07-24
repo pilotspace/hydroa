@@ -1381,3 +1381,206 @@ BILLING_OWNER_INELIGIBLE = ErrorSpec(
     "ERR_BILLING_OWNER_INELIGIBLE",
     "Target user must be an active, billing-capable (owner or billing_admin) member of this tenant",
 )
+
+# ---------------------------------------------------------------------------
+# Responses wire — POST /v1/responses boundary rejects (responses-api-core §3)
+# ---------------------------------------------------------------------------
+
+#: Non-JSON / non-object body · missing or empty `input` · unknown input-item
+#: type. A 400 (not the shared 422 PAYLOAD_INVALID) so the OpenAI Responses SDK
+#: sees the same bad-request status its own server returns; runs to completion
+#: BEFORE any governance call (malformed body never partially consumes a hold).
+RESPONSES_PAYLOAD_INVALID = ErrorSpec(400, "ERR_PAYLOAD_INVALID", "Request payload is invalid")
+
+#: `background: true` — the stateless core never dials an async/background run.
+RESPONSES_BACKGROUND_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_BACKGROUND_UNSUPPORTED", "background mode is not supported"
+)
+
+#: Any hosted/built-in tool type (web_search, file_search, code_interpreter,
+#: mcp, …) — the seam bills on chat-shape frames and never proxies a hosted tool.
+RESPONSES_TOOL_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_TOOL_UNSUPPORTED", "hosted tool type is not supported"
+)
+
+#: `store: true` OR any `previous_response_id` — the wave-2 extension point
+#: (responses-state-store) owns acceptance; the stateless core terminates both.
+RESPONSES_STORE_UNSUPPORTED = ErrorSpec(
+    400, "ERR_RESPONSES_STORE_UNSUPPORTED", "stored/chained responses are not supported"
+)
+
+# ---------------------------------------------------------------------------
+# Moderations endpoint (moderations-endpoint TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/moderations — ``model`` field missing or empty. A dedicated code (NOT the
+#: shared PAYLOAD_MODEL_REQUIRED/ERR_PAYLOAD_INVALID symbol other proxy endpoints reuse)
+#: because this task's frozen §3 contract names the literal wire code
+#: ``ERR_PAYLOAD_MODEL_REQUIRED`` explicitly.
+MODERATION_MODEL_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_MODEL_REQUIRED", "Field 'model' is required and non-empty"
+)
+
+#: POST /v1/moderations — ``input`` field missing, empty string, or empty list. A
+#: dedicated code for the same reason as MODERATION_MODEL_REQUIRED above — the frozen
+#: §3 contract names ``ERR_PAYLOAD_INPUT_REQUIRED`` literally.
+MODERATION_INPUT_REQUIRED = ErrorSpec(
+    422, "ERR_PAYLOAD_INPUT_REQUIRED", "Field 'input' is required and non-empty"
+)
+
+#: POST /v1/moderations — ``input`` is a list containing a non-string item (e.g. an
+#: image content-part). Image/content-part moderation is out of v1 scope; rejected with
+#: a named code rather than silently mis-parsed.
+MODERATION_INPUT_UNSUPPORTED = ErrorSpec(
+    422,
+    "ERR_MODERATION_INPUT_UNSUPPORTED",
+    "Field 'input' must be a string or a list of strings",
+)
+
+# ---------------------------------------------------------------------------
+# Image edits + variations (image-edits-variations TASK.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/images/edits | /v1/images/variations — the required `image` multipart
+#: file field is absent or empty (mirrors PAYLOAD_FILE_REQUIRED's STT idiom).
+PAYLOAD_IMAGE_REQUIRED = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Field 'image' is required")
+
+#: POST /v1/images/edits | /v1/images/variations — the uploaded `image` (or `mask`,
+#: edits only) exceeds `Settings.image_edit_max_bytes`. Raised BEFORE governance/
+#: upstream/bill (no partial charge) — mirrors PAYLOAD_INPUT_TOO_LONG's pre-bill 413
+#: idiom.
+PAYLOAD_IMAGE_TOO_LARGE = ErrorSpec(
+    413, "ERR_PAYLOAD_IMAGE_TOO_LARGE", "Uploaded image exceeds the maximum allowed size"
+)
+
+#: POST /v1/images/edits | /v1/images/variations — model unknown/inactive in the
+#: catalog. Deliberately a TASK-LOCAL 404 (not the shared 400 MODEL_UNKNOWN used by
+#: chat/embeddings/generations/audio) — the frozen §4 red suite (test_ie7/IV-analog)
+#: asserts 404 for this endpoint pair; the shared MODEL_UNKNOWN constant stays 400
+#: for every other call site untouched by this task.
+IMAGE_EDIT_MODEL_UNKNOWN = ErrorSpec(
+    404, "ERR_MODEL_UNKNOWN", "Model '{model_id}' is not available"
+)
+
+# ---------------------------------------------------------------------------
+# Files / uploads (files-uploads-api PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/files with a purpose outside {batch, vision, user_data} (e.g. fine-tune,
+#: assistants) — out of this milestone's vocabulary (M6 / R:purpose_unsupported).
+FILE_PURPOSE_UNSUPPORTED = ErrorSpec(
+    422, "ERR_FILE_PURPOSE_UNSUPPORTED", "purpose must be one of: batch, vision, user_data"
+)
+
+#: POST /v1/files with a zero-byte / missing file part — no row created (R:file_empty).
+FILE_EMPTY = ErrorSpec(422, "ERR_FILE_EMPTY", "Uploaded file is empty")
+
+#: POST /v1/files whose size exceeds Settings.files_max_bytes (>0) — rejected BEFORE any
+#: object-store put or DB row (R:file_too_large). 413 Payload Too Large.
+FILE_TOO_LARGE = ErrorSpec(
+    413, "ERR_FILE_TOO_LARGE", "Uploaded file exceeds the maximum allowed size"
+)
+
+#: GET/DELETE/content on an unknown OR cross-tenant OR deleted OR malformed file id —
+#: deliberately indistinguishable (R:file_not_found; never 403, never a leak).
+FILE_NOT_FOUND = ErrorSpec(404, "ERR_FILE_NOT_FOUND", "File not found")
+
+# ---------------------------------------------------------------------------
+# Batches input_file_id seam (files-uploads-api PLAN.md §3 — FROZEN @ v1, additive to
+# the frozen batch-job-store v1 contract)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/batches input_file_id that is absent OR cross-tenant OR not purpose='batch'
+#: OR malformed — ONE uniform code so no enumeration oracle distinguishes the cases
+#: (R:batch_input_invalid).
+BATCH_INPUT_FILE_INVALID = ErrorSpec(
+    422, "ERR_BATCH_INPUT_FILE_INVALID", "input_file_id is invalid, not found, or not a batch file"
+)
+
+#: POST /v1/batches with BOTH line_items and input_file_id, or NEITHER — exactly one of
+#: the two submission shapes must be present (R:batch_ambiguous).
+BATCH_INPUT_AMBIGUOUS = ErrorSpec(
+    422,
+    "ERR_BATCH_INPUT_AMBIGUOUS",
+    "exactly one of line_items or input_file_id must be provided",
+)
+
+# ---------------------------------------------------------------------------
+# OpenAI-wire tenant usage/costs read API (tenant-usage-costs-api TASK.md §3)
+# ---------------------------------------------------------------------------
+# All 422 / ERR_PAYLOAD_INVALID (distinct messages), mirroring the PAYLOAD_*_INVALID
+# family. NOTE: the /v1/organization/* endpoints render the OpenAI-SDK error envelope
+# ({"error": <code>}) directly, NOT this module's RFC-9457 problem+json body — they use
+# these specs only as the single source of truth for (status, code). Auth failures on that
+# surface reuse AUTH_KEY_INVALID / AUTH_KEY_EXPIRED above.
+
+#: start_time absent / non-integer / negative.
+USAGE_START_TIME_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "start_time is required and must be a non-negative Unix-second integer",
+)
+
+#: end_time non-integer, or end_time <= start_time.
+USAGE_END_TIME_INVALID = ErrorSpec(
+    422,
+    "ERR_PAYLOAD_INVALID",
+    "end_time must be a Unix-second integer greater than start_time",
+)
+
+#: bucket_width not allowed for the endpoint (e.g. 1w, or 1h on /costs).
+USAGE_BUCKET_WIDTH_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "bucket_width is not supported for this endpoint"
+)
+
+#: group_by contains an unknown field for the endpoint.
+USAGE_GROUP_BY_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "group_by contains an unsupported field"
+)
+
+#: requested span exceeds the per-bucket_width cap (1m>7d · 1h>92d · 1d>366d).
+USAGE_RANGE_TOO_LARGE = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "requested time span is too large for the chosen bucket_width"
+)
+
+#: malformed page cursor.
+USAGE_PAGE_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "page cursor is malformed")
+
+#: limit non-integer or outside 1..180.
+USAGE_LIMIT_INVALID = ErrorSpec(
+    422, "ERR_PAYLOAD_INVALID", "limit must be an integer in 1..180"
+)
+
+# ---------------------------------------------------------------------------
+# Stored responses + chaining (responses-state-store PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET/DELETE /v1/responses/{id} OR chaining onto a previous_response_id that is
+#: unknown, another tenant's, deleted, or malformed. The SINGLE terminal code for
+#: all four causes — status AND body byte-identical (anti-enumeration; the sso-oracle
+#: lesson: one contracted code, never an alternation). Carries NO detail so the body
+#: is constant regardless of the probed id.
+RESPONSE_NOT_FOUND = ErrorSpec(404, "ERR_RESPONSE_NOT_FOUND", "Response not found")
+
+#: Chaining onto a row whose chain_depth is already at the 64-turn cap — pre-dial,
+#: no upstream call, no usage row. Reachable ONLY after the tenant-scoped resolve
+#: succeeds, so a foreign/unknown id can never surface it (it 404s first).
+RESPONSES_CHAIN_TOO_DEEP = ErrorSpec(
+    400, "ERR_RESPONSES_CHAIN_TOO_DEEP", "response chain exceeds the maximum depth of 64"
+)
+
+#: The materialized chain context (prev context + prev output + new input) serializes
+#: to more than 1 MiB — pre-dial, no upstream call, no usage row.
+RESPONSES_CONTEXT_TOO_LARGE = ErrorSpec(
+    413,
+    "ERR_RESPONSES_CONTEXT_TOO_LARGE",
+    "materialized response context exceeds the maximum size of 1 MiB",
+)
+
+#: A stored_responses persistence failure AFTER a served non-stream round-trip — the
+#: one usage row stands (provider cost was incurred); nothing half-written (the insert
+#: is atomic in its transaction). The detail/log text never embeds payload content
+#: (v22 no-payload-in-traceback floor).
+RESPONSES_STORE_FAILED = ErrorSpec(
+    500, "ERR_RESPONSES_STORE_FAILED", "failed to persist the stored response"
+)
