@@ -22,6 +22,7 @@ assertion fails. (Also imports gateway.core.errors.ProblemError to assert the 40
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -167,6 +168,77 @@ async def test_zdr_no_flip_persists_one_row_control(
     )
 
     assert await _count_rows(db_session, response_id) == 1
+
+
+async def test_zdr_flip_lands_after_recheck_select_fail_closed(
+    client: Any, app: Any, db_session: AsyncSession
+) -> None:
+    """M6 (SECURITY) — closes the re-check-SELECT -> INSERT-commit window.
+
+    The existing slow-double flips BEFORE the re-check SELECT: a PLAIN non-locking
+    SELECT already catches that (a committed flip is visible under read-committed). The
+    gap this test targets is the window AFTER the re-check reads and BEFORE the INSERT
+    commits — a flip landing there escapes a plain SELECT entirely.
+
+    Interleaving forced (deterministic, no fixed-sleep race on the assertion):
+      1. a CONTROLLER connection issues `UPDATE tenants SET zdr_enabled=true` and HOLDS
+         it uncommitted -> a FOR NO KEY UPDATE row lock on the tenant row;
+      2. persist_stored_response starts (gated on `lock_held`). With the FOR UPDATE fix
+         its re-check `SELECT ... FOR UPDATE` BLOCKS on that row lock; on the pre-fix
+         PLAIN select it does NOT block, reads the stale zdr=false, and commits the row;
+      3. the controller COMMITS the flip. The now-unblocked FOR UPDATE re-read observes
+         zdr=true -> raises ERR_ZDR_PAYLOAD_BLOCKED -> the persist transaction rolls back
+         -> ZERO rows.
+
+    RED on HEAD: the plain SELECT reads stale-false in step 2, the INSERT commits during
+    the controller's hold -> no raise, one row lands (both asserts fail). GREEN on the
+    FOR UPDATE fix: the flip can never slip between the locked re-read and the INSERT.
+    """
+    key = await _make_key(client, tenant_name="Delta", email="deb@delta.io")
+    tenant_id = key["tenant_id"]
+    response_id = f"resp_{uuid.uuid4().hex}"
+
+    lock_held = asyncio.Event()
+
+    async def _controller() -> None:
+        async with app.state.sessionmaker() as s:
+            # Acquire (and HOLD, uncommitted) the tenant row lock with the flip pending.
+            await s.execute(
+                text("UPDATE tenants SET zdr_enabled = true WHERE id = :tid"),
+                {"tid": tenant_id},
+            )
+            lock_held.set()
+            # Give persist time to reach its re-check: under the fix it parks on the row
+            # lock here; on HEAD it read stale-false and is already committing a row.
+            await asyncio.sleep(0.5)
+            await s.commit()  # release the lock -> the flip is now committed
+
+    controller_task = asyncio.create_task(_controller())
+    try:
+        await lock_held.wait()
+        with pytest.raises(ProblemError) as exc_info:
+            await persist_stored_response(
+                app.state.sessionmaker,
+                response_id=response_id,
+                tenant_id=uuid.UUID(tenant_id),
+                key_id=uuid.UUID(key["key_id"]),
+                model="gpt-4o",
+                status="completed",
+                previous_response_id=None,
+                chain_depth=0,
+                context_messages=_CHUNK,
+                response_body={"id": response_id, "status": "completed"},
+                usage=None,
+            )
+    finally:
+        await controller_task
+
+    assert exc_info.value.code == "ERR_ZDR_PAYLOAD_BLOCKED", (
+        f"a flip landing between re-check and insert must fail closed, got {exc_info.value.code}"
+    )
+    assert await _count_rows(db_session, response_id) == 0, (
+        "SECURITY: a ZDR flip in the re-check->commit window must write ZERO rows at-rest"
+    )
 
 
 async def test_zdr_atomic_recheck_streaming_path_fail_closed(

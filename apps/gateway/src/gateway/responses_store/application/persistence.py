@@ -20,12 +20,41 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gateway.core.error_catalog import ZDR_PAYLOAD_BLOCKED
 from gateway.responses_store.infrastructure.repository import StoredResponseRepository
-from gateway.tenants.application.retention_policy import raise_if_zdr
 
 _COMPLETED_PREFIX = b"event: response.completed\n"
+
+
+async def _is_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """LOCK-TAKING read of tenants.zdr_enabled (`SELECT ... FOR UPDATE`), scoped to the
+    session's already-open (autobegun) transaction — held until this transaction commits
+    or rolls back.
+
+    Deliberately a LOCAL helper, NOT the shared `is_zdr` port
+    (tenants/application/retention_policy.py): that port's contract is FROZEN v1 and is the
+    plain non-locking read every gated write choke point uses — adding FOR UPDATE there
+    would take a row lock on every one of those unrelated writes too. Here the lock is
+    load-bearing: it makes the ZDR DECISION and the stored_responses INSERT atomic. A plain
+    SELECT only catches a flip that COMMITTED BEFORE the read; the re-read -> INSERT-commit
+    window stays open (a flip landing there escapes it). With FOR UPDATE a concurrent
+    zdr_enabled flip for the SAME tenant BLOCKS on ordinary Postgres row-lock contention
+    until this transaction resolves — it can never land strictly between this read and the
+    INSERT it gates. Mirrors compliance `_is_zdr_locked` (file-search-tool CR v2, M6).
+
+    Fail-closed on an unknown tenant_id is not possible here (the tenant always exists on a
+    served request); mirrors is_zdr's documented False-on-missing for parity.
+    """
+    row = (
+        await session.execute(
+            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    return bool(row[0]) if row is not None else False
 
 
 async def persist_stored_response(
@@ -44,19 +73,25 @@ async def persist_stored_response(
 ) -> None:
     """Insert one stored_responses row in its own transaction (atomic; commits).
 
-    SECURITY (M6, file-search-tool PLAN.md §3): the entry-gate ZDR check ran BEFORE the
-    slow retrieval/grounding/embedding round-trip, during which a tenant can flip
+    SECURITY (M6, file-search-tool PLAN.md §3, CR v2): the entry-gate ZDR check ran BEFORE
+    the slow retrieval/grounding/embedding round-trip, during which a tenant can flip
     zdr_enabled=true via their OWN retention-policy admin endpoint. file_search widens the
     blast radius — the context_messages now carry 3rd-party document chunk text. So re-read
-    the ZDR flag ATOMICALLY inside the SAME transaction as the context_messages insert,
-    immediately before the write and before this transaction commits (read-committed lets
-    the SELECT observe any committed flip). A flip caught here aborts the block WITHOUT
-    committing -> ZERO rows land at-rest — fail-closed. Mirrors the ingest-worker heal
-    dd5373a (the twice-HARD-STOPPED check-at-entry / persist-after-await TOCTOU pattern).
-    Streaming (wrap_streaming_persist) delegates here, so BOTH persist paths are guarded.
+    the ZDR flag with a LOCK-TAKING read (`SELECT ... FOR UPDATE`, `_is_zdr_locked`) inside
+    the SAME transaction as the context_messages INSERT. A plain non-locking SELECT only
+    catches a flip that committed BEFORE the read — the re-read -> INSERT-commit window
+    stays open. The row lock closes it: a concurrent flip BLOCKS until this transaction
+    commits/rolls back, so it can never land strictly between the re-read and the write.
+    ZDR=true -> raise 403 ERR_ZDR_PAYLOAD_BLOCKED; the enclosing `async with` closes the
+    session WITHOUT commit -> the autobegun transaction rolls back -> ZERO rows land
+    at-rest — fail-closed. Streaming (wrap_streaming_persist) delegates here, so BOTH
+    persist paths are guarded by the one locked re-check.
     """
     async with session_factory() as session:
-        await raise_if_zdr(session, tenant_id)
+        # First statement autobegins the transaction; the FOR UPDATE lock it takes is held
+        # through the INSERT below until the explicit commit — decision + write are atomic.
+        if await _is_zdr_locked(session, tenant_id):
+            raise ZDR_PAYLOAD_BLOCKED.exc()
         repo = StoredResponseRepository(session)
         await repo.create(
             response_id=response_id,
