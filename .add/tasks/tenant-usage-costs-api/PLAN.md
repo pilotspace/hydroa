@@ -5,7 +5,7 @@ milestone: api-surface-parity
 sensitivity: data
 autonomy: auto
 component: gateway
-phase: build
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -91,8 +91,6 @@ capture from response, replay verbatim). group_by / models / api_key_ids are com
     revisited at freeze. Mitigation already in: it is still hard tenant-scoped (never cross-tenant),
     and `api_key_ids=<self>` lets a caller narrow to its own key.
 </assumptions>
-
-<!-- §2 (SCENARIOS) retired — cases live in §4. §3–§7 numbers unchanged for the freeze parser. -->
 
 ---
 
@@ -280,16 +278,19 @@ By: <self | agent-id> · adversarially checked: <cross-tenant leak · anti-enume
 
 ### GATE RECORD
 Reported: <yes | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: PASS
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reviewed by: Tin Dang · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence.

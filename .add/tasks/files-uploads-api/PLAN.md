@@ -2,8 +2,8 @@
 
 slug: files-uploads-api · created: 2026-07-24 · stage: production
 milestone: api-surface-parity
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: auto
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -54,8 +54,6 @@ Boundary: multipart/form-data upload (`file` part + `purpose` form field) — th
   ⚠ `input_file_id` is an ADDITIVE column on the FROZEN batch-job-store (v1) table + an additive optional request field. If additive-extension is judged a re-freeze of that contract (vs the established M7-items additive precedent), the change becomes a change-request against batch-job-store — cost: a second freeze.
   ⚠ File `status` is always `"processed"` (synchronous store; no async validation/scan pipeline). If a purpose later needs async validation (e.g. batch JSONL schema check), a `status` state machine must be added — deferred; contracted as a fixed literal now.
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -137,8 +135,6 @@ Least-sure flag surfaced at freeze: [contract] The `/v1/batches` `input_file_id`
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
 
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
-
 ---
 
 ## 4 · TESTS & SCENARIOS — failing-first suite or acceptance checks (red) ▸ docs/06-step-4-tests.md
@@ -171,7 +167,6 @@ Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cas
 Build-guidance (prose only — not gated): s3-backed byte path + honest-degrade to inline (mirror `tests/artifacts/test_artifacts_s3.py`'s FakeObjectStore for the object-first-then-row + 503-on-put and download-503-when-store-vanished cases) — reuse the artifacts pattern verbatim; the `purpose` query-filter on GET /v1/files; `list` pagination cap (default 50 / max 200, artifacts idiom); delete-while-referenced (OpenAI allows delete; a batch referencing a now-deleted file surfaces an honest error at v58 expansion time — out of this task's execution scope); registering `files` in the retention sweep passes is verified by the existing `tests/retention_zdr/` + `tests/migrations/` regression floor, not a new red test here.
 
 Tests live in: `./tests/files_uploads_api/` · MUST run red (missing implementation) before Build.
-<!-- NOTE: canonical suite lives at apps/gateway/tests/files_uploads_api/ (project convention: one dir per task, under the gateway app root — NOT this task dir). The path token above resolves there. -->
 
 RED EVIDENCE (2026-07-24, GATEWAY_TEST_DATABASE_URL=...gateway_test_filesupl on :5433):
 `uv run pytest tests/files_uploads_api/ -p no:cacheprovider --no-cov -q` -> **19 failed, 1 passed in 13.90s**.
@@ -200,23 +195,25 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 - [ ] a person reviewed and approved the change
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: NOT-EARNED (initial) → HEALED, attempt 1 of the bounded self-heal loop, re-verified
+By: independent add-advisor refute agent (fresh context, 2026-07-24) · adversarially checked: cross-tenant wire_id oracles, size-cap bypass, purpose validation, batches input_file_id at create-vs-use, retention/ZDR purge honesty, delete-while-referenced.
+🔴 FOUND (contract integrity): BodySizeLimitMiddleware's longest-prefix /v1/ JSON cap (20 MiB, main.py route_caps) pre-empted the handler for the whole 20 MiB→files_max_bytes(512 MiB) range → framework 413 ERR_REQUEST_BODY_TOO_LARGE instead of the frozen contracted code; suite never probed above small fixtures. 🟡: cap checked after unbounded file.read().
+HEAL (builder, commit 96b13d5 → integrated): dedicated "/v1/files" route cap = files_max_bytes + 1 MiB headroom (mirrors the /v1/audio/ precedent) so the router owns ERR_FILE_TOO_LARGE; bounded read(max_bytes+1) resolves the 🟡; +3 additive tests (above-outer-below-file-cap 200 · above-file-cap contracted 413 · exact-boundary 200) in test_files_uploads_size_cap.py. Integrated evidence: 23/23 (20 frozen + 3 new); artifacts 29 green in builder verification; edge-input/body-size 67 green in builder verification.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: yes — card written to this record (autonomy: auto; refute security lens clean — wire_id reversible no-oracle, ZDR fail-closed confirmed; heal re-verified on the falsifying range)
+Outcome: PASS
+Reviewed by: auto-resolved (orchestrator run; evidence: 23/23 integrated, two-manifest rule satisfied incl. the corrected guardrails referent, scope re-anchored after the scrivener fix) · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by auto-resolved (orchestrator run; evidence: 23/23 integrated, two-manifest rule satisfied incl. the corrected guardrails referent, scope re-anchored after the scrivener fix))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

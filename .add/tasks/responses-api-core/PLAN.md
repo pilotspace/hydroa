@@ -2,8 +2,8 @@
 
 slug: responses-api-core · created: 2026-07-24 · stage: production
 milestone: api-surface-parity
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: auto
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -40,8 +40,6 @@ Boundary: `input` as bare string vs item array (both tested) · message `content
   ⚠ `store` defaults FALSE here (OpenAI's server default is true) — a deliberate stateless-core divergence, echoed honestly in the body; if wrong for SDK apps that assume implicit storage: wave-2 flips the default under ITS contract; the accepted field shape (this freeze) is unchanged.
   - usage detail fields absent from a provider frame default 0 (not omitted) — [DERIVED] from SDK typed models requiring the keys; cost if wrong: cosmetic, additive fix.
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -105,8 +103,6 @@ Least-sure flag surfaced at freeze: [contract] the M5 SSE event-sequence subset 
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
 
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
-
 ---
 
 ## 4 · TESTS & SCENARIOS — failing-first suite or acceptance checks (red) ▸ docs/06-step-4-tests.md
@@ -137,8 +133,6 @@ Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cas
 
 Tests live in: `apps/gateway/tests/responses_api_core/` · MUST run red (missing implementation) before Build.
 RED evidence (2026-07-24): `GATEWAY_TEST_DATABASE_URL=…responses_api_core uv run pytest tests/responses_api_core/ -q` → **16 failed, 1 passed in 18.89s** — every /v1/responses test fails receiving **404 Not Found** (`{"detail":"Not Found"}`; route absent, `main.py` registers no responses_router) — red for the RIGHT reason (missing implementation; harness healthy: signup/key/model fixtures all succeed before the 404). The 1 pass is `test_default_path_untouched_chat_still_serves` (M8): it exercises the EXISTING chat path, green-by-design pre-change — it is the byte-identical-passthrough BASELINE the build must keep green, not a vacuous test.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0. The test_plan bullets' `covers:` tails are machine-read too: `add.py locate path::test_name` resolves a failing test to the frozen §3 clause it proves -->
-<!-- NON-CODING task (kind: docs · release · infra, or a non-coding project)? §4 is a failing-first ACCEPTANCE CHECK, not a script — verifiable pass/fail evidence (mkdocs build succeeds · §X covers A/B/C · every internal link resolves), red before the artifact exists and green after. Set `Tests live in: evidence` (no `./tests/`). The red→green discipline holds; only the must-be-executable-code requirement is lifted. -->
 
 ---
 
@@ -163,23 +157,25 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 - [ ] a person reviewed and approved the change
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: NOT-EARNED (initial) → HEALED, attempt 1 of the bounded self-heal loop, re-verified
+By: independent add-advisor refute agent (fresh context, 2026-07-24) · adversarially checked: multi-part input items, tool_calls round-trip, SSE event ordering + terminal usage frame, billing on the served model, byte-identical chat default path; lenses: concurrency (streaming state), security (payload echo/header leaks — clean), architecture (seam respected, no chat-path edits).
+🔴 FOUND (frozen Must M5): the streamed terminal response.completed zeroed usage when the provider stream splits usage across frames — masked by a single-frame-overfit fixture; billing row zero on split-usage streams.
+HEAL (builder, same session, commit 5bbadc1): terminal usage now derived from the JOINED frames per the frozen chat-seam semantics (reverse-scan + merge across frames); +1 additive regression test reproducing the split-usage stream (response.completed carries real usage, exactly one non-zero usage_record). Integrated evidence: 18/18 on feat/api-surface-parity.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: yes — card written to this record (autonomy: auto; refute security lens clean; heal re-verified on the falsifying input)
+Outcome: PASS
+Reviewed by: auto-resolved (orchestrator run; evidence: 18/18 integrated incl. split-usage regression, chat default path byte-identical pin green, pyright clean) · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose boundary-translation router-file onto CompletionUseCase unchanged; rejected new ResponsesUseCase beside CompletionUseCase (rejected: duplicates governance/billing chokepoint — the class of bug the milestone Ground forbids) · upstream-native /v1/responses passthrough to providers that speak it (rejected: fractures billing/usage extraction per provider; the seam bills on chat-shape frames).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by auto-resolved (orchestrator run; evidence: 18/18 integrated incl. split-usage regression, chat default path byte-identical pin green, pyright clean))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

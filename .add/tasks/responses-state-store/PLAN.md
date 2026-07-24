@@ -219,14 +219,16 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 - [ ] a person reviewed and approved the change
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED (green earned) — DUAL independent adversarial SECURITY verify, both CLEAR
+By: two independent add-advisor security agents (fresh context, disjoint lenses, 2026-07-24) on commit 896a736:
+- **Verify A — isolation & enumeration (CLEAR):** all five kill targets conceded clean after a genuine adversarial trace — cross_tenant (tenant_id filtered at every GET/DELETE-cascade/chain hop), enumeration (unknown|cross-tenant|deleted|malformed all one byte-identical 404 ERR_RESPONSE_NOT_FOUND), eval_order (foreign id can't reach a 400/409/413 branch before the 404), delete_cascade (recursion tenant-bounded), zdr (403 fail-closed pre-dial, zero rows/zero cost). Two 💭 non-blocking: is_zdr fail-open branch unreachable on the store path; a PK collision surfaces as 500 (not a leak).
+- **Verify B — DoS/durability/retention (CLEAR):** chain_caps_dos (depth-64/1-MiB enforced pre-materialization; cycle A↔B bounded by depth cap), cascade_scale (tenant-bounded, no infinite loop), zdr_retention (stored_responses genuinely purged by the sweeper + scrubbed under ZDR; both manifests correct — honest window), durability_concurrency and migration all conceded clean.
+- ⚠ MEDIUM non-blocking gap (verify B, for the human): the ERR_RESPONSES_STORE_FAILED (500) post-serve path and the streaming response.failed durability path are correct BY CODE-READING but have no automated test coverage. Follow-up test recommended; not a defect.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reported: yes — sensitivity: security gate presented to Tin (never auto-passed) with both CLEAR verdicts + the MEDIUM coverage gap, lowest-confidence-first
+Outcome: HARD-STOP (Tin, 2026-07-24 — dual security verify both CLEAR, but Tin requires the MEDIUM gap closed before ship: add automated coverage for the ERR_RESPONSES_STORE_FAILED post-serve path and the streaming response.failed durability path. Not a security finding — a coverage completion the human chose not to defer.)
+Reviewed by: Tin Dang · date: 2026-07-24
 
 <!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. This task is sensitivity: security — DUAL adversarial security verify required (milestone Exit criterion); the Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
 
@@ -235,7 +237,10 @@ Reviewed by: <name> · date: <date>
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose materialized-context row store in a new `responses_store/` bounded context mirroring `conversations/`; rejected walk-the-chain per-turn rows à la conversation_messages (rejected: chain rebuild is a multi-row walk — a cross-tenant/deleted check per hop and a torn-read window per hop on a security-sensitive read path) · reuse conversations/ tables (rejected: different wire lifecycle + different ZDR posture would fork the frozen conversations contract; the milestone glossary keeps Response object a distinct resource).
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate HARD-STOP (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

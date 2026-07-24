@@ -3,7 +3,7 @@
 slug: moderations-endpoint · created: 2026-07-24 · stage: production
 milestone: api-surface-parity
 autonomy: auto
-phase: build
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -170,32 +170,39 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests (or §4 acceptance checks) pass — including the §3 Regression floor (host suite)
-- [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
-- [ ] a person reviewed and approved the change
-- [ ] **watch-item (advisor-surfaced 2026-07-24):** confirm `NonChatGovernance`'s existing RPM/TPM/budget ladder bounds the achievable call rate against the SHARED `app.state.ml_moderation_provider` breaker enough that exposing it to direct external traffic cannot practically trip it OPEN and starve the internal guardrail's fail-open path for unrelated chat/embeddings requests — cite the actual limit values checked, not just "governance runs first"
+- [x] all tests pass [OBSERVED 2026-07-24: integrated feat/api-surface-parity — 18/18 moderations + guardrails suite green in the 105-test regression chunk; builder ran ml-moderation + migrations suites green in-worktree]
+- [x] coverage did not decrease [OBSERVED: new module covered by 18 tests; no existing tests removed]
+- [x] no test or contract was altered during build [OBSERVED: cherry-pick 21be2e1 touches no tests/, no PLAN.md]
+- [x] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (a confirmed cheat is HARD-STOP)
+- [x] concurrency / timing — refute lens: single-bill + finally-based credential-context reset probed, conceded safe [OBSERVED via refute agent]
+- [x] no exposed secrets / injection — refute lens: PII scrub (mask_pii_in_messages) runs unconditionally BEFORE every upstream call; raw body passed through untouched, no verdict re-mapping [OBSERVED via refute agent]
+- [x] layering — additive moderate_raw on the existing client module; frozen evaluate_pre surface byte-compatible [OBSERVED: diff]
+- [ ] a person reviewed and approved the change  ← escalated to Tin (security-lens NOTE below)
+- [x] **watch-item (advisor-surfaced 2026-07-24):** confirm `NonChatGovernance`'s existing RPM/TPM/budget ladder bounds the achievable call rate against the SHARED `app.state.ml_moderation_provider` breaker enough that exposing it to direct external traffic cannot practically trip it OPEN and starve the internal guardrail's fail-open path for unrelated chat/embeddings requests — cite the actual limit values checked, not just "governance runs first"
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED — CR-1 heal independently SECURITY-refuted CLEAR (per-tenant breaker)
+By: independent add-advisor SECURITY refute agent (fresh context, 2026-07-24, commit 645c551) · CR-1 per-target all clear: isolation_holds=true (tenant A's 5 failures leave tenant B CLOSED; internal check + endpoint share one instance per tenant), registry_surface="bounded, no leak", chat_isolation=true (chat/embeddings breakers untouched), test_integrity clean (the 4 CR-1 tests genuinely drive 5 failures for A and prove B dials). 22/22 suite green.
+[superseded initial verdict] By: independent add-advisor refute agent (fresh context, 2026-07-24) · adversarially checked: shared-breaker hammering coupling · billing-estimator falsification (emoji/UTF-16/URLs) · verdict-mapping shapes · outage honesty (no fabricated "safe") · PII-scrub ordering. Zero 🔴/🟡 findings; conceded EARNED.
+
+WATCH-ITEM RESOLUTION (orchestrator, live-read 2026-07-24): breaker trips only on 5 CONSECUTIVE FAILURES (_FAILURE_THRESHOLD=5, circuit_breaker.py:25) via post_json_with_retry's error path — successful volume never trips it; NonChatGovernance.authorize (9 ordered checks incl. per-key RPM) runs pre-provider (moderations_use_case.py Step 3); failures accrue on the CALLING tenant's own BYOK credential; OPEN degrades to the honest `unchecked` verdict per tenant failure_mode, then half-opens.
+⚠ NOTE (security lens, availability-coupling — escalated to Tin, never auto-passed): the breaker instance is SHARED across tenants (app.state.ml_moderation_provider, main.py:1516) — 5 consecutive failures driven by one tenant's broken/rate-limited BYOK key transiently opens it for every tenant's INTERNAL guardrail check (degrading to `unchecked` per each tenant's failure_mode). Pre-existing property of the internal path; this endpoint makes it more reachable. Residue options: accept (bounded + honest degrade) or queue a per-tenant breaker-keying follow-up.
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
+Outcome: HARD-STOP
 If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
+Reviewed by: Tin Dang · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate HARD-STOP (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

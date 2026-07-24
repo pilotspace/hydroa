@@ -3,7 +3,7 @@
 slug: image-edits-variations · created: 2026-07-24 · stage: production
 milestone: api-surface-parity
 autonomy: auto
-phase: build
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -52,8 +52,6 @@ Boundary: multipart/form-data is the ONLY external input shape for both new rout
   ⚠ #2: reusing the `input_modalities` column — originally meant to gate CHAT/STT input CONTENT types — to also mean "this image model accepts an uploaded source image for edit/variation" is a semantic overload rather than a new capability dimension. Today only one image-modality model exists pre-task (`dall-e-3`, `input_modalities="text"` by migration default) so no collision manifests, but a future vision-capable image-generation model could be mis-gated by this reuse. If wrong: cost is a follow-up capability-dimension task, not a live billing/security defect (fails closed — an under-capable model is rejected, never silently mis-routed).
   💭 #3: the 4 MiB size-cap default is bound to `dall-e-2`'s specific real limit, not a general "any future edit-capable model" number (GPT-Image-family docs quote a larger cap) — deliberately a config value (`Settings.image_edit_max_bytes`), not a code constant, so raising it for a future bigger-cap model is a config change only.
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -215,23 +213,23 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 - [ ] a person reviewed and approved the change
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED
+By: independent add-advisor refute agent (fresh context, 2026-07-24) · adversarially checked: returned-entries billing (fewer-than-n / empty / extra fields), single-bill under post-governance 4xx, size-cap ordering incl. oversized mask, capability-gate bypass shapes (NULL/empty input_modalities), generations byte-identity, dall-e-2 migration (pricing shape, no unverified-id violation, downgrade). Two low-severity notes, no blockers: 🟡 low (not-currently-reachable path) · 💭 the 4 MiB size-cap default is dall-e-2-specific rather than a general knob (config-overridable; revisit when a second edit-capable model lands). Conceded EARNED.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: yes — gate card written to this record (autonomy: auto, no security residue; auto-resolved)
+Outcome: PASS
+Reviewed by: auto-resolved (orchestrator run, evidence: 15/15 task suite + 14/14 generations regression on integrated branch, independent refute EARNED) · date: 2026-07-24
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned
+- [AI] verify — gate PASS (reviewed by auto-resolved (orchestrator run, evidence: 15/15 task suite + 14/14 generations regression on integrated branch, independent refute EARNED))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
