@@ -1486,6 +1486,28 @@ FILE_TOO_LARGE = ErrorSpec(
 FILE_NOT_FOUND = ErrorSpec(404, "ERR_FILE_NOT_FOUND", "File not found")
 
 # ---------------------------------------------------------------------------
+# Vector stores (vector-store-core PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/vector_stores name > 256 chars — 422, nothing persisted (R:vector_store_name_too_long).
+VECTOR_STORE_NAME_TOO_LONG = ErrorSpec(
+    422, "ERR_VECTOR_STORE_NAME_TOO_LONG", "name must be 256 characters or fewer"
+)
+
+#: POST /v1/vector_stores metadata not a mapping of <=16 string:string pairs
+#: (key<=64, value<=512 chars) — 422, nothing persisted (R:vector_store_metadata_invalid).
+VECTOR_STORE_METADATA_INVALID = ErrorSpec(
+    422,
+    "ERR_VECTOR_STORE_METADATA_INVALID",
+    "metadata must be an object of at most 16 string:string pairs "
+    "(key<=64 chars, value<=512 chars)",
+)
+
+#: GET/DELETE on an unknown OR cross-tenant OR malformed vector-store id —
+#: deliberately indistinguishable (R:vector_store_not_found; never 403, never a leak).
+VECTOR_STORE_NOT_FOUND = ErrorSpec(404, "ERR_VECTOR_STORE_NOT_FOUND", "Vector store not found")
+
+# ---------------------------------------------------------------------------
 # Batches input_file_id seam (files-uploads-api PLAN.md §3 — FROZEN @ v1, additive to
 # the frozen batch-job-store v1 contract)
 # ---------------------------------------------------------------------------

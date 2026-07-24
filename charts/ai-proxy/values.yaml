@@ -139,7 +139,7 @@ datastores:
 
   postgres:
     enabled: true
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     user: gateway             # POSTGRES_USER (mirrors dev-compose)
     database: gateway         # POSTGRES_DB
     storage: 1Gi

@@ -303,6 +303,7 @@ from gateway.usage.infrastructure.alert_events_orm import (
 from gateway.usage.infrastructure.orm import (
     UsageRecordRow as _UsageRecordRow,  # noqa: F401 — registers ORM metadata  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.vector_stores.api.router import vector_stores_router
 from gateway.video.api.router import video_router
 from gateway.video.application.worker import (
     RedisVideoJobQueue,
@@ -1736,6 +1737,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(memories_router)
     app.include_router(artifacts_router)
     app.include_router(files_router)
+    app.include_router(vector_stores_router)
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)

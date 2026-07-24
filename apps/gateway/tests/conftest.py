@@ -19,6 +19,7 @@ import httpx
 import pytest
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
@@ -125,6 +126,16 @@ async def _ensure_worker_database() -> AsyncIterator[None]:
     finally:
         await conn.close()
 
+    # vector-store-core PLAN.md §3 provisioning plan: the extension lives PER
+    # DATABASE, so each xdist worker's private database needs its own
+    # CREATE EXTENSION — idempotent, bounded connect timeout (design for failure).
+    worker_dsn = admin_dsn.rsplit("/", 1)[0] + f"/{dbname}"
+    worker_conn = await asyncpg.connect(dsn=worker_dsn, timeout=10)
+    try:
+        await worker_conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    finally:
+        await worker_conn.close()
+
     yield
 
     try:
@@ -168,6 +179,10 @@ async def app(settings: Settings) -> AsyncIterator[object]:
     install_stub_resolver(application)
     engine = application.state.engine
     async with engine.begin() as conn:
+        # vector-store-core PLAN.md §3 provisioning plan: the chunk ORM registers a
+        # Vector column on Base.metadata, so EVERY suite's create_all needs the
+        # extension — idempotent, a no-op once the dev postgres image ships pgvector.
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield application
