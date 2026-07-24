@@ -595,3 +595,124 @@ class TestPresetOracle:
             "preset upsert distinguishes a foreign tenant-owned model from a nonexistent"
             f" one — existence oracle: {leaked.value!r} vs {absent.value!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# HEAL (2026-07-24, data-sensitive refute-read) — a registered ft:* model must be
+# resolvable/callable by its REAL id. OpenAI's fine-tuned-model id shape
+# (ft:{base}:{org}::{suffix}) contains colons; `parse_preset_selector` used to split
+# ANY colon-bearing `model` field on the first colon into a bogus preset selector,
+# so the model this task registers was UNUSABLE via the normal ingress path (never
+# a security leak — a feature-purpose break the per-piece suite above never
+# exercised, since none of it drives the model field through preset resolution).
+# ---------------------------------------------------------------------------
+
+
+async def test_parse_preset_selector_exempts_ft_prefix() -> None:
+    """A bare ft:* id (colons and all) is NEVER treated as a preset selector.
+
+    (``async def`` with no ``await`` — the module-level ``pytestmark =
+    pytest.mark.asyncio`` applies to every test here; a plain ``def`` would emit a
+    harmless-but-noisy "marked with asyncio but not async" warning.)
+    """
+    from gateway.proxy.domain.model_presets import parse_preset_selector
+
+    assert parse_preset_selector(_FT_MODEL) is None
+    assert parse_preset_selector("ft:gpt-4o-mini-2024-07-18:acme::abc123") is None
+    # A ft:*-prefixed id with only ONE colon still exempts (the whole prefix rule
+    # keys off "ft:", not colon-count).
+    assert parse_preset_selector("ft:whatever") is None
+
+
+async def test_parse_preset_selector_still_splits_genuine_presets() -> None:
+    """The fix is a targeted prefix exemption, not a blanket colon change — a real
+    tenant preset selector (e.g. "myfast:v1") must still split exactly as before."""
+    from gateway.proxy.domain.model_presets import parse_preset_selector
+
+    assert parse_preset_selector("myfast:v1") == ("myfast", "v1")
+    assert parse_preset_selector("cheap:opus:extra") == ("cheap", "opus:extra")
+    assert parse_preset_selector("gpt-4o-mini") is None
+
+
+class TestComposedFtModelUsability:
+    async def test_registered_ft_model_resolves_by_real_id_not_as_preset(
+        self,
+        client: Any,
+        app: Any,
+        db_session: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """THE composed regression test: register the ft model via the real listener
+        (exactly as M1 does), then drive it through the SAME preset-resolution-ingress
+        code path every real chat/embeddings/images/audio call uses
+        (``CompletionUseCase._resolve_preset``) with a REAL DbTenantModelPresetStore
+        wired for this tenant. Before the HEAL fix this raised ERR_PRESET_NOT_FOUND —
+        the registered model was UNUSABLE. It must instead pass through untouched,
+        remain ACTIVE for its owner, and bill through the shared rate-card resolver
+        (M3) — the composed "register -> actually use it" path the 10 per-piece
+        tests never exercised."""
+        from decimal import Decimal
+
+        from gateway.proxy.application.use_cases import CompletionUseCase
+        from gateway.proxy.domain.ports import ModelAccess
+        from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+        from gateway.proxy.infrastructure.tenant_model_preset_store import (
+            DbTenantModelPresetStore,
+        )
+        from gateway.usage.application.rate_card_resolver import resolve_markup_pct
+
+        await _seed_base_catalog(db_session)
+        await db_session.execute(
+            sa_text("UPDATE tenants SET markup_pct = 25 WHERE id = :t"),
+            {"t": tenant_a["tenant_id"]},
+        )
+        await db_session.commit()
+        await _drive_job_to_succeeded(client, tenant_a["key"], provider_port)
+
+        checker = SqlAlchemyModelChecker(db_session)
+        preset_store = DbTenantModelPresetStore(sessionmaker=app.state.sessionmaker)
+        # A real, non-empty preset store for this tenant — proves the exemption fires
+        # BEFORE any store lookup, not merely because the store happens to be unwired.
+        await preset_store.upsert(uuid.UUID(tenant_a["tenant_id"]), "prod", "chat", _BASE_MODEL)
+
+        use_case = CompletionUseCase(
+            authenticator=None,  # type: ignore[arg-type]  # _resolve_preset never touches it
+            model_checker=checker,
+            tenant_model_preset_store=preset_store,
+        )
+
+        body: dict[str, Any] = {"model": _FT_MODEL, "messages": [{"role": "user", "content": "hi"}]}
+        tenant_uuid = uuid.UUID(tenant_a["tenant_id"])
+
+        # THE composed assertion: pre-fix, this line raised ModelPresetError
+        # (ERR_PRESET_NOT_FOUND) because "ft:gpt-4o-mini-2024-07-18:acme::registry1"
+        # was split on the first colon into a bogus ("ft", ...) selector that no
+        # preset row ever matches.
+        await use_case._resolve_preset(body, tenant_uuid)  # noqa: SLF001 — exercising the exact ingress seam under HEAL
+        assert body["model"] == _FT_MODEL, (
+            "registered ft model id was rewritten by preset resolution — a real ft:*"
+            " id must pass through untouched as a bare catalog model id"
+        )
+
+        # It resolves for its owner (never a foreign tenant, M4 — unaffected by this HEAL).
+        access = await checker.check_for_tenant(_FT_MODEL, tenant_uuid)
+        assert access is ModelAccess.ACTIVE
+
+        # And bills through the ONE shared rate-card resolver (M3) — the composed
+        # "register -> resolve -> bill" chain end to end.
+        snap = (
+            await db_session.execute(
+                sa_text(
+                    "SELECT prompt_usd_per_token FROM pricing_snapshots"
+                    " WHERE model_id = :m ORDER BY captured_at DESC LIMIT 1"
+                ),
+                {"m": _FT_MODEL},
+            )
+        ).fetchone()
+        assert snap is not None
+        markup = await resolve_markup_pct(db_session, tenant_uuid, _FT_MODEL)
+        assert markup == Decimal("25")
+        effective = Decimal(str(snap[0])) * (Decimal("1") + markup / Decimal("100"))
+        assert effective == _BASE_PROMPT * Decimal("1.25")
