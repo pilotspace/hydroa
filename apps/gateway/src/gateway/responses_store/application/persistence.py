@@ -23,6 +23,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.responses_store.infrastructure.repository import StoredResponseRepository
+from gateway.tenants.application.retention_policy import raise_if_zdr
 
 _COMPLETED_PREFIX = b"event: response.completed\n"
 
@@ -41,8 +42,21 @@ async def persist_stored_response(
     response_body: Any,
     usage: Any,
 ) -> None:
-    """Insert one stored_responses row in its own transaction (atomic; commits)."""
+    """Insert one stored_responses row in its own transaction (atomic; commits).
+
+    SECURITY (M6, file-search-tool PLAN.md §3): the entry-gate ZDR check ran BEFORE the
+    slow retrieval/grounding/embedding round-trip, during which a tenant can flip
+    zdr_enabled=true via their OWN retention-policy admin endpoint. file_search widens the
+    blast radius — the context_messages now carry 3rd-party document chunk text. So re-read
+    the ZDR flag ATOMICALLY inside the SAME transaction as the context_messages insert,
+    immediately before the write and before this transaction commits (read-committed lets
+    the SELECT observe any committed flip). A flip caught here aborts the block WITHOUT
+    committing -> ZERO rows land at-rest — fail-closed. Mirrors the ingest-worker heal
+    dd5373a (the twice-HARD-STOPPED check-at-entry / persist-after-await TOCTOU pattern).
+    Streaming (wrap_streaming_persist) delegates here, so BOTH persist paths are guarded.
+    """
     async with session_factory() as session:
+        await raise_if_zdr(session, tenant_id)
         repo = StoredResponseRepository(session)
         await repo.create(
             response_id=response_id,
