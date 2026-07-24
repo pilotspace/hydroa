@@ -178,6 +178,7 @@ from gateway.proxy.api.presets_admin_router import presets_admin_router
 from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_router
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
+from gateway.proxy.api.responses_router import responses_router
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -1680,6 +1681,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routing_admin_router)
     app.include_router(proxy_router)
     app.include_router(messages_router)
+    app.include_router(responses_router)
     app.include_router(discovery_router)
     app.include_router(embeddings_router)
     app.include_router(images_router)
