@@ -1,8 +1,8 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "agents-console",
-  "active_milestone": "agent-gateway-v1",
+  "active_task": "image-edits-variations",
+  "active_milestone": "api-surface-parity",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -59,107 +59,6 @@
         "source": "git"
       }
     },
-    "platform-tenant-directory": {
-      "title": "Platform tenant directory \u2014 superadmin list/search/view any tenant",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-admin-console",
-      "depends_on": [],
-      "created": "2026-07-03T06:36:33+00:00",
-      "updated": "2026-07-03T07:12:44+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "d2ff46f41fb1311ebc8b1c6f661cbcfc",
-        "tests": {
-          "apps/gateway/tests/platform_tenant_directory/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py": "3a67a75ebc326e32aa4a7d64450c97cf"
-        }
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "50139056764df67a78747f64844d3c55"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-03T07:10:02+00:00",
-            "reason": "tamper_detected:build_tampered:apps/gateway/tests/platform_tenant_directory/test_platform_tenant_directory.py",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "cross-tenant-config-budget": {
-      "title": "Cross-tenant config + budget view/edit",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-admin-console",
-      "depends_on": [],
-      "created": "2026-07-03T07:16:57+00:00",
-      "updated": "2026-07-03T08:33:43+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "2c55529bfbe606d051cffbb06fb6e569",
-        "tests": {
-          "apps/gateway/tests/cross_tenant_config_budget/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/cross_tenant_config_budget/conftest.py": "756738e13e8b040b372c015b02553081",
-          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py": "1ba213331436d6c69a8e421e6df05b17"
-        }
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "ffb3ec51c569fb4810119485aaf3ae3a"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-07-03T08:29:02+00:00",
-            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids \u00b7 apps/gateway/.ruff_cache/0.15.16/14635141089677618222 \u00b7 apps/gateway/.ruff_cache/0.15.16/16433340607819499924 (9 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-03T08:29:46+00:00",
-            "reason": "scope_violation: task 'cross-tenant-config-budget' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/.gitignore \u00b7 apps/gateway/.pytest_cache/CACHEDIR.TAG \u00b7 apps/gateway/.pytest_cache/README.md \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed (34 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "cross-tenant-keys-members": {
-      "title": "Cross-tenant keys + members view/manage",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-admin-console",
-      "depends_on": [],
-      "created": "2026-07-03T07:16:57+00:00",
-      "updated": "2026-07-03T08:48:03+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "f303ee3b410ef6e5a1afd281335cdc93",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "a6b23b19cb5b866061149eb4f8f6a6fb"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "role-update-persistence-fix": {
       "title": "Fix silent role-change rollback in self-service user-role update",
       "phase": "done",
@@ -190,84 +89,6 @@
         "source": "git"
       }
     },
-    "admin-console-audit": {
-      "title": "Audit every cross-tenant admin action, attributing the real superadmin actor",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-admin-console",
-      "depends_on": [
-        "platform-tenant-directory",
-        "cross-tenant-config-budget",
-        "cross-tenant-keys-members"
-      ],
-      "created": "2026-07-03T09:25:45+00:00",
-      "updated": "2026-07-03T11:10:56+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "2a5b2a2216fd0936bbe274eaa881cb50",
-        "tests": {
-          "apps/gateway/tests/admin_console_audit/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/admin_console_audit/test_admin_console_audit.py": "22174ad2578c53b7bf365578b2abe5e2"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/audit/application/platform_audit.py",
-          "apps/gateway/src/gateway/tenants/api/platform_tenants_router.py",
-          "apps/gateway/src/gateway/tenants/api/platform_tenant_config_router.py",
-          "apps/gateway/src/gateway/keys/api/platform_keys_router.py",
-          "apps/gateway/src/gateway/tenants/api/platform_users_router.py",
-          "apps/gateway/tests/admin_console_audit/",
-          "apps/gateway/tests/cross_tenant_config_budget/test_cross_tenant_config_budget.py",
-          "apps/gateway/tests/cross_tenant_keys_members/test_cross_tenant_keys_members.py",
-          "apps/gateway/.coverage",
-          "apps/gateway/.pytest_cache/",
-          "apps/gateway/.ruff_cache/"
-        ],
-        "snapshot_md5": "02b6d2a7a39969c5e42799b835098cc0"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "admin-console-ui": {
-      "title": "Platform admin console \u2014 dashboard UI (directory + tenant detail)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-admin-console",
-      "depends_on": [],
-      "created": "2026-07-03T11:38:28+00:00",
-      "updated": "2026-07-03T14:42:41+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "6351ff899a032835cf3f715d4145c190",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/app/(app)/app/platform/",
-          "apps/dashboard/components/platform/",
-          "apps/dashboard/components/ui/card.tsx",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/tests/platform-tenant-directory.test.tsx",
-          "apps/dashboard/tests/platform-tenant-detail.test.tsx",
-          "apps/dashboard/tests/platform-config-budget.test.tsx",
-          "apps/dashboard/tests/platform-keys.test.tsx",
-          "apps/dashboard/tests/platform-members.test.tsx",
-          "apps/dashboard/tests/platform-nav.test.tsx",
-          "apps/dashboard/tests/platform-card-variant.test.tsx",
-          "apps/dashboard/tests/platform-token-hygiene.test.tsx"
-        ],
-        "snapshot_md5": "7039004880ee44a6553a11929969c411"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "batch-observability-scaffolding": {
       "title": "Batch observability scaffolding: window-latency + placeholder completion metrics",
       "phase": "done",
@@ -285,365 +106,6 @@
       "scope": {
         "declared": [],
         "snapshot_md5": "94c9a96a63f8c730cf016967cfda6326"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "member-invite-issuance": {
-      "title": "Member invite issuance",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "team-member-invite",
-      "depends_on": [],
-      "created": "2026-07-03T00:00:00+00:00",
-      "updated": "2026-07-04T00:00:00+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "f5837cf10697452ea0a84660cf4721fd",
-        "tests": {}
-      },
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-04T00:00:00+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "plan-catalog": {
-      "title": "Plan/tier data model \u2014 resolves platform-tenant-backed-usage scope",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-access-plan",
-      "depends_on": [],
-      "created": "2026-07-04T00:00:00+00:00",
-      "updated": "2026-07-04T00:00:00+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "bc70e59754c9b0044522eb31a56e067f",
-        "tests": {}
-      },
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-04T00:00:00+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "impersonation-session-lifecycle": {
-      "title": "Impersonation session lifecycle",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "tenant-impersonation",
-      "depends_on": [],
-      "created": "2026-07-03T00:00:00+00:00",
-      "updated": "2026-07-04T00:00:00+00:00",
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "0ccd6793805340fd1477dbdb23ad6c85",
-        "tests": {}
-      },
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-04T00:00:00+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "member-invite-acceptance": {
-      "title": "Member invite acceptance",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "team-member-invite",
-      "depends_on": [
-        "member-invite-issuance"
-      ],
-      "created": "2026-07-05T02:33:58+00:00",
-      "updated": "2026-07-05T05:17:46+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-05T04:07:57+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "abc516cba43f48cbdeaabaf2a641a88d",
-        "tests": {
-          "apps/gateway/tests/member_invite_acceptance/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/member_invite_acceptance/conftest.py": "e82cc55f9de55219f6ee2abfdf6ff7c4",
-          "apps/gateway/tests/member_invite_acceptance/test_member_invite_acceptance.py": "b9676f835ef616b3b76f5d9eb3c8c1c8"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tenants/domain/entities.py",
-          "apps/gateway/src/gateway/tenants/domain/errors.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/invite_repository.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/invite_public_rate_limiter.py",
-          "apps/gateway/src/gateway/tenants/application/invite_accept_use_cases.py",
-          "apps/gateway/src/gateway/tenants/api/invite_accept_router.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/tests/member_invite_acceptance/"
-        ],
-        "snapshot_md5": "78c021d43d710cb3b9afb0a130e7d58a"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "impersonation-ui": {
-      "title": "Impersonation UI",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "tenant-impersonation",
-      "depends_on": [
-        "impersonation-session-lifecycle"
-      ],
-      "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T04:58:52+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-05T04:07:57+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "71a84d8580618517676a67b8620911a8",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/app/api/platform/impersonation/route.ts",
-          "apps/dashboard/app/api/platform/impersonation/sessions/[sessionId]/route.ts",
-          "apps/dashboard/app/api/gw/[...path]/route.ts",
-          "apps/dashboard/lib/hooks/use-impersonation-status.ts",
-          "apps/dashboard/lib/impersonation-cookie.ts",
-          "apps/dashboard/components/platform/ImpersonationBanner.tsx",
-          "apps/dashboard/components/platform/PlatformMembersTab.tsx",
-          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/components/dashboard-shell.tsx",
-          "apps/dashboard/tests-bff/impersonation-mint-end-status-routes.test.ts",
-          "apps/dashboard/tests-bff/impersonation-gw-proxy-cookie-precedence.test.ts",
-          "apps/dashboard/tests/platform-impersonation-banner.test.tsx",
-          "apps/dashboard/tests/platform-members-impersonate-action.test.tsx",
-          "apps/dashboard/tests/mocks/handlers.ts",
-          "apps/dashboard/tests-bff/mocks/handlers.ts"
-        ],
-        "snapshot_md5": "d0637cb4ec5e5f32078177f0ba98bcea"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "impersonation-live-session-guard": {
-      "title": "Impersonation live session guard",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "tenant-impersonation",
-      "depends_on": [
-        "impersonation-session-lifecycle"
-      ],
-      "created": "2026-07-05T02:34:31+00:00",
-      "updated": "2026-07-05T06:00:38+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-05T04:07:57+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "3e5ffecd29151f478e3a92c21a80fbe3",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tenants/domain/ports.py",
-          "apps/gateway/src/gateway/tenants/domain/authz.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/impersonation_session_guard.py",
-          "apps/gateway/src/gateway/keys/api/deps.py",
-          "apps/gateway/src/gateway/catalog/api/deps.py",
-          "apps/gateway/src/gateway/usage/api/router.py",
-          "apps/gateway/src/gateway/tenants/application/use_cases.py",
-          "apps/gateway/src/gateway/tenants/api/deps.py",
-          "apps/gateway/src/gateway/agent_oauth/api/device_approval_router.py",
-          "apps/gateway/src/gateway/auth/api/oidc_admin_router.py",
-          "apps/gateway/src/gateway/proxy/api/provider_keys_admin_router.py",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/tests/impersonation_live_session_guard/",
-          "apps/gateway/src/gateway/tenants/api/router.py",
-          "apps/gateway/src/gateway/proxy/api/presets_admin_router.py",
-          "apps/gateway/tests/presets_admin_surface/test_presets_admin_surface.py"
-        ],
-        "snapshot_md5": "9f088f59a5127b55cebe21de4b331d62"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-05T05:59:58+00:00",
-            "reason": "scope_violation: task 'impersonation-live-session-guard' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.coverage \u00b7 apps/gateway/.pytest_cache/v/cache/lastfailed \u00b7 apps/gateway/.pytest_cache/v/cache/nodeids (3 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "plan-admin-ui": {
-      "title": "Plan admin UI",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-access-plan",
-      "depends_on": [
-        "plan-catalog"
-      ],
-      "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-05T04:54:57+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-05T04:07:57+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8ee98b9fd62a0333b0910a10f89d0911",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/components/platform/PlatformPlanCatalog.tsx",
-          "apps/dashboard/components/platform/PlatformPlanTab.tsx",
-          "apps/dashboard/app/(app)/app/platform/plans/page.tsx",
-          "apps/dashboard/components/ui/app-shell.tsx",
-          "apps/dashboard/components/platform/PlatformTenantDetail.tsx",
-          "apps/dashboard/tests/platform-plan-catalog.test.tsx",
-          "apps/dashboard/tests/platform-plan-tab.test.tsx"
-        ],
-        "snapshot_md5": "f94c3860069101ef0a2567604bd75c03"
-      },
-      "heal": {
-        "attempts": 2,
-        "history": [
-          {
-            "at": "2026-07-05T04:50:03+00:00",
-            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
-            "source": "scope"
-          },
-          {
-            "at": "2026-07-05T04:53:47+00:00",
-            "reason": "scope_violation: task 'plan-admin-ui' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/platform/plans/page.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanCatalog.tsx \u00b7 apps/dashboard/components/platform/PlatformPlanTab.tsx \u00b7 apps/dashboard/components/platform/PlatformTenantDetail.tsx \u00b7 apps/dashboard/components/ui/app-shell.tsx (10 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "plan-seat-cap": {
-      "title": "Plan seat cap enforcement",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-access-plan",
-      "depends_on": [
-        "plan-catalog",
-        "member-invite-acceptance"
-      ],
-      "created": "2026-07-05T02:34:35+00:00",
-      "updated": "2026-07-12T12:47:23+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-12T11:43:43+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "8760aa81e855b880e0f16c530c8ea837",
-        "tests": {
-          "apps/gateway/tests/plan_seat_cap/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/plan_seat_cap/conftest.py": "58fe5ee2bcd7595c33256633de667039",
-          "apps/gateway/tests/plan_seat_cap/test_assert_seat_available.py": "800664402752edfc8270d178449619d1",
-          "apps/gateway/tests/plan_seat_cap/test_domain_capture_seat_cap.py": "24a009c6a131bd301687e8f9a9a3f359",
-          "apps/gateway/tests/plan_seat_cap/test_invite_accept_seat_cap.py": "2768145db3773c4cac5abbb76694fea0",
-          "apps/gateway/tests/plan_seat_cap/test_resolve_entitlements_seat.py": "bef11553570db22e8ddcb7af966c4bea",
-          "apps/gateway/tests/plan_seat_cap/test_scim_seat_cap.py": "a1ad291cab04674c1bcbaae6ced2623c",
-          "apps/gateway/tests/plan_seat_cap/test_seat_cap_audit_and_concurrency.py": "6847ad5733535ce860e4fa744e99a23a",
-          "apps/gateway/tests/plan_seat_cap/test_seat_cap_no_retroactive_lockout.py": "623849c2409971254f9cd2f796f7d408",
-          "apps/gateway/tests/plan_seat_cap/test_sso_seat_cap.py": "25999fce78327d23a2bbc45d29565ebe",
-          "apps/gateway/tests/plan_seat_cap/test_verify_adversarial.py": "b53a9d160bde4c9dd14e3539271ed0f7"
-        }
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tenants/domain/entitlements.py"
-        ],
-        "snapshot_md5": "7160553abdc8f72fe7328b04ab687f05"
       },
       "gate_actor": {
         "name": "Tin Dang",
@@ -676,17 +138,17 @@
         "source": "git"
       }
     },
-    "art12-record-keeping-preset": {
-      "title": "Art. 12 record-keeping export preset (one-click evidence bundle over compliance-export-api)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "eu-ai-act-readiness",
+    "responses-api-core": {
+      "title": "Stateless /v1/responses wire on the chat seam",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "api-surface-parity",
       "depends_on": [],
-      "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T07:40:40+00:00",
+      "created": "2026-07-24T03:29:40+00:00",
+      "updated": "2026-07-24T03:54:28+00:00",
       "freeze": {
         "version": "v1",
-        "frozen_at": "2026-07-14T03:58:05+00:00",
+        "frozen_at": "2026-07-24T03:54:27+00:00",
         "approved_by": "Tin Dang",
         "actor": {
           "name": "Tin Dang",
@@ -695,545 +157,226 @@
         }
       },
       "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
       "tripwire": {
-        "contract_md5": "a363d6dd9b4849fffef9b16244427f93",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:24+00:00",
-            "reason": "scope_violation: task 'art12-record-keeping-preset' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "compliance-report-center": {
-      "title": "Compliance report center console surface (generate/download/schedule the Art. 12 bundle)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "eu-ai-act-readiness",
-      "depends_on": [
-        "art12-record-keeping-preset"
-      ],
-      "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T07:38:29+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T06:08:07+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "ca4e40ca06daacde1ce6eb9e405f469f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/dashboard/lib/art12-bundle.ts",
-          "apps/dashboard/components/compliance/",
-          "apps/dashboard/components/settings/SettingsPage.tsx",
-          "apps/dashboard/tests/art12-bundle-assembly.test.ts",
-          "apps/dashboard/tests/compliance-report-center.test.tsx",
-          "apps/dashboard/tests/settings-page.test.tsx"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "ai-act-marketing-page": {
-      "title": "EU AI Act readiness marketing page + docs (accurate Art. 101 figures; live before 2026-08-02)",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "eu-ai-act-readiness",
-      "depends_on": [],
-      "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T07:40:42+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T03:58:29+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "70eefb2e77f5582908580935e49ec2bb",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/ai-act-marketing-page/src/"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:26+00:00",
-            "reason": "scope_violation: task 'ai-act-marketing-page' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (86 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "anthropic-messages-ingress": {
-      "title": "Native /v1/messages ingress (+ count_tokens): Anthropic-wire in, shared governance/router/recorder path, billing parity",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [],
-      "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T07:40:27+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T03:59:40+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "01fe7be5ab921c59db286fa345ba43b3",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:10+00:00",
-            "reason": "scope_violation: task 'anthropic-messages-ingress' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (143 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "mcp-connector-passthrough": {
-      "title": "MCP connector egress passthrough with per-tenant allow/deny lists (fail-closed) + session tracing",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [],
-      "created": "2026-07-14T03:34:46+00:00",
-      "updated": "2026-07-14T07:40:30+00:00",
-      "freeze": {
-        "version": "v2",
-        "frozen_at": "2026-07-14T04:17:55+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "44b6005e21a8ad1c21bff6635cb12a1f",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/mcp_connector/",
-          "apps/gateway/src/gateway/keys/domain/entities.py",
-          "apps/gateway/src/gateway/keys/domain/AuthzResult.mcp_allowed_servers",
-          "apps/gateway/src/gateway/proxy/infrastructure/key_authenticator.py",
-          "apps/gateway/src/gateway/proxy/infrastructure/composite_key_authenticator.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/core/ERR_MCP_*",
-          "apps/gateway/src/gateway/core/config.py",
-          "apps/gateway/src/gateway/core/mcp_connector_dial_timeout_seconds",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          ".add/tasks/mcp-connector-passthrough/tests/"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:11+00:00",
-            "reason": "tamper_detected:contract_tampered",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "agent-identity-governance": {
-      "title": "Agent-as-principal on device-OAuth: named identities, per-agent budgets/limits, universal kill switch",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [],
-      "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T07:40:32+00:00",
-      "freeze": {
-        "version": "v2",
-        "frozen_at": "2026-07-14T04:42:45+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "d02847d8e2069426310489e14599c1b7",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/agent-identity-governance/src/"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:13+00:00",
-            "reason": "scope_violation: task 'agent-identity-governance' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/app/(marketing)/ai-act-readiness/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/ai-act-compliance/page.tsx \u00b7 apps/dashboard/app/(marketing)/docs/page.tsx \u00b7 apps/dashboard/app/(marketing)/pricing/page.tsx (103 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "claude-gateway-protocol-compat": {
-      "title": "Claude apps gateway protocol compatibility: Claude Code fronts Hydroa first-class",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [
-        "anthropic-messages-ingress"
-      ],
-      "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T07:40:34+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T05:26:43+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "67b55384a2305793cbd2dd80e1ea860b",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/proxy/",
-          "apps/gateway/src/gateway/usage/application/recorder.py",
-          "apps/gateway/src/gateway/tenants/infrastructure/orm.py",
-          "apps/gateway/src/gateway/core/error_catalog.py",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/migrations/versions/",
-          "apps/gateway/tests/claude_gateway_protocol_compat/",
-          "apps/gateway/src/gateway/catalog/api/router.py"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:16+00:00",
-            "reason": "scope_violation: task 'claude-gateway-protocol-compat' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/app/(app)/app/agents/page.tsx \u00b7 apps/dashboard/components/agents/AgentIdentityCard.tsx \u00b7 apps/dashboard/components/agents/AgentsConsolePage.tsx \u00b7 apps/dashboard/components/agents/CreateAgentDialog.tsx \u00b7 apps/dashboard/components/agents/ManageTokensDialog.tsx (77 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "tool-call-metering": {
-      "title": "Per-tool-call metering: $/1k-query pricing units through the shared rate-card resolver to invoice lines",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [
-        "mcp-connector-passthrough"
-      ],
-      "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T07:40:36+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T04:18:42+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "0a7cb40f42da25097bdecedaaee1ea95",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          "apps/gateway/src/gateway/tool_call_metering/",
-          "infrastructure/observer.py",
-          "infrastructure/MeteringToolCallObserver",
-          "apps/gateway/src/gateway/usage/application/recorder.py",
-          "apps/gateway/src/gateway/usage/application/\"per_tool_call\"",
-          "apps/gateway/src/gateway/usage/application/_known_units",
-          "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/MeteringToolCallObserver",
-          "apps/gateway/src/gateway/mcp-connector-passthrough",
-          "apps/gateway/src/gateway/ToolCallObserver",
-          "apps/gateway/src/gateway/NoopToolCallObserver",
-          "apps/gateway/migrations/versions/",
-          ".add/tasks/tool-call-metering/tests/"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:17+00:00",
-            "reason": "tamper_detected:contract_tampered",
-            "source": "tamper"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "agents-console": {
-      "title": "Agents console (UDD): directory, session explorer, MCP allow-list management, kill switch",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "agent-gateway-v1",
-      "depends_on": [
-        "mcp-connector-passthrough",
-        "agent-identity-governance",
-        "tool-call-metering"
-      ],
-      "created": "2026-07-14T03:34:47+00:00",
-      "updated": "2026-07-14T07:40:38+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-14T05:21:14+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "f4ddf067f9bfdec96fc9fe5129f66e88",
-        "tests": {}
-      },
-      "scope": {
-        "declared": [
-          ".add/tasks/agents-console/src/"
-        ],
-        "snapshot_md5": "a5a9edb36bdbf5815c6d6cf132c34d78"
-      },
-      "heal": {
-        "attempts": 1,
-        "history": [
-          {
-            "at": "2026-07-14T07:39:21+00:00",
-            "reason": "scope_violation: task 'agents-console' touched outside its declared \u00a75 Scope \u2014 apps/dashboard/components/compliance/BundleEvidenceSeal.tsx \u00b7 apps/dashboard/components/compliance/ComplianceReportCenter.tsx \u00b7 apps/dashboard/components/compliance/GeneratedReportsList.tsx \u00b7 apps/dashboard/components/compliance/ScheduleControl.tsx \u00b7 apps/dashboard/components/settings/SettingsPage.tsx (51 total)",
-            "source": "scope"
-          }
-        ]
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "plan-rate-enforcement": {
-      "title": "Enforce plan rpm/tpm ceilings at the tenant layer",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "platform-access-plan",
-      "depends_on": [],
-      "created": "2026-07-15T08:39:04+00:00",
-      "updated": "2026-07-15T09:34:25+00:00",
-      "freeze": {
-        "version": "v1",
-        "frozen_at": "2026-07-15T08:50:32+00:00",
-        "approved_by": "Tin Dang",
-        "actor": {
-          "name": "Tin Dang",
-          "email": "tindang.ht97@gmail.com",
-          "source": "git"
-        }
-      },
-      "flag_verified": true,
-      "tripwire": {
-        "contract_md5": "7cfcb01e15e1c8ac4a31b2951e638263",
+        "contract_md5": "1d68a1cd725661894c9253f118d1595a",
         "tests": {
-          "apps/gateway/tests/plan_rate_enforcement/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
-          "apps/gateway/tests/plan_rate_enforcement/conftest.py": "7c8c0b64aaa34d62423661c9b1f13330",
-          "apps/gateway/tests/plan_rate_enforcement/test_orm_check_constraints.py": "1345a453ef3cb6d5001d7be7515ba8a3",
-          "apps/gateway/tests/plan_rate_enforcement/test_plan_rate_limit_resolver.py": "9b350c83cd694b25f9a9d430e7ea2c70",
-          "apps/gateway/tests/plan_rate_enforcement/test_resolve_entitlements_rate.py": "c136b2fad78f1e85aae8145f92b69848",
-          "apps/gateway/tests/plan_rate_enforcement/test_tenant_rate_enforcement_http.py": "e4fefcf9dba8a78cec53c389abb8dd8e"
+          "apps/gateway/tests/responses_api_core/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/responses_api_core/conftest.py": "4b4272f361eeb153c980ee7cc2b6e563",
+          "apps/gateway/tests/responses_api_core/test_responses_api_core.py": "e64e95d4c5b569a691d455da7452b3a9"
         }
       },
       "scope": {
         "declared": [
-          "apps/gateway/src/gateway/tenants/",
-          "apps/gateway/src/gateway/budgets/infrastructure/redis_guard.py",
-          "apps/gateway/src/gateway/proxy/application/use_cases.py",
-          "apps/gateway/src/gateway/proxy/application/governance.py",
-          "apps/gateway/src/gateway/proxy/api/deps.py",
+          "apps/gateway/src/gateway/proxy/api/responses_router.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/openai_responses_ingress.py",
           "apps/gateway/src/gateway/main.py",
-          "apps/gateway/src/gateway/rate_limits/",
-          "apps/gateway/migrations/versions/",
-          ".add/tasks/plan-rate-enforcement/tests/",
-          "apps/gateway/src/gateway/tenants/deps.py",
-          "apps/gateway/src/gateway/tenants/main.py"
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/tests/responses_api_core/"
         ],
-        "snapshot_md5": "14aecc615ad208c95f9b84bd343b02c7"
-      },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
+        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
       }
     },
-    "member-invite-ui": {
-      "title": "Invite-member dashboard UI + public accept-invite page",
-      "phase": "done",
-      "gate": "PASS",
-      "milestone": "team-member-invite",
+    "responses-state-store": {
+      "title": "Stored responses + previous_response_id chaining (tenant-isolated, ZDR-composing)",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "api-surface-parity",
+      "depends_on": [
+        "responses-api-core"
+      ],
+      "created": "2026-07-24T03:29:47+00:00",
+      "updated": "2026-07-24T03:29:47+00:00"
+    },
+    "files-uploads-api": {
+      "title": "OpenAI-wire /v1/files + multipart upload on the ObjectStore port",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "api-surface-parity",
       "depends_on": [],
-      "created": "2026-07-15T06:52:10+00:00",
-      "updated": "2026-07-15T07:13:33+00:00",
-      "freeze_skipped": {
-        "by": "Tin Dang",
-        "at": "2026-07-15T07:13:30+00:00",
-        "from_phase": "tests"
+      "created": "2026-07-24T03:29:47+00:00",
+      "updated": "2026-07-24T03:54:28+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T03:54:28+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
       },
       "tripwire": {
-        "contract_md5": "690f6e2bcaeed72ef090d5e4df1421ab",
+        "contract_md5": "7d3714fb584ea029f95675dbe6fc028a",
         "tests": {}
       },
       "scope": {
         "declared": [
-          ".add/tasks/member-invite-ui/src/"
+          "apps/gateway/src/gateway/files/",
+          "apps/gateway/src/gateway/batches/api/router.py",
+          "apps/gateway/src/gateway/batches/infrastructure/orm.py",
+          "apps/gateway/src/gateway/batches/infrastructure/repository.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/src/gateway/tenants/application/retention_policy.py",
+          "apps/gateway/src/gateway/usage/application/retention_sweep.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/files_uploads_api/",
+          "apps/gateway/tests/migrations/test_migrations.py",
+          "apps/gateway/tests/retention_zdr/test_retention_zdr.py"
         ],
-        "snapshot_md5": "97a1c25059384b9c7cf94ec0adcb3fae"
+        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
+      }
+    },
+    "moderations-endpoint": {
+      "title": "/v1/moderations exposing the ML-moderation evaluator, metered",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "api-surface-parity",
+      "depends_on": [],
+      "created": "2026-07-24T03:29:47+00:00",
+      "updated": "2026-07-24T03:54:28+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T03:54:28+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
       },
-      "gate_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "561ea91f4242d9ea2afed9d0f8262e28",
+        "tests": {
+          "apps/gateway/tests/moderations_endpoint/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/moderations_endpoint/conftest.py": "629132867909bac2eb6e8134f94fd2ad",
+          "apps/gateway/tests/moderations_endpoint/test_moderations_endpoint.py": "f487713e5fbe2334c6fb72644866be87"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/moderations_router.py",
+          "apps/gateway/src/gateway/proxy/api/moderations_deps.py",
+          "apps/gateway/src/gateway/proxy/application/moderations_use_case.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/ml_moderation_evaluator.py",
+          "apps/gateway/src/gateway/catalog/domain/entities.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/moderations_endpoint/",
+          ".add/tasks/moderations-endpoint/"
+        ],
+        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
+      }
+    },
+    "image-edits-variations": {
+      "title": "/v1/images/edits + variations on the images seam",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "api-surface-parity",
+      "depends_on": [],
+      "created": "2026-07-24T03:29:47+00:00",
+      "updated": "2026-07-24T03:55:08+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T03:55:07+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "d7f2529fc64b82f54506caad3371e7ce",
+        "tests": {
+          "apps/gateway/tests/image_edits_variations/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/image_edits_variations/conftest.py": "e572015d99a64a84619e5f9712ec33cf",
+          "apps/gateway/tests/image_edits_variations/test_image_edits_variations.py": "621aacfc4634a90fe3e7d2ccbb1dc1f1"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/api/images_router.py",
+          "apps/gateway/src/gateway/proxy/api/images_deps.py",
+          "apps/gateway/src/gateway/proxy/application/images_use_case.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/image_edits_variations/",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
+      }
+    },
+    "tenant-usage-costs-api": {
+      "title": "Tenant-scoped usage/costs read API over usage_records",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "api-surface-parity",
+      "depends_on": [],
+      "created": "2026-07-24T03:29:47+00:00",
+      "updated": "2026-07-24T03:54:29+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T03:54:29+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "779758f48c35ec588cd6a62abb443894",
+        "tests": {
+          "apps/gateway/tests/tenant_usage_costs_api/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/tenant_usage_costs_api/conftest.py": "4cd901b5e07286fbe650bd3e7015942e",
+          "apps/gateway/tests/tenant_usage_costs_api/test_completions.py": "071bcbb9af01657cb8a58a20e550c527",
+          "apps/gateway/tests/tenant_usage_costs_api/test_costs_and_security.py": "fe116c2a033e4b06e8234fc7c5c8e6f5",
+          "apps/gateway/tests/tenant_usage_costs_api/test_pagination.py": "d7a611c79f77112a0a3b7edefd166e11"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/usage/api/openai_usage_router.py",
+          "apps/gateway/src/gateway/usage/api/openai_usage_schemas.py",
+          "apps/gateway/src/gateway/usage/application/openai_usage_query.py",
+          "apps/gateway/src/gateway/usage/infrastructure/usage_aggregation_repository.py",
+          "apps/gateway/src/gateway/usage/domain/openai_usage.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/tests/tenant_usage_costs_api/"
+        ],
+        "snapshot_md5": "21bd835a50d84c02cdb1d32ba15b325b"
       }
     }
   },
   "milestones": {
-    "platform-admin-console": {
-      "title": "Platform Admin Console",
-      "goal": "A superadmin can view and fully manage any tenant (config, budget, keys, members) through a dedicated, fully audited cross-tenant admin surface",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-15T07:35:37+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "tenant-impersonation": {
-      "title": "Tenant Impersonation",
-      "goal": "A superadmin can act as a specific tenant user in a time-boxed, fully audited impersonation session where the real actor stays distinguishable in every downstream record",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-07-02T15:53:53+00:00",
-      "updated": "2026-07-15T07:32:09+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "platform-access-plan": {
-      "title": "Platform Access Subscription Plan",
-      "goal": "A tenant can subscribe to a metered, rate-limited, fully audited plan governing platform-tenant-backed usage",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-07-02T15:53:54+00:00",
-      "updated": "2026-07-15T09:36:10+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
     "v58": {
       "title": "Batch-discounted chat completions: provider integration",
       "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item \u2014 real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
@@ -1242,56 +385,36 @@
       "created": "2026-07-03T16:30:16+00:00",
       "updated": "2026-07-03T16:30:16+00:00"
     },
-    "team-member-invite": {
-      "title": "Team Member Invite",
-      "goal": "A tenant owner/admin can invite a new colleague by email into their own tenant with a chosen role, and that colleague can accept the invite and set their own password \u2014 without requiring SSO/domain-mapping to be configured",
-      "stage": "production",
-      "status": "done",
-      "created": "2026-07-03T16:21:50+00:00",
-      "updated": "2026-07-15T07:35:38+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "agent-gateway-v1": {
-      "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
+    "api-surface-parity": {
+      "title": "OpenAI API-surface parity",
       "goal": "",
       "stage": "mvp",
-      "status": "done",
-      "created": "2026-07-12T07:38:33+00:00",
-      "updated": "2026-07-14T08:08:27+00:00",
-      "done_actor": {
+      "status": "active",
+      "created": "2026-07-24T03:27:26+00:00",
+      "updated": "2026-07-24T03:29:40+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-24T03:29:40+00:00",
+      "confirmed_by": "tindang",
+      "await_confirm": true,
+      "actor": {
         "name": "Tin Dang",
         "email": "tindang.ht97@gmail.com",
         "source": "git"
+      },
+      "planned": {
+        "responses-api-core": [],
+        "responses-state-store": [
+          "responses-api-core"
+        ],
+        "files-uploads-api": [],
+        "moderations-endpoint": [],
+        "image-edits-variations": [],
+        "tenant-usage-costs-api": []
       }
-    },
-    "eu-ai-act-readiness": {
-      "title": "EU AI Act readiness pack",
-      "goal": "An EU tenant can self-serve produce a dated, Art. 12-mapped record-keeping evidence bundle from the console before EU AI Act GPAI enforcement lands on Aug 2, 2026.",
-      "stage": "mvp",
-      "status": "done",
-      "created": "2026-07-14T03:32:21+00:00",
-      "updated": "2026-07-14T08:08:20+00:00",
-      "done_actor": {
-        "name": "Tin Dang",
-        "email": "tindang.ht97@gmail.com",
-        "source": "git"
-      }
-    },
-    "platform-key-default": {
-      "title": "Platform Key Default Credential",
-      "goal": "A tenant with no configured BYOK key automatically uses the platform tenant credential by default, and a configured tenant key takes precedence once present",
-      "stage": "production",
-      "status": "queued",
-      "created": "2026-07-02T15:53:54+00:00",
-      "updated": "2026-07-02T15:53:54+00:00"
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-23T07:37:11+00:00",
+  "updated": "2026-07-24T03:55:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2353,21 +1476,85 @@
         "login-global-error-position"
       ],
       "archived": "2026-07-23"
+    },
+    {
+      "slug": "agent-gateway-v1",
+      "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
+      "tasks": 6,
+      "task_slugs": [
+        "anthropic-messages-ingress",
+        "mcp-connector-passthrough",
+        "agent-identity-governance",
+        "claude-gateway-protocol-compat",
+        "tool-call-metering",
+        "agents-console"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "eu-ai-act-readiness",
+      "title": "EU AI Act readiness pack",
+      "tasks": 3,
+      "task_slugs": [
+        "art12-record-keeping-preset",
+        "compliance-report-center",
+        "ai-act-marketing-page"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "platform-admin-console",
+      "title": "Platform Admin Console",
+      "tasks": 5,
+      "task_slugs": [
+        "platform-tenant-directory",
+        "cross-tenant-config-budget",
+        "cross-tenant-keys-members",
+        "admin-console-audit",
+        "admin-console-ui"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "platform-access-plan",
+      "title": "Platform Access Subscription Plan",
+      "tasks": 4,
+      "task_slugs": [
+        "plan-catalog",
+        "plan-admin-ui",
+        "plan-seat-cap",
+        "plan-rate-enforcement"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "team-member-invite",
+      "title": "Team Member Invite",
+      "tasks": 3,
+      "task_slugs": [
+        "member-invite-issuance",
+        "member-invite-acceptance",
+        "member-invite-ui"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "tenant-impersonation",
+      "title": "Tenant Impersonation",
+      "tasks": 3,
+      "task_slugs": [
+        "impersonation-session-lifecycle",
+        "impersonation-ui",
+        "impersonation-live-session-guard"
+      ],
+      "archived": "2026-07-24"
     }
   ],
   "active_milestones": [
-    "platform-admin-console",
-    "platform-access-plan",
-    "eu-ai-act-readiness",
-    "agent-gateway-v1"
+    "api-surface-parity"
   ],
   "active_tasks": {
-    "platform-admin-console": "declare-components-registry",
-    "team-member-invite": "member-invite-acceptance",
-    "tenant-impersonation": "impersonation-live-session-guard",
-    "platform-access-plan": "plan-rate-enforcement",
-    "eu-ai-act-readiness": "ai-act-marketing-page",
-    "agent-gateway-v1": "agents-console"
+    "api-surface-parity": "image-edits-variations"
   },
   "todos": [
     {

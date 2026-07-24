@@ -14,12 +14,12 @@
 
  TASK                        PHASE     GATE TESTS PROGRESS
  ───────────────────────────────────────────────────────────────────────
- anthropic-messages-ingress  done      PASS 0     ●●●●●●●●●
- mcp-connector-passthrough   done      PASS 0     ●●●●●●●●●
- agent-identity-governance   done      PASS 0     ●●●●●●●●●
- claude-gateway-protocol-co… done      PASS 0     ●●●●●●●●●
- tool-call-metering          done      PASS 0     ●●●●●●●●●
- agents-console              done      PASS 0     ●●●●●●●●●
+ anthropic-messages-ingress  done      PASS 0     ●●●●
+ mcp-connector-passthrough   done      PASS 0     ●●●●
+ agent-identity-governance   done      PASS 0     ●●●●
+ claude-gateway-protocol-co… done      PASS 0     ●●●●
+ tool-call-metering          done      PASS 0     ●●●●
+ agents-console              done      PASS 0     ●●●●
  legend  ● reached  ◉ current  ○ pending   spec→…→done
 
  GATED BY
@@ -34,8 +34,10 @@
 
  LEARNINGS      none
 
- SPEC DELTAS    276 open deltas — resolve: new-task --from-delta / drop-delta
-
  DECIDE NEXT  consolidate learnings + archive-milestone
               agent-gateway-v1
+              6 planned not yet scaffolded: anthropic-messages-ingress
+              · mcp-connector-passthrough · agent-identity-governance ·
+              claude-gateway-protocol-compat · tool-call-metering ·
+              agents-console
 ════════════════════════════════════════════════════════════════════════
