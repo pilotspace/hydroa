@@ -478,28 +478,13 @@ async def test_reject_hosted_tool_types(
     assert len(recorder.records) == 0
 
 
-async def test_reject_store_true_and_previous_response_id(
-    client: httpx.AsyncClient, app: Any, api_key: dict[str, str], active_model: str
-) -> None:
-    upstream = FakeCompletionUpstream()
-    recorder = _inject(app, upstream)
-
-    resp = await client.post(
-        RESPONSES,
-        json=responses_payload(active_model, store=True),
-        headers=auth_bearer(api_key["key"]),
-    )
-    _assert_problem_code(resp, 400, "ERR_RESPONSES_STORE_UNSUPPORTED")
-
-    resp = await client.post(
-        RESPONSES,
-        json=responses_payload(active_model, previous_response_id="resp_deadbeef"),
-        headers=auth_bearer(api_key["key"]),
-    )
-    _assert_problem_code(resp, 400, "ERR_RESPONSES_STORE_UNSUPPORTED")
-
-    assert upstream.calls == 0, "the wave-2 extension point stays terminal in the stateless core"
-    assert len(recorder.records) == 0
+# RETIRED (responses-state-store PLAN.md §3 "Ownership-transfer note", 2026-07-24):
+# test_reject_store_true_and_previous_response_id asserted that store:true /
+# previous_response_id terminate 400 ERR_RESPONSES_STORE_UNSUPPORTED in the stateless
+# core. The responses-api-core frozen §3 "State extension point" pre-authorizes the
+# wave-2 responses-state-store contract to take ownership of their ACCEPTANCE; that
+# contract now serves them (persist / chain / GET / DELETE, tests/responses_state_store/).
+# This is the ONE contracted frozen-suite retirement (transfer clause) — not a tamper.
 
 
 async def test_reject_malformed_and_empty_input(

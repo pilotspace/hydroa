@@ -309,6 +309,25 @@ _DELETE_VIDEO_JOBS_WINDOW = text(
     """
 )
 
+# Pass 1 — stored_responses (responses-state-store PLAN.md §3 M8; additive, same
+# tenant-window-cutoff discipline as conversations above, keyed on created_at). A ZDR
+# tenant's rows are additionally row-deleted unconditionally by the ZDR purge pass below
+# (self-healing for the flip-ZDR-on-later case).
+
+_DELETE_STORED_RESPONSES_WINDOW = text(
+    """
+    DELETE FROM stored_responses
+     WHERE id IN (
+           SELECT s.id FROM stored_responses s
+           JOIN tenants tn ON tn.id = s.tenant_id
+            WHERE s.created_at < now() - (
+                  COALESCE(tn.retention_window_days, :operator_ceiling_days) * interval '1 day'
+                  )
+            LIMIT :batch
+     )
+    """
+)
+
 # Pass 1 — artifacts (object-store-aware; SELECT candidates, delete objects, then delete rows).
 
 _SELECT_ARTIFACTS_WINDOW = text(
@@ -416,6 +435,13 @@ _DELETE_BATCH_ITEMS_ZDR_TENANT = text(
 _DELETE_VIDEO_JOBS_ZDR_TENANT = text(
     "DELETE FROM video_generation_jobs WHERE id IN"
     " (SELECT id FROM video_generation_jobs WHERE tenant_id = :tid LIMIT :batch)"
+)
+# stored_responses (responses-state-store PLAN.md §3 M8) — a ZDR tenant's stored
+# response payloads must be row-DELETED unconditionally every tick (not scrubbed —
+# no payload-NULL state exists), self-healing the flip-ZDR-on-later case.
+_DELETE_STORED_RESPONSES_ZDR_TENANT = text(
+    "DELETE FROM stored_responses WHERE id IN"
+    " (SELECT id FROM stored_responses WHERE tenant_id = :tid LIMIT :batch)"
 )
 
 # request_logs (payload-capture-store) — a ZDR tenant's captured raw request/response
@@ -917,6 +943,11 @@ class RetentionSweeper:
         results["video_generation_jobs"] = await self._delete_batched_extra(
             "video_generation_jobs", _DELETE_VIDEO_JOBS_WINDOW, ceiling_params, batch_size
         )
+        # responses-state-store PLAN.md §3 M8 — additive, same tenant-window-cutoff
+        # discipline as conversations above (keyed on created_at).
+        results["stored_responses"] = await self._delete_batched_extra(
+            "stored_responses", _DELETE_STORED_RESPONSES_WINDOW, ceiling_params, batch_size
+        )
         # files-uploads-api PLAN.md §3 — additive, same tenant-window-cutoff discipline as
         # artifacts above (object-store-aware).
         results["files"] = await self._purge_files_batch(
@@ -1028,6 +1059,15 @@ class RetentionSweeper:
                 "video_generation_jobs",
                 await self._delete_batched_extra(
                     "video_generation_jobs", _DELETE_VIDEO_JOBS_ZDR_TENANT, tid_params, batch_size
+                ),
+            )
+            # responses-state-store PLAN.md §3 M8 — a ZDR tenant's stored responses must be
+            # purged unconditionally alongside the other payload tables (self-healing).
+            _fire_audit(
+                tenant_id,
+                "stored_responses",
+                await self._delete_batched_extra(
+                    "stored_responses", _DELETE_STORED_RESPONSES_ZDR_TENANT, tid_params, batch_size
                 ),
             )
             # files-uploads-api PLAN.md §3 — a ZDR tenant's uploaded files must be purged

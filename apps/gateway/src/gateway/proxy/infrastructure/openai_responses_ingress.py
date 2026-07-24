@@ -75,8 +75,13 @@ def _new_id(prefix: str) -> str:
 
 
 def validate_responses_request(raw_body: Any) -> None:
-    """Run the non-payload reject checks (background · hosted tools · store /
-    previous_response_id · non-object body). Raises ResponsesIngressError.
+    """Run the non-payload reject checks (background · hosted tools · non-object body).
+    Raises ResponsesIngressError.
+
+    ``store`` / ``previous_response_id`` acceptance is owned by the wave-2
+    responses-state-store contract (PLAN.md §3 "State extension point"): this validator
+    NO LONGER terminates them here — the responses_router orchestrates the ZDR gate,
+    chain resolution, caps, and persistence around the unchanged core dial.
 
     Order-independent of translation: these terminate the request with their own
     codes; malformed/empty ``input`` is caught later inside
@@ -87,13 +92,6 @@ def validate_responses_request(raw_body: Any) -> None:
     if raw_body.get("background"):
         raise ResponsesIngressError(
             ERR_RESPONSES_BACKGROUND_UNSUPPORTED, "background mode is not supported"
-        )
-
-    prev = raw_body.get("previous_response_id")
-    if raw_body.get("store") is True or (prev is not None and prev != ""):
-        raise ResponsesIngressError(
-            ERR_RESPONSES_STORE_UNSUPPORTED,
-            "stored/chained responses are not supported on this endpoint",
         )
 
     tools = raw_body.get("tools")

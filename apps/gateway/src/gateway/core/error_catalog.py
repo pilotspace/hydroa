@@ -1550,3 +1550,37 @@ USAGE_PAGE_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "page cursor is malfo
 USAGE_LIMIT_INVALID = ErrorSpec(
     422, "ERR_PAYLOAD_INVALID", "limit must be an integer in 1..180"
 )
+
+# ---------------------------------------------------------------------------
+# Stored responses + chaining (responses-state-store PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: GET/DELETE /v1/responses/{id} OR chaining onto a previous_response_id that is
+#: unknown, another tenant's, deleted, or malformed. The SINGLE terminal code for
+#: all four causes — status AND body byte-identical (anti-enumeration; the sso-oracle
+#: lesson: one contracted code, never an alternation). Carries NO detail so the body
+#: is constant regardless of the probed id.
+RESPONSE_NOT_FOUND = ErrorSpec(404, "ERR_RESPONSE_NOT_FOUND", "Response not found")
+
+#: Chaining onto a row whose chain_depth is already at the 64-turn cap — pre-dial,
+#: no upstream call, no usage row. Reachable ONLY after the tenant-scoped resolve
+#: succeeds, so a foreign/unknown id can never surface it (it 404s first).
+RESPONSES_CHAIN_TOO_DEEP = ErrorSpec(
+    400, "ERR_RESPONSES_CHAIN_TOO_DEEP", "response chain exceeds the maximum depth of 64"
+)
+
+#: The materialized chain context (prev context + prev output + new input) serializes
+#: to more than 1 MiB — pre-dial, no upstream call, no usage row.
+RESPONSES_CONTEXT_TOO_LARGE = ErrorSpec(
+    413,
+    "ERR_RESPONSES_CONTEXT_TOO_LARGE",
+    "materialized response context exceeds the maximum size of 1 MiB",
+)
+
+#: A stored_responses persistence failure AFTER a served non-stream round-trip — the
+#: one usage row stands (provider cost was incurred); nothing half-written (the insert
+#: is atomic in its transaction). The detail/log text never embeds payload content
+#: (v22 no-payload-in-traceback floor).
+RESPONSES_STORE_FAILED = ErrorSpec(
+    500, "ERR_RESPONSES_STORE_FAILED", "failed to persist the stored response"
+)
