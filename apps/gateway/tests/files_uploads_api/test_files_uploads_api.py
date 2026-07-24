@@ -241,10 +241,14 @@ class TestFilesRejections:
     async def test_reject_unsupported_purpose(
         self, client: Any, tenant_a: dict[str, str]
     ) -> None:
-        """R:purpose_unsupported — fine-tune/assistants are out of this milestone's vocabulary."""
+        """R:purpose_unsupported — a purpose outside the vocabulary is rejected.
+        NOTE (R5 reconciliation, 2026-07-24): "fine-tune" became a SUPPORTED purpose
+        when finetune-broker PLAN.md §3 M8 was frozen (Tin-approved) — the R4 boundary
+        moved. This test now uses "assistants", which remains out of vocabulary, so it
+        still guards the rejection path without contradicting the approved R5 extension."""
         resp = await _upload(
             client, tenant_a["key"], filename="ft.jsonl", data=_JSONL,
-            purpose="fine-tune", content_type="application/jsonl",
+            purpose="assistants", content_type="application/jsonl",
         )
         assert resp.status_code == 422, resp.text
         assert resp.json()["code"] == "ERR_FILE_PURPOSE_UNSUPPORTED"
