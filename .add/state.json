@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "finetune-broker",
+  "active_task": "finetune-model-registry",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -296,14 +296,76 @@
     },
     "vector-store-files": {
       "title": "Attach a /v1/files file: chunk, embed, index",
-      "phase": "direction",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "managed-rag-finetune",
       "depends_on": [
         "vector-store-core"
       ],
       "created": "2026-07-24T08:21:22+00:00",
-      "updated": "2026-07-24T08:21:22+00:00"
+      "updated": "2026-07-24T16:47:36+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T11:02:27+00:00",
+        "approved_by": "Tin",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "d7cb9bb4f9df0f4608bd2be01d295b07",
+        "tests": {
+          "apps/gateway/tests/vector_store_files/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/vector_store_files/test_vector_store_files.py": "46af39245bea04e4f486641ccc641cdf"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/vector_stores/",
+          "apps/gateway/src/gateway/files/api/router.py",
+          "apps/gateway/src/gateway/core/error_catalog.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py"
+        ],
+        "snapshot_md5": "b2b24de907e0eddcf0d3d9f577060ed1"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-24T16:47:10+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/vector_store_files/test_vector_store_files.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-24T16:47:10+00:00",
+            "source": "tamper",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin",
+        "at": "2026-07-24T16:47:32+00:00",
+        "from_phase": "build"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     },
     "file-search-tool": {
       "title": "file_search tool in /v1/responses + chat; per_query metering",
@@ -318,15 +380,81 @@
     },
     "finetune-model-registry": {
       "title": "Register fine-tuned model in tenant catalog + pricing snapshot",
-      "phase": "direction",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "managed-rag-finetune",
       "depends_on": [
         "finetune-broker"
       ],
       "created": "2026-07-24T08:21:23+00:00",
-      "updated": "2026-07-24T08:21:23+00:00",
-      "sensitivity": "data"
+      "updated": "2026-07-24T16:47:51+00:00",
+      "sensitivity": "data",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-24T10:42:27+00:00",
+        "approved_by": "Tin",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "51f91656f419f2add76c86ae3ecc6939",
+        "tests": {
+          "apps/gateway/tests/finetune_model_registry/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/finetune_model_registry/test_finetune_model_registry.py": "4200ca9d33cc7d953c46f1abb64bd0f5"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/finetune_registry/",
+          "apps/gateway/src/gateway/catalog/infrastructure/orm.py",
+          "apps/gateway/src/gateway/catalog/infrastructure/repository.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/model_checker.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/tenant_model_preset_store.py",
+          "apps/gateway/src/gateway/core/config.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/migrations/versions/",
+          "apps/gateway/tests/finetune_model_registry/"
+        ],
+        "snapshot_md5": "b2b24de907e0eddcf0d3d9f577060ed1"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-24T16:47:41+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/finetune_model_registry/test_finetune_model_registry.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-24T16:47:41+00:00",
+            "source": "tamper",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin",
+        "at": "2026-07-24T16:47:51+00:00",
+        "from_phase": "build"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -370,7 +498,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T10:06:31+00:00",
+  "updated": "2026-07-24T16:47:51+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1524,7 +1652,7 @@
     "managed-rag-finetune"
   ],
   "active_tasks": {
-    "managed-rag-finetune": "finetune-broker"
+    "managed-rag-finetune": "finetune-model-registry"
   },
   "todos": [
     {
