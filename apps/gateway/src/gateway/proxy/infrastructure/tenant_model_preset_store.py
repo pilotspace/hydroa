@@ -36,6 +36,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.proxy.domain.model_presets import ModelPresetError, TenantModelPreset
+from gateway.proxy.domain.ports import ModelAccess
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.orm import TenantModelPresetRow
 
@@ -123,8 +124,16 @@ class DbTenantModelPresetStore:
         Guards (both run before any DB write):
         1. ``preset_name`` / ``alias_key`` fail selector-token validation →
            ``ERR_PRESET_SELECTOR_INVALID``.
-        2. ``target_model`` is not an active catalog model →
+        2. ``target_model`` is not active/visible for this ``tenant_id`` →
            ``ERR_PRESET_TARGET_UNKNOWN``.
+
+        finetune-model-registry PLAN.md §3 M8 (advisor finding): guard 2 validates via
+        ``check_for_tenant`` (tenant-scoped), NOT the tenant-blind ``is_active``. Once
+        tenant-owned rows exist (e.g. a registered ft:* model), ``is_active`` alone
+        would let a foreign tenant learn "this model id exists" by getting a DIFFERENT
+        error than a truly-nonexistent id — a cross-tenant existence oracle via preset
+        save. ``check_for_tenant`` folds "owned by someone else" and "doesn't exist" to
+        the SAME ``ModelAccess.UNKNOWN`` -> the SAME ``ERR_PRESET_TARGET_UNKNOWN``.
         """
         # Guard 1: selector tokens — pure in-memory checks, no DB I/O.
         _validate_selector_token(preset_name)
@@ -136,7 +145,8 @@ class DbTenantModelPresetStore:
                 # module docstring — matches every other call site in the codebase)
                 # so it runs in the same transaction as the write below.
                 model_checker = SqlAlchemyModelChecker(session)
-                if not await model_checker.is_active(target_model):
+                access = await model_checker.check_for_tenant(target_model, tenant_id)
+                if access is not ModelAccess.ACTIVE:
                     raise ModelPresetError("ERR_PRESET_TARGET_UNKNOWN") from None
 
                 stmt = (

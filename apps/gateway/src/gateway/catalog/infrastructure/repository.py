@@ -90,6 +90,7 @@ class SqlAlchemyCatalogRepository:
                         .where(
                             ModelRow.id.notin_(incoming_ids),
                             ModelRow.provider.in_(incoming_providers),
+                            ModelRow.tenant_id.is_(None),
                         )
                         .values(active=False)
                     )
@@ -105,6 +106,7 @@ class SqlAlchemyCatalogRepository:
                             ModelRow.id.notin_(incoming_ids),
                             ModelRow.provider.in_(incoming_providers),
                             ModelRow.modality == "chat",
+                            ModelRow.tenant_id.is_(None),
                         )
                         .values(active=False)
                     )
@@ -198,7 +200,13 @@ class SqlAlchemyCatalogRepository:
                 (TenantRegionMultiplierOverride.tenant_id == tenant_id)
                 & (TenantRegionMultiplierOverride.region == ModelRow.region),
             )
-            .where(ModelRow.active.is_(True))
+            .where(
+                ModelRow.active.is_(True),
+                # finetune-model-registry PLAN.md §3 M4: a tenant-owned row is listed
+                # ONLY for its owner; a global row (tenant_id IS NULL) lists for everyone
+                # unchanged.
+                (ModelRow.tenant_id.is_(None)) | (ModelRow.tenant_id == tenant_id),
+            )
         )
 
         rows = (await self._session.execute(stmt)).all()

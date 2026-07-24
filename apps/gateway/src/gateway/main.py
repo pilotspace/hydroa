@@ -46,6 +46,7 @@ from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers S
 from gateway.batches.api.router import batch_router
 from gateway.finetune.api.router import finetune_router
 from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
+from gateway.finetune_registry.application.registrar import FinetuneModelRegistrar
 from gateway.batches.api.stats_router import batch_stats_router
 from gateway.batches.application.window_flusher import (
     DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
@@ -766,6 +767,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        # finetune-model-registry PLAN.md §3 M6 — repair sweep: an asyncio background
+        # loop (CatalogRefreshScheduler precedent, NOT Celery) periodically re-runs
+        # FinetuneModelRegistrar.repair_missed() so a registration missed at listener
+        # time (e.g. the base pricing snapshot was unresolvable) is eventually
+        # registered. DB-only, no breaker needed; every failure is swallowed so the
+        # loop keeps ticking (fail-open, mirrors refresh_once's own contract).
+        app.state.finetune_registry_repair_task = None
+        _repair_interval = _settings.finetune_registry_repair_interval_seconds
+        if _repair_interval > 0:
+
+            async def _run_finetune_registry_repair_forever(interval_seconds: float) -> None:
+                registrar = app.state.finetune_completion_listener
+                while True:
+                    try:
+                        await registrar.repair_missed()
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:  # fail-open, retry next tick
+                        structlog.get_logger(__name__).warning(
+                            "finetune_registry_repair_sweep_failed", exc_info=True
+                        )
+                    await asyncio.sleep(interval_seconds)
+
+            app.state.finetune_registry_repair_task = asyncio.create_task(
+                _run_finetune_registry_repair_forever(float(_repair_interval))
+            )
+
         # DomainVerifyNotifyScheduler — domain-verify-notify TASK.md §3 (FROZEN @ v1,
         # SECURITY): periodically re-checks opted-in pending domain claims via the FROZEN
         # VerifyDomainClaimUseCase DNS-TXT proof (reused verbatim, fail-closed) and emails
@@ -937,6 +965,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             catalog_refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await catalog_refresh_task
+
+        finetune_registry_repair_task: asyncio.Task[None] | None = getattr(
+            app.state, "finetune_registry_repair_task", None
+        )
+        if finetune_registry_repair_task is not None:
+            finetune_registry_repair_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await finetune_registry_repair_task
 
         domain_verify_notify_task: asyncio.Task[None] | None = getattr(
             app.state, "domain_verify_notify_task", None
@@ -1536,9 +1572,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # module — the broker resolves ONLY app.state.tenant_credential_resolver (own-key-
     # or-402). Tests override via app.state.finetune_provider (FakeFinetuneProvider).
     app.state.finetune_provider = OpenAIFinetuneClient(base_url=settings.openai_base_url)
-    # The finetune-model-registry extension point (default None -> byte-identical);
-    # tests override via app.state.finetune_completion_listener.
-    app.state.finetune_completion_listener = None
+    # finetune-model-registry PLAN.md §3 (FROZEN @ v1): the real registrar wired at the
+    # broker's FROZEN extension point (replaces the prior default None — the broker
+    # file itself is NOT edited). Tests override via app.state.finetune_completion_listener.
+    app.state.finetune_completion_listener = FinetuneModelRegistrar(
+        session_factory=app.state.sessionmaker,
+        pricing_multiplier=settings.finetune_pricing_multiplier,
+    )
 
     # ml-moderation-layer (§3 CONTRACT — FROZEN @ v1): a DEDICATED OpenAIDirectProvider
     # + CircuitBreaker instance for the moderation IO seam, isolated from _openai_direct
