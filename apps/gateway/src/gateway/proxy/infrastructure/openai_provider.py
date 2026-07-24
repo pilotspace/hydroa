@@ -248,6 +248,7 @@ class OpenAIDirectProvider:
         backoff_base: float,
         deadline_s: float = 0.0,
         provider_label: str | None = None,
+        breaker: CircuitBreaker | None = None,
     ) -> tuple[int, dict[str, Any]]:
         """POST path with JSON body, retried via the shared execute_with_retry seam.
 
@@ -264,7 +265,15 @@ class OpenAIDirectProvider:
         method) rather than reaching into self._client/_breaker/_auth_headers() from
         a different infrastructure module, which the project's strict pyright config
         (reportPrivateUsage) correctly rejects.
+
+        `breaker` (CR-1, moderations-endpoint PLAN.md §6 GATE RECORD, additive):
+        optional override so a caller that maintains its OWN per-tenant breaker
+        registry (OpenAiModerationClient) can guard/record against THAT breaker
+        instead of this instance's single `self._breaker`. `None` (default) is
+        byte-identical to the pre-CR-1 behavior — every other caller of this method,
+        and every call made without the keyword, is unaffected.
         """
+        effective_breaker = breaker if breaker is not None else self._breaker
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(path, json=payload, headers=self._auth_headers())
@@ -272,7 +281,7 @@ class OpenAIDirectProvider:
         return await execute_with_retry(
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
-            breaker=self._breaker,
+            breaker=effective_breaker,
             provider=provider_label or self._provider_name,
             max_retries=max_retries,
             backoff_base=backoff_base,

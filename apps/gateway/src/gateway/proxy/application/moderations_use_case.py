@@ -53,6 +53,10 @@ from gateway.proxy.application.use_cases import (
 )
 from gateway.proxy.domain.credential_context import reset_provider_credential
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
+from gateway.proxy.domain.guardrail_tenant_context import (
+    reset_guardrail_tenant_id,
+    set_guardrail_tenant_id,
+)
 from gateway.proxy.domain.ports import (
     PlatformCredentialFallback,
     TenantCredentialResolver,
@@ -203,13 +207,25 @@ class ModerationsUseCase:
 
             # Step 8: Call the moderation provider (M3, M9 — no evaluate_nonchat_
             # request_guardrails wrap over this endpoint's own input).
+            #
+            # CR-1 (moderations-endpoint PLAN.md §6 GATE RECORD): thread tenant
+            # identity to the per-tenant CircuitBreaker registry OpenAiModerationClient
+            # owns, via the SAME guardrail_tenant_context ContextVar the internal
+            # guardrail call sites already set — this endpoint never routes through
+            # evaluate_nonchat_request_guardrails (M9), so that existing set-call never
+            # runs on this path; set it here instead so both call sites reach the SAME
+            # breaker for a given tenant. Reset in `finally`, mirroring
+            # nonchat_guardrails.py's own set/reset pattern exactly.
             send_value: str | list[str] = scrubbed_texts if is_list else scrubbed_texts[0]
+            _gtid_token = set_guardrail_tenant_id(authz.tenant_id)
             try:
                 raw_body = await self._ml_moderation_provider.moderate_raw(
                     send_value, model=model_id
                 )
             except (UpstreamUnavailableError, CircuitOpenError):
                 raise UPSTREAM_UNAVAILABLE.exc() from None
+            finally:
+                reset_guardrail_tenant_id(_gtid_token)
         finally:
             if _cred_token is not None:
                 reset_provider_credential(_cred_token)  # type: ignore[arg-type]
