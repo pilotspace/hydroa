@@ -29,6 +29,8 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
+from gateway.usage.domain.extractor import extract_usage_from_sse
+
 # Reject codes (PLAN.md §1 Reject / §3 Contract). Each is a 400 problem+json.
 ERR_PAYLOAD_INVALID = "ERR_PAYLOAD_INVALID"
 ERR_RESPONSES_BACKGROUND_UNSUPPORTED = "ERR_RESPONSES_BACKGROUND_UNSUPPORTED"
@@ -408,6 +410,13 @@ class _ResponsesSSEStepper:
         self._msg_id = _new_id("msg_")
         self._item_started = False
         self._text = ""
+        # Every raw chunk is buffered so the TERMINAL usage is derived exactly the
+        # way the frozen chat seam bills (extract_usage_from_sse: JOIN the chunks,
+        # reverse-scan for the LAST usage frame). Per-frame capture is unsafe — the
+        # default provider (OpenRouter) sends `finish_reason` in one frame and the
+        # usage-only frame LATER (and can split that frame across network chunks),
+        # so closing on finish_reason would report zeroed usage (M5 defect, heal 1).
+        self._chunks: list[bytes] = []
         self._usage: dict[str, Any] | None = None
         self._finish_reason: str | None = None
         self._done = False
@@ -472,6 +481,9 @@ class _ResponsesSSEStepper:
         )
 
     def feed(self, chunk: bytes) -> Iterator[bytes]:
+        # Buffer EVERY chunk (even after `done`) so the terminal usage extraction
+        # sees the whole joined stream, matching the billing path.
+        self._chunks.append(chunk)
         if self._done:
             return
         for raw_line in chunk.split(b"\n"):
@@ -523,14 +535,13 @@ class _ResponsesSSEStepper:
                 },
             )
 
-        usage = obj.get("usage")
-        if isinstance(usage, dict):
-            self._usage = usage
-
+        # NOTE: usage is intentionally NOT captured here per-frame, and the
+        # terminal sequence is NOT emitted on finish_reason. Both are derived at
+        # stream end from the JOINED buffer (see finish()) so a provider that
+        # sends usage in a later/split frame still bills real tokens (M5).
         finish_reason = choice.get("finish_reason")
         if finish_reason is not None:
             self._finish_reason = finish_reason
-            yield from self._close_and_complete()
 
     def _close_and_complete(self) -> Iterator[bytes]:
         yield from self._ensure_item_started()
@@ -571,9 +582,19 @@ class _ResponsesSSEStepper:
         self._done = True
 
     def finish(self) -> Iterator[bytes]:
-        """Defensive close if the source stream ended without a terminal frame."""
+        """Close the stream once the source is fully drained.
+
+        This is the ONLY place ``response.completed`` is emitted: the terminal
+        usage is derived here from the JOINED chunk buffer via
+        ``extract_usage_from_sse`` — the exact function (join + reverse-scan for
+        the LAST usage frame) the frozen chat seam bills with — so a usage frame
+        that arrives after ``finish_reason`` or split across network chunks still
+        carries real tokens into ``response.completed`` (M5, heal 1)."""
         if self._done:
             return
+        extracted = extract_usage_from_sse(self._chunks)
+        if isinstance(extracted, dict):
+            self._usage = extracted
         yield from self._close_and_complete()
 
 

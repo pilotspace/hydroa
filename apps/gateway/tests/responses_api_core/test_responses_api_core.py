@@ -580,3 +580,65 @@ async def test_default_path_untouched_chat_still_serves(
     assert body["object"] == "chat.completion"  # untranslated — zero new plumbing engaged
     assert body["choices"][0]["message"]["content"] == "Hello there!"
     assert len(recorder.records) == 1
+
+
+# ===========================================================================
+# M5 regression (heal 1) — usage split across / arriving AFTER the
+# finish_reason frame must still bill real tokens into response.completed
+# ===========================================================================
+
+# Mirrors the live OpenRouter shape the frozen chat seam already handles: the
+# finish_reason frame carries NO usage, the usage-only frame arrives LATER, and
+# that usage frame is split across two network chunks. The earlier fixture
+# (TEXT_SSE_CHUNKS) put finish_reason + usage in ONE frame, masking a translator
+# that closed on finish_reason and reported zeroed usage. The terminal event
+# must derive usage the same way billing does (extract_usage_from_sse: join +
+# reverse-scan for the LAST usage frame).
+SPLIT_USAGE_SSE_CHUNKS: list[bytes] = [
+    b'data: {"id":"gen-x","model":"openai/gpt-4o",'
+    b'"choices":[{"delta":{"role":"assistant"}}]}\n\n',
+    b'data: {"id":"gen-x","choices":[{"delta":{"content":"Hel"}}]}\n\n',
+    b'data: {"id":"gen-x","choices":[{"delta":{"content":"lo"}}]}\n\n',
+    # finish_reason arrives FIRST, with no usage (the falsifying ordering).
+    b'data: {"id":"gen-x","choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+    # usage-only frame, SPLIT across two network chunks.
+    b'data: {"id":"gen-x","choices":[],"usage":{"prompt_tokens":11,',
+    b'"completion_tokens":5,"total_tokens":16}}\n\n',
+    b"data: [DONE]\n\n",
+]
+
+
+async def test_stream_usage_split_after_finish_reason_bills_real_tokens(
+    client: httpx.AsyncClient, app: Any, api_key: dict[str, str], active_model: str
+) -> None:
+    upstream = FakeCompletionUpstream(stream_chunks=list(SPLIT_USAGE_SSE_CHUNKS))
+    recorder = _inject(app, upstream)
+
+    resp = await client.post(
+        RESPONSES,
+        json=responses_payload(active_model, stream=True),
+        headers=auth_bearer(api_key["key"]),
+    )
+
+    assert resp.status_code == 200, resp.text
+    frames = parse_named_sse(resp.content)
+    names = [name for name, _ in frames]
+    assert names[-1] == "response.completed", names
+
+    # Deltas still reassemble the text (TTFB path unchanged).
+    deltas = [d["delta"] for name, d in frames if name == "response.output_text.delta"]
+    assert "".join(deltas) == "Hello"
+
+    # Terminal event carries the REAL split usage — never zeros.
+    final = frames[-1][1]["response"]
+    assert final["usage"]["input_tokens"] == 11
+    assert final["usage"]["output_tokens"] == 5
+    assert final["usage"]["total_tokens"] == 16
+
+    # Billing wrote exactly one NON-ZERO usage_record on the served model.
+    assert len(recorder.records) == 1
+    assert recorder.records[0]["model"] == active_model
+    recorded_usage = recorder.records[0]["usage"]
+    assert isinstance(recorded_usage, dict)
+    assert recorded_usage.get("prompt_tokens") == 11
+    assert recorded_usage.get("completion_tokens") == 5
