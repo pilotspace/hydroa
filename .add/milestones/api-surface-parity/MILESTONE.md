@@ -93,16 +93,23 @@ Issues/Risks (shared): responses statefulness is a NEW payload-at-rest store →
 > Cross-task review the AI fills — the evidence behind the EXISTING milestone-done gate, NOT a new approval.
 
 ### Ship by domain   (what changed, per bounded context)
-- tooling : <add.py / state.json / templates — what shipped, or "untouched">
-- skill   : <SKILL.md / phases/* / guides — what shipped, or "untouched">
-- book    : <docs/* — what shipped, or "untouched">
+- gateway proxy : NEW /v1/responses (responses_router + openai_responses_ingress on the ChatTranslator seam) · NEW responses_store/ bounded context (stored responses, chaining, cascade DELETE, ZDR-403) · NEW /v1/moderations (moderations_router + use-case, per-tenant breaker on the ml-moderation evaluator) · /v1/images/edits+variations on the images seam
+- gateway files : NEW files/ bounded context (/v1/files multipart CRUD on ObjectStore) + additive batches input_file_id
+- gateway usage : NEW usage/openai_usage_* read API (bucketed usage/costs, keyset paginated, tenant-scoped)
+- migrations : 4 new (moderations seed · dall-e-2 seed · files table · stored_responses table), re-chained to one head c7e0a4b2d9f1; both table manifests updated
+- tooling / skill / book : untouched (Tin's in-flight .add engine edits ride separately, not part of this branch's feature diff)
 
 ### Cross-task evidence   (one row per task)
-- <slug> : gate=<PASS|RISK-ACCEPTED> · tests=<n green> · residue=<none|note>
+- responses-api-core     : gate=PASS · tests=18 green (incl. split-usage-frame regression) · residue=none (healed: terminal usage from joined frames)
+- responses-state-store  : gate=PASS · tests=22 green · residue=none · DUAL security verify CLEAR + store-failure coverage added on Tin HARD-STOP
+- files-uploads-api      : gate=PASS · tests=23 green · residue=none (healed: /v1/files body-cap → contracted 413; bounded read)
+- moderations-endpoint   : gate=PASS · tests=22 green · residue=none · Tin HARD-STOP → CR-1 per-tenant breaker, security-refuted CLEAR
+- image-edits-variations : gate=PASS · tests=15 green (+14 generations regression) · residue=none
+- tenant-usage-costs-api : gate=PASS · tests=23 green · residue=none (healed: fromtimestamp overflow → contracted 422)
 
 ### Goal met?   (map the evidence back to this milestone's Exit criteria — read before the Exit-criteria boxes are checked)
-- [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
-- goal: <restate the milestone goal — and the one evidence line that proves the ship meets it>
+- [x] each Exit criterion above is satisfied by a Cross-task evidence row (6/6 criteria ↔ 6 PASS rows; each criterion carries a green-suite verifier)
+- goal: any OpenAI-SDK app points its base URL at Hydroa and Responses/Files/Moderations/Images-edit/Usage calls work, tenant-scoped + exactly billed — proven by 6/6 gated suites + pre-merge sweep (6 new suites 122/122, adjacent regressions 201/201, guardrails 36/36 serial).
 
 ## Release steps   (AI-DEFINED — fill the ordered steps to ship this milestone; engine records, human gate)
 > AI-written steps for THIS milestone (hints, not engine commands); MERGE is one small step; the human runs the cut.
