@@ -15,7 +15,7 @@ argument-hint: "status | init | continue | --todo <text> | [describe new short g
 license: MIT
 metadata:
   author: add
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # ADD — memory · judgment · conscience (the agent is the hands)
@@ -100,6 +100,7 @@ confirmable delta the human confirms rewrites `SOUL.md` (the human is the only w
 - §3 FROZEN → auto-gated run `run.md` · subagent roster + pipelines (agent-call-preferred, the
   default execution mode) → `phases/verify.md` · self-score → `phases/direction.md`
 - UI/experience surface → UDD loop `design.md` · milestone goal unmet at `milestone-done` → `loop.md`
+- multi-task / high-uncertainty milestone → persona-framed strategy loop `strategy.md` (fills the `## Strategy` slot; micro/`--tiny` → skip)
 - graduation · release · monorepo green-bars → persona-owned playbooks, `beyond.md` ·
   the persona loop (`.add/personas/`) → `docs/18-personas.md` · `sensitivity:`/`advisor-gate-relax` → `phases/verify.md`
 
