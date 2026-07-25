@@ -42,7 +42,10 @@ _HOSTED_TOOL_TYPES = frozenset(
     {
         "web_search",
         "web_search_preview",
-        "file_search",
+        # file-search-tool PLAN.md §3 M2: file_search is NO LONGER a rejected hosted tool —
+        # the gateway services it itself (top-k retrieval + grounding + per_query meter), so
+        # validate_responses_request must ACCEPT it and _translate_tools must PRESERVE it into
+        # the internal chat body (both ingresses then share the CompletionUseCase grounding seam).
         "computer_use_preview",
         "code_interpreter",
         "image_generation",
@@ -237,6 +240,18 @@ def _translate_message_content(content: Any) -> Any:
 def _translate_tools(tools: list[Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for tool in tools:
+        if isinstance(tool, dict) and tool.get("type") == "file_search":
+            # file-search-tool PLAN.md §3 M2: preserve file_search VERBATIM into the chat
+            # body (type + vector_store_ids + optional max_num_results) so the SHARED
+            # CompletionUseCase grounding seam sees the identical tool for BOTH ingresses.
+            # It is stripped from the OUTBOUND upstream payload later (M5), inside the seam.
+            preserved: dict[str, Any] = {"type": "file_search"}
+            if "vector_store_ids" in tool:
+                preserved["vector_store_ids"] = tool["vector_store_ids"]
+            if "max_num_results" in tool:
+                preserved["max_num_results"] = tool["max_num_results"]
+            out.append(preserved)
+            continue
         if not isinstance(tool, dict) or tool.get("type") != "function":
             # Non-function tool types are either hosted (already rejected) or
             # unknown; skip rather than fabricate a chat tool.

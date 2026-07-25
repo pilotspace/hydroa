@@ -1466,10 +1466,14 @@ IMAGE_EDIT_MODEL_UNKNOWN = ErrorSpec(
 # Files / uploads (files-uploads-api PLAN.md §3 — FROZEN @ v1)
 # ---------------------------------------------------------------------------
 
-#: POST /v1/files with a purpose outside {batch, vision, user_data} (e.g. fine-tune,
+#: POST /v1/files with a purpose outside {batch, vision, user_data, fine-tune} (e.g.
 #: assistants) — out of this milestone's vocabulary (M6 / R:purpose_unsupported).
+#: finetune-broker PLAN.md §3 M8 (FROZEN @ v1, ADDITIVE): "fine-tune" joins the
+#: vocabulary; every existing purpose stays byte-identical.
 FILE_PURPOSE_UNSUPPORTED = ErrorSpec(
-    422, "ERR_FILE_PURPOSE_UNSUPPORTED", "purpose must be one of: batch, vision, user_data"
+    422,
+    "ERR_FILE_PURPOSE_UNSUPPORTED",
+    "purpose must be one of: batch, vision, user_data, fine-tune",
 )
 
 #: POST /v1/files with a zero-byte / missing file part — no row created (R:file_empty).
@@ -1484,6 +1488,46 @@ FILE_TOO_LARGE = ErrorSpec(
 #: GET/DELETE/content on an unknown OR cross-tenant OR deleted OR malformed file id —
 #: deliberately indistinguishable (R:file_not_found; never 403, never a leak).
 FILE_NOT_FOUND = ErrorSpec(404, "ERR_FILE_NOT_FOUND", "File not found")
+
+# ---------------------------------------------------------------------------
+# Vector stores (vector-store-core PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/vector_stores name > 256 chars — 422, nothing persisted (R:vector_store_name_too_long).
+VECTOR_STORE_NAME_TOO_LONG = ErrorSpec(
+    422, "ERR_VECTOR_STORE_NAME_TOO_LONG", "name must be 256 characters or fewer"
+)
+
+#: POST /v1/vector_stores metadata not a mapping of <=16 string:string pairs
+#: (key<=64, value<=512 chars) — 422, nothing persisted (R:vector_store_metadata_invalid).
+VECTOR_STORE_METADATA_INVALID = ErrorSpec(
+    422,
+    "ERR_VECTOR_STORE_METADATA_INVALID",
+    "metadata must be an object of at most 16 string:string pairs "
+    "(key<=64 chars, value<=512 chars)",
+)
+
+#: GET/DELETE on an unknown OR cross-tenant OR malformed vector-store id —
+#: deliberately indistinguishable (R:vector_store_not_found; never 403, never a leak).
+VECTOR_STORE_NOT_FOUND = ErrorSpec(404, "ERR_VECTOR_STORE_NOT_FOUND", "Vector store not found")
+
+# ---------------------------------------------------------------------------
+# Vector store files (vector-store-files PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/vector_stores/{id}/files with a missing/non-string file_id — 422,
+#: nothing persisted (R:vector_store_file_id_required).
+VECTOR_STORE_FILE_ID_REQUIRED = ErrorSpec(
+    422, "ERR_VECTOR_STORE_FILE_ID_REQUIRED", "file_id is required"
+)
+
+#: POST /v1/vector_stores/{id}/files whose referenced file's purpose is not in
+#: {assistants, user_data} — 400, nothing persisted (R:vector_store_file_purpose_invalid).
+VECTOR_STORE_FILE_PURPOSE_INVALID = ErrorSpec(
+    400,
+    "ERR_VECTOR_STORE_FILE_PURPOSE_INVALID",
+    "file purpose must be one of: assistants, user_data",
+)
 
 # ---------------------------------------------------------------------------
 # Batches input_file_id seam (files-uploads-api PLAN.md §3 — FROZEN @ v1, additive to
@@ -1503,6 +1547,41 @@ BATCH_INPUT_AMBIGUOUS = ErrorSpec(
     422,
     "ERR_BATCH_INPUT_AMBIGUOUS",
     "exactly one of line_items or input_file_id must be provided",
+)
+
+# ---------------------------------------------------------------------------
+# Fine-tuning broker (finetune-broker PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST /v1/fine_tuning/jobs training_file OR validation_file absent, cross-tenant,
+#: or wrong-purpose — ONE uniform code across ALL cases and BOTH fields (T2: no
+#: enumeration oracle distinguishes absent / another tenant's / wrong-purpose).
+FINETUNE_TRAINING_FILE_INVALID = ErrorSpec(
+    422,
+    "ERR_FINETUNE_TRAINING_FILE_INVALID",
+    "training_file or validation_file is invalid, not found, or not purpose='fine-tune'",
+)
+
+#: POST /v1/fine_tuning/jobs model that resolves to no finetune-capable provider
+#: (v1: only OpenAI base models) — 422, zero outbound IO.
+FINETUNE_MODEL_UNSUPPORTED = ErrorSpec(
+    422, "ERR_FINETUNE_MODEL_UNSUPPORTED", "model is not supported for fine-tuning"
+)
+
+#: GET/cancel/events on an unknown OR cross-tenant fine-tuning job id — deliberately
+#: indistinguishable (T3: never 403, never a leak).
+FINETUNE_JOB_NOT_FOUND = ErrorSpec(404, "ERR_FINETUNE_JOB_NOT_FOUND", "Fine-tuning job not found")
+
+#: POST /v1/fine_tuning/jobs/{id}/cancel on an already-terminal job
+#: (succeeded|failed|cancelled) — 409, status unchanged.
+FINETUNE_JOB_NOT_CANCELLABLE = ErrorSpec(
+    409, "ERR_FINETUNE_JOB_NOT_CANCELLABLE", "Fine-tuning job is already in a terminal state"
+)
+
+#: POST /v1/fine_tuning/jobs/{id}/cancel when the provider is unreachable — 502,
+#: job status stays UNCHANGED so cancel remains retryable.
+FINETUNE_PROVIDER_UNREACHABLE = ErrorSpec(
+    502, "ERR_FINETUNE_PROVIDER_UNREACHABLE", "Fine-tuning provider is unreachable"
 )
 
 # ---------------------------------------------------------------------------

@@ -375,6 +375,10 @@ class RecordingUsageRecorder:
                     "per_second",
                     "per_character",
                     "per_tool_call",
+                    # file-search-tool PLAN.md §3 M3: additive "per_query" — flat per-retrieval
+                    # unit priced via the non-token branch (quantity=1 x unit_usd_per_unit x
+                    # (1+markup)); ABSENT here it falls back to per_token → $0 silent under-bill.
+                    "per_query",
                 }
                 if pricing_unit is not None and pricing_unit in _known_units:
                     resolved_pricing_unit = pricing_unit
@@ -493,6 +497,9 @@ class RecordingUsageRecorder:
                 "per_second",
                 "per_character",
                 "per_tool_call",
+                # file-search-tool PLAN.md §3 M3: sibling of the main-path literal above —
+                # kept in lockstep so a cache-hit path preserves pricing_unit='per_query'.
+                "per_query",
             }
             if pricing_unit is not None and pricing_unit in _known_units:
                 resolved_pricing_unit = pricing_unit

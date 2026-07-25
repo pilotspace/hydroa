@@ -1450,6 +1450,18 @@ async def test_guardrails_core_migration_column_exists(
     # Guardrails-core still adds no tables of its own; invariant intent unchanged. (This
     # guardrails inventory is manifest #2 alongside tests/migrations EXPECTED_TABLES — the
     # §1 M8 "lands in BOTH manifests" instruction.)
+    # SANCTIONED EDIT (vector-store-core PLAN.md §3 two-manifest rule, 2026-07-24):
+    # added 'vector_stores', 'vector_store_files', 'vector_store_chunks' — additive
+    # migration 55dc3f920a38, three NEW tables owned by the vector-store-core task's own
+    # vector_stores/ context, registered on Base.metadata via the router's import chain
+    # (repository -> orm, same precedent as every entry above). Guardrails-core still adds
+    # no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (finetune-broker PLAN.md §3 two-manifest rule, 2026-07-24): added
+    # 'finetune_jobs', 'finetune_job_events' — additive migration 6f2a9c1e3b7d, two NEW
+    # tables owned by the finetune-broker task's own finetune/ context, registered on
+    # Base.metadata via the router's import chain (repository -> orm, same precedent as
+    # every entry above). Guardrails-core still adds no tables of its own; invariant
+    # intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1474,7 +1486,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'checkout_sessions',"
                 " 'domain_invite_links','domain_invite_redemptions',"
                 " 'pending_personal_signups','access_requests','files',"
-                " 'stored_responses')"
+                " 'stored_responses','vector_stores','vector_store_files',"
+                " 'vector_store_chunks','finetune_jobs','finetune_job_events')"
             )
         )
     ).fetchall()

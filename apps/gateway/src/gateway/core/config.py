@@ -643,6 +643,15 @@ class Settings(BaseSettings):
     # shrunk in tests after app construction. Default 3.0s.
     batch_window_seconds: float = Field(default=3.0, ge=0)
 
+    # ── Vector store file ingestion (vector-store-files PLAN.md §3 — FROZEN @ v1) ──
+    # GATEWAY_VECTOR_STORE_INGEST_WORKER_ENABLED — starts the durable-queue
+    # VectorStoreIngestWorker in the lifespan. Unlike batch/video's default-OFF
+    # opt-in (an alternate to an existing inline path), ingestion IS this feature's
+    # only code path, so this defaults True; an operator escape hatch remains for
+    # ops emergencies. Fail-open: an enqueue failure at attach falls back to an
+    # inline asyncio.create_task drive so no job is ever dropped either way.
+    vector_store_ingest_worker_enabled: bool = Field(default=True)
+
     @field_validator("back_pressure_retry_after_seconds", mode="before")
     @classmethod
     def _coerce_negative_retry_after(cls, v: object) -> object:
@@ -1588,6 +1597,24 @@ class Settings(BaseSettings):
     catalog_refresh_interval_seconds: int = Field(
         default=3600, ge=0
     )  # GATEWAY_CATALOG_REFRESH_INTERVAL_SECONDS
+
+    # ── finetune-model-registry (PLAN.md §3, FROZEN @ v1) ────────────────────────
+    # GATEWAY_FINETUNE_PRICING_MULTIPLIER — applied to the BASE model's latest snapshot
+    # prices when registering a succeeded fine-tune's ft:* model. Default "1.0" is a
+    # byte-identical plain copy of the base price (provider-passthrough basis) — the
+    # ⚠ under-billing flag (OpenAI actually bills ft:* inference at a premium over the
+    # base model) becomes a config flip via this knob, never a re-freeze of the Contract.
+    finetune_pricing_multiplier: Decimal = Decimal("1.0")  # GATEWAY_FINETUNE_PRICING_MULTIPLIER
+
+    # GATEWAY_FINETUNE_REGISTRY_REPAIR_INTERVAL_SECONDS — an asyncio background sweeper
+    # (mirrors CatalogRefreshScheduler's own asyncio-not-Celery precedent) that periodically
+    # runs FinetuneModelRegistrar.repair_missed() (M6: a registration missed at listener
+    # time — e.g. the base pricing snapshot was not yet resolvable — is eventually
+    # registered). Default 300s (5 min), matching domain_verify_notify's own interval;
+    # 0 disables the sweeper entirely (opt-OUT, no task started).
+    finetune_registry_repair_interval_seconds: int = Field(
+        default=300, ge=0
+    )  # GATEWAY_FINETUNE_REGISTRY_REPAIR_INTERVAL_SECONDS
 
     # ── SCIM provisioning (scim-provisioning task, M12) ──────────────────────────
     # Per-scim_token_id fixed-window write rate limit for /scim/v2/* mutations. Must be

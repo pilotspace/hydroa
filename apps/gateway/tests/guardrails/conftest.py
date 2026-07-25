@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
+from sqlalchemy import text as sa_text
+
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
@@ -62,6 +64,13 @@ async def app(settings: Settings) -> AsyncIterator[object]:  # type: ignore[over
     install_stub_resolver(application)
     engine = application.state.engine
     async with engine.begin() as conn:
+        # SANCTIONED EDIT (vector-store-core PLAN.md §3 provisioning plan, 2026-07-24):
+        # this suite overrides the root app fixture with its own create_all, so the
+        # root conftest's CREATE EXTENSION mitigation never runs here — mirrored
+        # verbatim (idempotent, a no-op once the dev postgres image ships pgvector).
+        # Required to keep THIS task's declared §3 Regression floor (guardrails/ green
+        # standalone) — not a test-assertion or contract change.
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 

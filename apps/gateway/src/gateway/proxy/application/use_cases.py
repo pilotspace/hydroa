@@ -61,6 +61,7 @@ from gateway.core.error_catalog import (
 )
 from gateway.core.errors import ProblemError
 from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
+from gateway.vector_stores.application.file_search import FileSearchError, FileSearchGrounder
 from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -1449,6 +1450,7 @@ class CompletionUseCase:
         tier_capacity_guard: TierCapacityGuard = PassthroughTierCapacityGuard(),  # noqa: B008
         plan_rate_limit_resolver: PlanRateLimitResolver | None = None,
         platform_credential_fallback: PlatformCredentialFallback | None = None,
+        file_search_grounder: FileSearchGrounder | None = None,
     ) -> None:
         self._authenticator = authenticator
         self._model_checker = model_checker
@@ -1551,6 +1553,11 @@ class CompletionUseCase:
         self._platform_credential_fallback: PlatformCredentialFallback | None = (
             platform_credential_fallback
         )
+        # file-search-tool PLAN.md §3: the shared pre-dispatch grounding seam. None (default)
+        # ⇒ the file_search tool engages ZERO new plumbing ⇒ byte-identical (M4); main.py wires
+        # the real grounder (per-tenant embedding client + session_factory) — the same optional
+        # -collaborator convention every seam above (vector_cache, residency_lookup, …) follows.
+        self._file_search_grounder: FileSearchGrounder | None = file_search_grounder
 
     async def _authenticate(self, raw_key: str | None) -> AuthzResult:
         """Extract bearer key and return AuthzResult with governance fields.
@@ -1611,6 +1618,49 @@ class CompletionUseCase:
         """
         if not self._web_search_enabled:
             body.pop("web_search", None)
+
+    async def _apply_file_search(
+        self,
+        *,
+        body: dict[str, Any],
+        authz: AuthzResult,
+        usage_recorder: UsageRecorder,
+        request_id: uuid.UUID,
+    ) -> None:
+        """Shared file_search grounding seam (file-search-tool PLAN.md §3 M1/M2/M3/M5/M7).
+
+        Called by BOTH complete() and stream() AFTER governance (tenant authenticated,
+        model allowed) and BEFORE the upstream dial / cache lookup — so retrieval + the
+        ONE per_query meter run EXACTLY ONCE (never inside a dispatch/breaker retry loop),
+        and a request rejected earlier is never billed. No-op (byte-identical) when the
+        grounder is unwired OR the request carries no file_search tool.
+        """
+        grounder = self._file_search_grounder
+        if grounder is None:
+            return
+
+        async def _meter() -> None:
+            # SECOND record beside the LLM per_token record (the per_image precedent):
+            # exactly ONE per_query unit at quantity=1, priced via the seeded synthetic
+            # file_search catalog model. Fire-and-forget, same seam as every other record.
+            _fire_record_with_raw(
+                usage_recorder,
+                tenant_id=authz.tenant_id,
+                key_id=authz.key_id,
+                model="file_search",
+                usage=None,
+                status=200,
+                pricing_unit="per_query",
+                quantity=Decimal("1"),
+                request_id=request_id,
+            )
+
+        try:
+            await grounder.ground(body=body, tenant_id=authz.tenant_id, meter=_meter)
+        except FileSearchError as exc:
+            # Map the uniform §3 wire code + status onto problem+json; a reject bills nothing
+            # (the meter fires only on a fully-successful grounding, inside ground()).
+            raise ProblemError(exc.status, exc.code, exc.message) from exc
 
     async def _check_input_modalities(
         self,
@@ -2693,6 +2743,14 @@ class CompletionUseCase:
             # whose CACHED modality is known and != "chat" is rejected before any I/O.
             await self._check_chat_modality(model_id)
 
+            # file-search-tool PLAN.md §3 (M1/M2/M3/M5/M7): retrieve top-k chunks, ground the
+            # messages, strip file_search from the outbound body, and meter ONE per_query —
+            # AFTER governance, BEFORE the upstream dial / cache lookup so it runs exactly once
+            # and a request rejected earlier is never billed. No-op when unwired / no file_search.
+            await self._apply_file_search(
+                body=body, authz=authz, usage_recorder=usage_recorder, request_id=_request_id
+            )
+
             # bandwidth-pacing pre-flight (stream-bandwidth-pacing v36): charge the per-key
             # bucket BEFORE the upstream call so a non-stream request is SHED (never paid) when
             # the bounded wait is exhausted. estimate = prompt chars/4 + max_tokens (a coarse
@@ -3382,6 +3440,13 @@ class CompletionUseCase:
             # chat-modality-guard (v56 §3): coarse operation-type guard — a resolved model
             # whose CACHED modality is known and != "chat" is rejected before any I/O.
             await self._check_chat_modality(model_id)
+
+            # file-search-tool PLAN.md §3 (M1/M2/M3/M5/M7): the SAME shared grounding seam
+            # complete() uses — both ingresses funnel here. Retrieve + ground + strip + meter
+            # ONCE, before dispatch. No-op when unwired / no file_search (byte-identical).
+            await self._apply_file_search(
+                body=body, authz=authz, usage_recorder=usage_recorder, request_id=_request_id
+            )
 
             # Credential resolution (credential-resolution-seam §3) — same as complete().
             _stream_cred_token = await self._resolve_credential(authz.tenant_id, model_id)

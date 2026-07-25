@@ -22,9 +22,28 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from gateway.core.error_catalog import ZDR_PAYLOAD_BLOCKED
 from gateway.responses_store.infrastructure.repository import StoredResponseRepository
+from gateway.tenants.application.retention_policy import is_zdr_locked
 
 _COMPLETED_PREFIX = b"event: response.completed\n"
+
+
+#: LOCK-TAKING read of tenants.zdr_enabled, scoped to the session's already-open
+#: (autobegun) transaction — held until it commits or rolls back.
+#:
+#: zdr-ingest-lock-heal (2026-07-25, M3): this was a LOCAL copy of the `FOR UPDATE`
+#: read. It is now an alias for the SHARED primitive in
+#: tenants/application/retention_policy.py. Behavior is identical; the reason for
+#: collapsing them is that the duplicate was load-bearing and drifted — the
+#: vector-store ingest worker needed the same lock, got a hand-written plain re-read
+#: instead, and shipped the very TOCTOU this helper's own docstring warned about.
+#: One definition site, reached by every path that persists payload after an await.
+#:
+#: NOTE the shared `is_zdr` / `raise_if_zdr` remain the plain NON-locking reads for
+#: the six gated choke points — adding FOR UPDATE there would take a row lock on
+#: every one of those unrelated hot writes.
+_is_zdr_locked = is_zdr_locked
 
 
 async def persist_stored_response(
@@ -41,8 +60,27 @@ async def persist_stored_response(
     response_body: Any,
     usage: Any,
 ) -> None:
-    """Insert one stored_responses row in its own transaction (atomic; commits)."""
+    """Insert one stored_responses row in its own transaction (atomic; commits).
+
+    SECURITY (M6, file-search-tool PLAN.md §3, CR v2): the entry-gate ZDR check ran BEFORE
+    the slow retrieval/grounding/embedding round-trip, during which a tenant can flip
+    zdr_enabled=true via their OWN retention-policy admin endpoint. file_search widens the
+    blast radius — the context_messages now carry 3rd-party document chunk text. So re-read
+    the ZDR flag with a LOCK-TAKING read (`SELECT ... FOR UPDATE`, `_is_zdr_locked`) inside
+    the SAME transaction as the context_messages INSERT. A plain non-locking SELECT only
+    catches a flip that committed BEFORE the read — the re-read -> INSERT-commit window
+    stays open. The row lock closes it: a concurrent flip BLOCKS until this transaction
+    commits/rolls back, so it can never land strictly between the re-read and the write.
+    ZDR=true -> raise 403 ERR_ZDR_PAYLOAD_BLOCKED; the enclosing `async with` closes the
+    session WITHOUT commit -> the autobegun transaction rolls back -> ZERO rows land
+    at-rest — fail-closed. Streaming (wrap_streaming_persist) delegates here, so BOTH
+    persist paths are guarded by the one locked re-check.
+    """
     async with session_factory() as session:
+        # First statement autobegins the transaction; the FOR UPDATE lock it takes is held
+        # through the INSERT below until the explicit commit — decision + write are atomic.
+        if await _is_zdr_locked(session, tenant_id):
+            raise ZDR_PAYLOAD_BLOCKED.exc()
         repo = StoredResponseRepository(session)
         await repo.create(
             response_id=response_id,

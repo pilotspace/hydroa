@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, Text, func
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,8 +41,23 @@ class ModelRow(Base):
     # server_default 'global' is honestly correct for every pre-existing row (no differentiated
     # backfill needed — unlike input_modalities' audio_stt data patch).
     region: Mapped[str] = mapped_column(Text, nullable=False, server_default="global")
+    # finetune-model-registry TASK.md §3: NULL (default) = a global catalog row, unchanged
+    # behavior for every pre-existing row. NOT NULL = a tenant-owned row (e.g. a registered
+    # ft:* model), visible/callable ONLY to its owner — see check_for_tenant + the
+    # list_active_models_with_markup / sync_catalog tenant-scoping deltas.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        # finetune-model-registry TASK.md §3: partial index — only tenant-owned rows are
+        # indexed (also declared in the migration, per the v30 lesson: BOTH ORM
+        # __table_args__ AND the migration must carry it, or test_autogenerate_empty_diff
+        # detects drift).
+        Index("ix_models_tenant", "tenant_id", postgresql_where=text("tenant_id IS NOT NULL")),
+    )
 
 
 class PricingSnapshotRow(Base):

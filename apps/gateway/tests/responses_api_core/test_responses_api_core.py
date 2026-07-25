@@ -466,7 +466,11 @@ async def test_reject_hosted_tool_types(
     upstream = FakeCompletionUpstream()
     recorder = _inject(app, upstream)
 
-    for hosted in ({"type": "web_search"}, {"type": "file_search"}):
+    # file_search DROPPED from this reject tuple (file-search-tool CR v2, Tin-ratified):
+    # file_search is now a SERVICED hosted tool (gateway-side grounding + per_query meter),
+    # no longer an unsupported passthrough. web_search remains rejected here (still
+    # provider-native only). This is the ONE authorized frozen-suite interface reconcile.
+    for hosted in ({"type": "web_search"},):
         resp = await client.post(
             RESPONSES,
             json=responses_payload(active_model, tools=[hosted]),

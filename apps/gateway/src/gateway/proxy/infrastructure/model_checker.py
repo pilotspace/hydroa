@@ -41,19 +41,25 @@ class SqlAlchemyModelChecker:
         """Return tri-state access enum for (model_id, tenant_id).
 
         Single LEFT JOIN query:
-          SELECT m.active, COALESCE(tmo.enabled, true) AS tenant_enabled
+          SELECT m.active, m.tenant_id, COALESCE(tmo.enabled, true) AS tenant_enabled
           FROM models m
           LEFT JOIN tenant_model_overrides tmo
             ON tmo.model_id = m.id AND tmo.tenant_id = :tenant_id
           WHERE m.id = :model_id
 
-        ACTIVE          — catalog active=true AND tenant_enabled=true.
-        UNKNOWN         — model absent from catalog OR catalog active=false.
+        ACTIVE          — catalog active=true AND tenant_enabled=true AND (m.tenant_id
+                           IS NULL OR m.tenant_id = :tenant_id).
+        UNKNOWN         — model absent from catalog OR catalog active=false OR the row
+                           is owned by a DIFFERENT tenant (finetune-model-registry
+                           PLAN.md §3 M4 — a tenant-owned row is invisible to every
+                           other tenant, byte-identical to a nonexistent model; never a
+                           distinguishable 403/leak).
         TENANT_DISABLED — catalog active=true AND tenant override enabled=false.
         """
         stmt = (
             select(
                 ModelRow.active,
+                ModelRow.tenant_id,
                 TenantModelOverrideRow.enabled,
             )
             .outerjoin(
@@ -66,6 +72,9 @@ class SqlAlchemyModelChecker:
         row = (await self._session.execute(stmt)).one_or_none()
 
         if row is None or not bool(row.active):
+            return ModelAccess.UNKNOWN
+
+        if row.tenant_id is not None and row.tenant_id != tenant_id:
             return ModelAccess.UNKNOWN
 
         # COALESCE(tmo.enabled, true): None means no override row → default enabled

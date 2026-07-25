@@ -53,6 +53,8 @@ from gateway.proxy.infrastructure.provider_registry import select_provider
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
 from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.proxy.infrastructure.vector_cache import RedisVectorCache
+from gateway.vector_stores.application.file_search import FileSearchGrounder
+from gateway.vector_stores.infrastructure.embedding_client import VectorStoreEmbeddingClient
 
 # Singleton stateless hasher — safe to share
 _hasher = Sha256SecretHasher()
@@ -408,6 +410,25 @@ def get_completion_use_case(
     # platform-key-default: same stable getattr pattern. None ⇒ no fallback wired ⇒
     # resolve_provider_credential's fallback branch is inert ⇒ byte-identical fail-closed 402.
     platform_credential_fallback = getattr(request.app.state, "platform_credential_fallback", None)
+    # file-search-tool (CR v2, F1): construct + pass the shared FileSearchGrounder so
+    # file_search is serviced end-to-end (M2 grounding + M3 per_query meter) AND the M5
+    # strip actually runs on the real /v1/responses + /v1/chat path — without this an
+    # accepted file_search tool is forwarded RAW to the provider (M5 leak regression).
+    # The embedding client is the SAME default-ON per-tenant-breaker adapter the ingest
+    # worker uses (app.state.vector_store_embedder, boot-wired in main.py's lifespan); a
+    # fresh singleton is created + cached here as a fail-safe if it is not yet on app.state
+    # (e.g. the ingest worker disabled) so the M5 strip is NEVER silently skipped. Reuses
+    # the SAME app.state.sessionmaker every other short-lived-session collaborator uses.
+    file_search_grounder: FileSearchGrounder | None = None
+    if _session_factory is not None:
+        vs_embedder = getattr(request.app.state, "vector_store_embedder", None)
+        if vs_embedder is None:
+            vs_embedder = VectorStoreEmbeddingClient()
+            request.app.state.vector_store_embedder = vs_embedder  # cache the singleton
+        file_search_grounder = FileSearchGrounder(
+            embedding_client=vs_embedder,
+            session_factory=_session_factory,
+        )
     return CompletionUseCase(
         authenticator,
         model_checker,
@@ -439,4 +460,5 @@ def get_completion_use_case(
         tier_capacity_guard=tier_capacity_guard,
         plan_rate_limit_resolver=plan_rate_limit_resolver,
         platform_credential_fallback=platform_credential_fallback,
+        file_search_grounder=file_search_grounder,
     )

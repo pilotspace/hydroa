@@ -9,13 +9,34 @@ sufficient. Fill **§6** in PLAN.md including the GATE RECORD.
 > **security is always a HARD-STOP and is never auto-passed**. Under `conservative`, or whenever
 > residue is found, this phase is **human-led** (auto-PASS conditions: `run.md`).
 
+## The reasoning discipline — verify's slice of the arc (definitions: `phases/direction.md`)
+
+**Fluent ≠ true** holds for verdicts: a verdict's confidence tracks how much evidence prose you
+wrote, not what you checked — a checkbox ticked from memory is a guess wearing a PASS. The arc
+at the gate:
+
+- **GROUND** — every Part-one checkbox is a factual claim: tick it only `[OBSERVED]` — you ran
+  the suite / read the evidence THIS session; a remembered pass is `[PRIOR]` — re-run it, never
+  recall it. A safety-grep counts only once you confirmed it actually matched.
+- **ATTACK** — verify IS the arc's attack beat: the earned-green refute-read (Part four) whose
+  primary output is a concrete falsifying input, and the three lenses of Part two. Security
+  stays HARD-STOP.
+- **DELIVER** — the gate card leads with the outcome, exposes the residue yourself
+  lowest-confidence-first, and tags its claims by evidence basis — never a bare "all green".
+- **Floor Goal check** — before recording PASS, restate the goal in the human's world: a suite
+  that satisfies the §4 words but misses what they actually wanted is the most expensive miss,
+  and this gate is the last place to catch it.
+- **Constraint loop on the §6 record** — the record blocks (3-lens verdict · Deep checks ·
+  Refute-read verdict · `Reported:`) are mechanically checkable: sweep them as a census before
+  the gate — an unfilled block is an unrecorded verdict, caught by you, not by the spot-audit.
+
 ## Part one — confirm the evidence
 
 - [ ] All tests pass — or, for a non-coding task, every §4 acceptance check is green (the evidence it names is real).
 - [ ] Coverage did not decrease.
 - [ ] No test or contract was altered during build.
 - [ ] The §3 Target (measurable) is hit — including any declared outcome tests can't show, confirmed by real evidence.
-- [ ] §1 rules trace to §2/§4 — an untraced rule is a coverage gap (`add.py check` warns on it).
+- [ ] §1 rules trace to a §4 test (`covers:` tag) — an untraced rule is a coverage gap (`add.py check` warns on it).
 - [ ] every §3-cited symbol still resolves in the CURRENT tree.
 
 If any is false, stop and return to Build.
@@ -73,7 +94,7 @@ python3 .add/tooling/add.py gate PASS          # marks the task done
 Verify owns the loop's tail since the six-phase merge. After the gate, fill §7:
 
 1. **Release behind a scope-of-impact limit** — a flag and/or gradual rollout.
-2. **Reuse scenarios as monitors** — the §2 scenarios that defined "correct" define
+2. **Reuse scenarios as monitors** — the §4 scenarios/tests that defined "correct" define
    what you alert on: overall error rate, each rejection's rate, latency of the risky op.
 3. **Draft the next spec delta** — every defect, surprise, or new need becomes a change
    that re-enters the flow at Specify (a new task). Emit lessons tagged by the

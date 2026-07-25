@@ -19,6 +19,7 @@ import httpx
 import pytest
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
+from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
@@ -101,12 +102,29 @@ async def _ensure_worker_database() -> AsyncIterator[None]:
     by an existence check AND an idempotent DuplicateDatabase catch (two workers can race),
     and a best-effort FORCE drop on teardown so runs don't accumulate stale databases.
     """
+    import asyncpg  # local import: the raw driver is only needed for DB/extension setup
+
     idx = _redis_env._worker_index()
     if idx is None:
+        # Non-xdist (serial) run: the base gateway_test DB already exists, but suites
+        # with their OWN engine/create_all fixture (the *_db.py store tests) bypass the
+        # `app` fixture's CREATE EXTENSION. Since vector-store-core put a Vector column on
+        # the shared Base.metadata, EVERY create_all now needs the pgvector extension —
+        # ensure it on the base test DB here so serial runs of those suites don't fail
+        # with `type "vector" does not exist`. Idempotent, bounded timeout (design for failure).
+        base_dsn = _redis_env.TEST_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+        try:
+            base_conn = await asyncpg.connect(dsn=base_dsn, timeout=10)
+            try:
+                await base_conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            finally:
+                await base_conn.close()
+        except (OSError, asyncpg.PostgresError):
+            # Best-effort: if the extension can't be created (e.g. non-pgvector image),
+            # the suites that need it will fail loudly with a clear error, as before.
+            pass
         yield
         return
-
-    import asyncpg  # local import: only the xdist path needs the raw driver
 
     admin_dsn = _redis_env._BASE_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     dbname = _redis_env.TEST_DATABASE_URL.rpartition("/")[2]
@@ -124,6 +142,16 @@ async def _ensure_worker_database() -> AsyncIterator[None]:
                 pass  # a sibling worker won the create race — fine, it exists now
     finally:
         await conn.close()
+
+    # vector-store-core PLAN.md §3 provisioning plan: the extension lives PER
+    # DATABASE, so each xdist worker's private database needs its own
+    # CREATE EXTENSION — idempotent, bounded connect timeout (design for failure).
+    worker_dsn = admin_dsn.rsplit("/", 1)[0] + f"/{dbname}"
+    worker_conn = await asyncpg.connect(dsn=worker_dsn, timeout=10)
+    try:
+        await worker_conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    finally:
+        await worker_conn.close()
 
     yield
 
@@ -168,6 +196,10 @@ async def app(settings: Settings) -> AsyncIterator[object]:
     install_stub_resolver(application)
     engine = application.state.engine
     async with engine.begin() as conn:
+        # vector-store-core PLAN.md §3 provisioning plan: the chunk ORM registers a
+        # Vector column on Base.metadata, so EVERY suite's create_all needs the
+        # extension — idempotent, a no-op once the dev postgres image ships pgvector.
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield application

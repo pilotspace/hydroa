@@ -278,6 +278,25 @@ async def _real_chat(
         # realtime-WS chat behaves identically to HTTP under the same config.
         _input_modality_lookup = SqlAlchemyInputModalityLookup(session)
 
+        # file-search-tool (CR v2, F1): wire the shared FileSearchGrounder here too, so a
+        # file_search tool on the realtime-WS chat path is serviced end-to-end AND stripped
+        # (M5) before the upstream dial — never forwarded RAW. Mirrors deps.py exactly: the
+        # SAME default-ON per-tenant-breaker embedder singleton (app.state.vector_store_
+        # embedder, fail-safe-created if absent) over the SAME app.state.sessionmaker.
+        from gateway.vector_stores.application.file_search import FileSearchGrounder
+        from gateway.vector_stores.infrastructure.embedding_client import (
+            VectorStoreEmbeddingClient,
+        )
+
+        _vs_embedder = getattr(app.state, "vector_store_embedder", None)
+        if _vs_embedder is None:
+            _vs_embedder = VectorStoreEmbeddingClient()
+            app.state.vector_store_embedder = _vs_embedder
+        _file_search_grounder = FileSearchGrounder(
+            embedding_client=_vs_embedder,
+            session_factory=app.state.sessionmaker,
+        )
+
         _use_case = CompletionUseCase(
             authenticator=_authenticator,
             model_checker=_model_checker,
@@ -299,6 +318,7 @@ async def _real_chat(
             # residency-policy TASK.md §3 (FROZEN @ v2): SAME app.state singleton the
             # HTTP chat path (deps.py) reads — never a second instance.
             residency_lookup=getattr(app.state, "residency_lookup", None),
+            file_search_grounder=_file_search_grounder,
         )
 
         _circuit_breaker = app.state.circuit_breaker

@@ -10,6 +10,12 @@ re-upserting without changing anything upstream of the store.
 This module defines ONLY the store layer's domain shape (value object, error,
 port). There is NO HTTP admin API, NO ingress rewrite, and NO capability
 guard here — those are separate, later tasks (see TASK.md §1 SPECIFY).
+
+HEAL (finetune-model-registry PLAN.md §3, 2026-07-24): ``ft:`` is a RESERVED
+provider-native model-id prefix — OpenAI's fine-tuned-model id shape is
+``ft:{base}:{org}::{suffix}``, which itself contains colons. ``parse_preset_
+selector`` exempts any ``ft:``-prefixed ``model`` field from preset parsing
+so a registered fine-tuned model is always resolvable by its real id.
 """
 
 from __future__ import annotations
@@ -123,14 +129,43 @@ class TenantModelPresetStore(Protocol):
 # ---------------------------------------------------------------------------
 
 
+#: Reserved provider-native colon-prefix — HEAL (finetune-model-registry PLAN.md §3,
+#: data-sensitive refute-read, 2026-07-24): OpenAI's real fine-tuned-model id is
+#: ``ft:{base}:{org}::{suffix}`` — it CONTAINS colons. Before this exemption, ANY
+#: colon-bearing ``model`` field (including a bare ft:* id) was split on the FIRST
+#: colon into a bogus (preset_name, alias_key) pair, so a caller naming its own
+#: registered fine-tuned model by its real id got PRESET_NOT_FOUND instead of the
+#: model — a composed feature-purpose break the per-piece test suite never
+#: exercised. ``ft:`` is checked BEFORE the colon-split so a bare ft:* id always
+#: resolves as a normal catalog model id, never as a preset selector.
+#:
+#: Sanity-checked (2026-07-24) for OTHER provider-native colon-bearing ids this
+#: helper would also misparse: Bedrock's cross-region-inference-profile ids DO
+#: contain a colon too (e.g. "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+#: seeded by migration 9cdca76231c6) and are NOT exempted here — that is a
+#: pre-existing gap, wider than and unrelated to this HEAL's scope (fine-tuned
+#: models), and is NOT fixed by this change. Flagged as a spec delta for a
+#: separate task rather than folded into this fix (a prefix-exemption for a
+#: single-dot-segment id shape risks masking a genuine ``preset:alias`` typo for
+#: unrelated selectors — a real fix needs its own scoped contract).
+_RESERVED_MODEL_ID_PREFIXES: tuple[str, ...] = ("ft:",)
+
+
 def parse_preset_selector(model_field: str) -> tuple[str, str] | None:
     """Split a ``model`` field on the FIRST colon into ``(preset_name, alias_key)``.
 
+    A reserved provider-native colon-prefix (currently only ``ft:`` — OpenAI's
+    fine-tuned-model id shape ``ft:{base}:{org}::{suffix}``) -> ``None`` ALWAYS,
+    even though it contains a colon: it is a bare model id, never a preset
+    selector (finetune-model-registry PLAN.md §3 HEAL).
     No colon present -> ``None`` (a bare model id — existing behavior, unaffected).
-    One-or-more colons present -> ``(preset_name, alias_key)``, where ``alias_key``
-    may itself contain colons (harmless: a stored ``alias_key`` can never contain
-    one, per the write-time validator, so such a selector can never match a row).
+    One-or-more colons present (and no reserved prefix matched) -> ``(preset_name,
+    alias_key)``, where ``alias_key`` may itself contain colons (harmless: a stored
+    ``alias_key`` can never contain one, per the write-time validator, so such a
+    selector can never match a row).
     """
+    if model_field.startswith(_RESERVED_MODEL_ID_PREFIXES):
+        return None
     if ":" not in model_field:
         return None
     preset_name, _, alias_key = model_field.partition(":")

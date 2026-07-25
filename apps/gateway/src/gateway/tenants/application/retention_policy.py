@@ -89,8 +89,71 @@ async def raise_if_zdr(session: AsyncSession, tenant_id: uuid.UUID) -> None:
     Fresh per-call — no caching beyond this one SELECT. Call as the FIRST line of every
     gated repository write (fail-closed ordering: block new writes before anything else
     in that call happens — TASK.md §5 Safety rule).
+
+    NON-LOCKING by design (zdr-ingest-lock-heal §3 M4): the six gated choke points above
+    call this on their hot write paths; a FOR UPDATE here would serialize every one of
+    them on the tenant row. When the ZDR DECISION must be atomic with the write it gates
+    — i.e. the payload lands after an AWAIT — use ``raise_if_zdr_locked`` instead.
     """
     if await is_zdr(session, tenant_id):
+        raise ZDR_PAYLOAD_BLOCKED.exc()
+
+
+# ---------------------------------------------------------------------------
+# The LOCK-TAKING variant (zdr-ingest-lock-heal PLAN.md §3 — FROZEN @ v1)
+#
+# Additive: `is_zdr` / `raise_if_zdr` above are the FROZEN v1 surface and stay
+# byte-identical. This pair exists for the write paths where the payload is
+# persisted AFTER an await (a provider round-trip), so the entry-gate check and
+# the write are separated by a window a tenant can flip `zdr_enabled` inside.
+#
+# WHY A LOCK AND NOT JUST A SECOND PLAIN READ: a plain SELECT under read-committed
+# only observes a flip that COMMITTED BEFORE it ran — the read -> write-commit
+# window stays open, and a flip landing there still persists payload at rest.
+# This is not theoretical: it was HARD-STOPPED twice on this codebase (the
+# stored-response persist path, and the vector-store ingest worker, whose first
+# heal used a plain re-read and left a window wide enough for a bulk chunk
+# insert). `FOR UPDATE` makes the decision and the write ATOMIC — a concurrent
+# flip for the SAME tenant blocks on ordinary row-lock contention until this
+# transaction resolves, so it can never interleave between them.
+#
+# The guarantee is SERIALIZATION, not clairvoyance: the flip lands either fully
+# before the write (caught here, fail-closed) or fully after it (the rows are
+# written, then removed by the RetentionSweeper's ZDR purge pass). It can never
+# land strictly between.
+#
+# CALL IT INSIDE the same session/transaction that commits the write, BEFORE the
+# write — the lock is held until that transaction commits or rolls back.
+# ---------------------------------------------------------------------------
+
+
+async def is_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
+    """LOCK-TAKING read of tenants.zdr_enabled (``SELECT ... FOR UPDATE``).
+
+    The lock is scoped to the session's already-open (autobegun) transaction and
+    held until it commits or rolls back. See the module comment above for when to
+    prefer this over the plain ``is_zdr``.
+
+    Returns False for an unknown tenant_id — parity with ``is_zdr``'s documented
+    fail-open-on-lookup behavior (the authorization decision for an unknown tenant
+    is made elsewhere).
+    """
+    row = (
+        await session.execute(
+            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
+            {"tid": str(tenant_id)},
+        )
+    ).first()
+    return bool(row[0]) if row is not None else False
+
+
+async def raise_if_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Raise 403 ERR_ZDR_PAYLOAD_BLOCKED iff ``is_zdr_locked`` is True.
+
+    The atomic counterpart of ``raise_if_zdr``: call it inside the transaction that
+    commits the payload write, immediately before that write.
+    """
+    if await is_zdr_locked(session, tenant_id):
         raise ZDR_PAYLOAD_BLOCKED.exc()
 
 
