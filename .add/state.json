@@ -543,9 +543,9 @@
       "title": "Managed RAG + fine-tune brokering",
       "goal": "",
       "stage": "mvp",
-      "status": "active",
+      "status": "done",
       "created": "2026-07-24T08:07:15+00:00",
-      "updated": "2026-07-24T08:21:11+00:00",
+      "updated": "2026-07-25T03:26:56+00:00",
       "confirmed": true,
       "confirmed_at": "2026-07-24T08:21:11+00:00",
       "confirmed_by": "tindang",
@@ -567,11 +567,16 @@
         "finetune-model-registry": [
           "finetune-broker"
         ]
+      },
+      "done_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-24T18:05:52+00:00",
+  "updated": "2026-07-25T03:26:56+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

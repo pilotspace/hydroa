@@ -60,18 +60,18 @@ Issues/Risks (shared): storage substrate (pgvector migration vs float8[] brute-f
 - Fine-tune job store + BYOK brokering contract (credential handling, model registration) -> owning task finetune-broker
 
 ## Tasks (breadth-first decomposition; detail lives in each PLAN.md)
-- [ ] vector-store-core     depends-on: none               — /v1/vector_stores CRUD + the storage-substrate decision; freeze-first
-- [ ] vector-store-files    depends-on: vector-store-core  — attach a /v1/files file → chunk → embed → index; ingestion job + status
-- [ ] file-search-tool      depends-on: vector-store-files — file_search server-side tool in /v1/responses + chat; top-k retrieval, per_query metering
-- [ ] finetune-broker       depends-on: none               — /v1/fine_tuning/jobs brokered to BYOK provider; job store; freeze-first  [sensitivity: security]
-- [ ] finetune-model-registry depends-on: finetune-broker  — auto-register the resulting fine-tuned model in the tenant catalog with a pricing snapshot  [sensitivity: data]
+- [x] vector-store-core     depends-on: none               — /v1/vector_stores CRUD + the storage-substrate decision; freeze-first
+- [x] vector-store-files    depends-on: vector-store-core  — attach a /v1/files file → chunk → embed → index; ingestion job + status
+- [x] file-search-tool      depends-on: vector-store-files — file_search server-side tool in /v1/responses + chat; top-k retrieval, per_query metering
+- [x] finetune-broker       depends-on: none               — /v1/fine_tuning/jobs brokered to BYOK provider; job store; freeze-first  [sensitivity: security]
+- [x] finetune-model-registry depends-on: finetune-broker  — auto-register the resulting fine-tuned model in the tenant catalog with a pricing snapshot  [sensitivity: data]
 
 ## Exit criteria (observable; map each to the task that delivers it)
-- [ ] `client.vector_stores.create(...)` then list/get/delete work tenant-scoped; another tenant can't see the store        (← vector-store-core)
-- [ ] `client.vector_stores.files.create(vector_store_id, file_id=...)` chunks+embeds+indexes the R4-uploaded file; status reaches completed        (← vector-store-files)
-- [ ] a Responses/chat call with the `file_search` tool retrieves relevant chunks and bills exactly one per_query line (no double inference bill)        (← file-search-tool)
-- [ ] `client.fine_tuning.jobs.create(...)` brokers to the tenant's BYOK provider; another tenant's job/credential is never reachable        (← finetune-broker)
-- [ ] a completed fine-tune's model appears in the tenant catalog and is callable + billed via the shared rate-card resolver        (← finetune-model-registry)
+- [x] `client.vector_stores.create(...)` then list/get/delete work tenant-scoped; another tenant can't see the store        (← vector-store-core)
+- [x] `client.vector_stores.files.create(vector_store_id, file_id=...)` chunks+embeds+indexes the R4-uploaded file; status reaches completed        (← vector-store-files)
+- [x] a Responses/chat call with the `file_search` tool retrieves relevant chunks and bills exactly one per_query line (no double inference bill)        (← file-search-tool)
+- [x] `client.fine_tuning.jobs.create(...)` brokers to the tenant's BYOK provider; another tenant's job/credential is never reachable        (← finetune-broker)
+- [x] a completed fine-tune's model appears in the tenant catalog and is callable + billed via the shared rate-card resolver        (← finetune-model-registry)
 
 ## Strategy   (AI-drafted WITH the human — SOFT/advisory)
 - Approach (sequencing): risk-first — freeze the two substrate contracts first (vector-store schema, fine-tune broker), then run two independent chains: RAG (vector-store-core → vector-store-files → file-search-tool) ∥ fine-tune (finetune-broker → finetune-model-registry).
@@ -81,14 +81,18 @@ Issues/Risks (shared): storage substrate (pgvector migration vs float8[] brute-f
 
 ## Close — ship review   (AI fills when every task is done)
 ### Ship by domain
-- tooling : <fill at milestone-done>
-- skill   : <fill at milestone-done>
-- book    : <fill at milestone-done>
+- gateway (BE) : /v1/vector_stores CRUD (pgvector HNSW) · /v1/vector_stores/{id}/files async ingestion · file_search tool in /v1/responses+chat with per_query metering · /v1/fine_tuning/jobs BYOK brokering · fine-tuned-model catalog auto-registration. Migrations 55dc3f920a38 → 6f2a9c1e3b7d → b3d8f21ca9e6 → c7f1a4e83b92 (single head).
+- infra   : dev/e2e/prod compose + charts moved to pgvector/pgvector:pg16 (the `vector` col on shared Base.metadata makes every suite's create_all need the extension); conftest provisions CREATE EXTENSION on xdist + serial + app-fixture paths.
+- book    : no doc-shape drift (no public README/API surface removed; additive endpoints only).
 ### Cross-task evidence
-- <one row per task>
+- vector-store-core — 17✓, refute CLEAR; tenant-scoped 404, pgvector HNSW cosine, `vs_<32hex>`.
+- vector-store-files — 21✓; async ingest worker; ZDR TOCTOU HARD-STOP found by refute → healed atomic (dd5373a).
+- file-search-tool — 16✓ + e2e through real app; per_query=1 (no double bill); refute found dormant-grounder/M5-leak + a residual ZDR TOCTOU (non-locking re-check) → both healed (grounder wired at deps.py+realtime_ws; FOR UPDATE locked re-check 64bb65b).
+- finetune-broker — 22✓; DUAL security refute CLEAR; per-tenant breaker (CR-1 recurrence healed), fail-closed 402.
+- finetune-model-registry — 13✓; listener→catalog ModelRow+pricing_snapshot ×1.0 passthrough; ft: preset-parse defect healed.
 ### Goal met?
-- [ ] each Exit criterion satisfied by a Cross-task evidence row
-- goal: <restate + proof>
+- [x] each Exit criterion satisfied by a Cross-task evidence row
+- goal: MET — a tenant can build a vector store, ingest R4-uploaded files, retrieve via file_search in a Responses/chat call (exactly one per_query bill), and broker a fine-tune job whose resulting model auto-registers + bills through the shared rate-card resolver; all OpenAI-SDK-compatible, tenant-scoped, exactly billed. Security HARD-STOPs (ZDR ×2, shared breaker) all caught by adversarial refute and healed before gate.
 
 ## Release steps   (AI-DEFINED; human gate)
 - [ ] full gateway suite (chunked ≤ -n 6) + dashboard suite before PR
