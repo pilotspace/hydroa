@@ -20,41 +20,30 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.core.error_catalog import ZDR_PAYLOAD_BLOCKED
 from gateway.responses_store.infrastructure.repository import StoredResponseRepository
+from gateway.tenants.application.retention_policy import is_zdr_locked
 
 _COMPLETED_PREFIX = b"event: response.completed\n"
 
 
-async def _is_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
-    """LOCK-TAKING read of tenants.zdr_enabled (`SELECT ... FOR UPDATE`), scoped to the
-    session's already-open (autobegun) transaction — held until this transaction commits
-    or rolls back.
-
-    Deliberately a LOCAL helper, NOT the shared `is_zdr` port
-    (tenants/application/retention_policy.py): that port's contract is FROZEN v1 and is the
-    plain non-locking read every gated write choke point uses — adding FOR UPDATE there
-    would take a row lock on every one of those unrelated writes too. Here the lock is
-    load-bearing: it makes the ZDR DECISION and the stored_responses INSERT atomic. A plain
-    SELECT only catches a flip that COMMITTED BEFORE the read; the re-read -> INSERT-commit
-    window stays open (a flip landing there escapes it). With FOR UPDATE a concurrent
-    zdr_enabled flip for the SAME tenant BLOCKS on ordinary Postgres row-lock contention
-    until this transaction resolves — it can never land strictly between this read and the
-    INSERT it gates. Mirrors compliance `_is_zdr_locked` (file-search-tool CR v2, M6).
-
-    Fail-closed on an unknown tenant_id is not possible here (the tenant always exists on a
-    served request); mirrors is_zdr's documented False-on-missing for parity.
-    """
-    row = (
-        await session.execute(
-            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
-            {"tid": str(tenant_id)},
-        )
-    ).first()
-    return bool(row[0]) if row is not None else False
+#: LOCK-TAKING read of tenants.zdr_enabled, scoped to the session's already-open
+#: (autobegun) transaction — held until it commits or rolls back.
+#:
+#: zdr-ingest-lock-heal (2026-07-25, M3): this was a LOCAL copy of the `FOR UPDATE`
+#: read. It is now an alias for the SHARED primitive in
+#: tenants/application/retention_policy.py. Behavior is identical; the reason for
+#: collapsing them is that the duplicate was load-bearing and drifted — the
+#: vector-store ingest worker needed the same lock, got a hand-written plain re-read
+#: instead, and shipped the very TOCTOU this helper's own docstring warned about.
+#: One definition site, reached by every path that persists payload after an await.
+#:
+#: NOTE the shared `is_zdr` / `raise_if_zdr` remain the plain NON-locking reads for
+#: the six gated choke points — adding FOR UPDATE there would take a row lock on
+#: every one of those unrelated hot writes.
+_is_zdr_locked = is_zdr_locked
 
 
 async def persist_stored_response(

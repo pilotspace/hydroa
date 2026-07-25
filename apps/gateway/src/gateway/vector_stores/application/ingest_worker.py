@@ -19,16 +19,30 @@ ChunkEmbedder port -> ONE atomic finalize tx (RE-CHECK raise_if_zdr + delete
 stale chunks + bulk insert + CAS in_progress->completed) -> AWAITED usage
 record, ONLY when the CAS won.
 
-SECURITY (ZDR TOCTOU heal, 2026-07-24): the embed call is a network round-trip
-(5s connect + 30s read in prod) — a window during which a tenant can flip
-tenants.zdr_enabled=true via their OWN retention-policy admin endpoint. The
-entry-line raise_if_zdr alone cannot catch a flip that lands DURING that
-window, so raise_if_zdr is re-checked a SECOND time, INSIDE the same
-session/transaction as finalize_completed, immediately before the chunk
-write + status flip and before that transaction commits — a flip caught there
-rolls back the whole transaction (zero chunks, zero status flip survive) and
-the row is marked failed/zdr_blocked instead. See drive()'s
-``zdr_flipped_during_ingest`` branch.
+SECURITY (ZDR TOCTOU, healed in two passes — see drive()'s
+``zdr_flipped_during_ingest`` branch):
+
+  2026-07-24 — the embed call is a network round-trip (5s connect + 30s read in
+  prod), a window during which a tenant can flip tenants.zdr_enabled=true via
+  their OWN retention-policy admin endpoint. The entry-line raise_if_zdr cannot
+  catch a flip landing DURING that window, so the check was repeated a SECOND
+  time inside the same session/transaction as finalize_completed.
+
+  2026-07-25 (zdr-ingest-lock-heal) — that re-check was a PLAIN, non-locking
+  SELECT, which under read-committed only observes a flip that COMMITTED BEFORE
+  it ran. The window from the re-check to the COMMIT of finalize_completed (a
+  chunk DELETE, up to MAX_CHUNKS_PER_FILE INSERTs, two UPDATEs) stayed open, and
+  a flip landing inside it still persisted payload chunks at rest. It is now
+  ``raise_if_zdr_locked`` (SELECT ... FOR UPDATE, the SHARED primitive in
+  tenants/application/retention_policy.py), which makes the ZDR decision and the
+  chunk write ATOMIC: a concurrent flip for the same tenant blocks on ordinary
+  row-lock contention until this transaction resolves.
+
+The guarantee is SERIALIZATION, not clairvoyance: the flip lands either fully
+before the write (caught here — the whole transaction rolls back, zero chunks
+and zero status flip survive, and the row is marked failed/zdr_blocked in a
+fresh transaction) or fully after it (the chunks are written, then removed by
+the RetentionSweeper's ZDR purge pass). It can never land strictly between.
 
 AT-LEAST-ONCE + IDEMPOTENCY guarantees:
   - A stale/missing row id is logged + skipped (no re-enqueue, no raise).
@@ -66,7 +80,7 @@ from gateway.core.errors import ProblemError
 from gateway.files.infrastructure.repository import FileRepository
 from gateway.objectstore.port import ObjectStore
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
-from gateway.tenants.application.retention_policy import raise_if_zdr
+from gateway.tenants.application.retention_policy import raise_if_zdr, raise_if_zdr_locked
 from gateway.usage.application.flusher import UsageLedgerFlusher
 from gateway.usage.application.recorder import RecordingUsageRecorder
 from gateway.vector_stores.application.chunker import MAX_CHUNKS_PER_FILE, chunk_text
@@ -290,10 +304,21 @@ class VectorStoreIngestWorker:
         # failed/zdr_blocked in a fresh transaction instead — fail-closed, and
         # byte-identical (zero extra latency of consequence) for the non-ZDR
         # majority path.
+        #
+        # HEAL #2 (zdr-ingest-lock-heal, 2026-07-25 — SECURITY): the re-check above
+        # was a PLAIN, non-locking SELECT, which under read-committed only catches a
+        # flip that COMMITTED BEFORE it ran. The window from that read to the commit
+        # of finalize_completed — a chunk DELETE, up to MAX_CHUNKS_PER_FILE INSERTs
+        # and two UPDATEs — stayed open, and a flip landing inside it still persisted
+        # payload chunks at rest. The sibling stored-response path had already
+        # rejected exactly this fix in favor of a locked read; the lesson was not
+        # back-applied here. `raise_if_zdr_locked` takes the tenant row lock, making
+        # the ZDR decision and the chunk write atomic — a concurrent flip blocks
+        # until this transaction resolves and can never interleave between them.
         zdr_flipped_during_ingest = False
         async with self._sessionmaker() as session:
             try:
-                await raise_if_zdr(session, tenant_id)
+                await raise_if_zdr_locked(session, tenant_id)
             except ProblemError:
                 zdr_flipped_during_ingest = True
                 await session.rollback()

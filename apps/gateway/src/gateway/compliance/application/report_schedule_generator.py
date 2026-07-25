@@ -101,7 +101,7 @@ from gateway.logs.infrastructure.logs_repository import LogsRepository
 from gateway.objectstore.errors import ObjectStoreUnavailableError
 from gateway.objectstore.port import ObjectStore
 from gateway.tenants.application.entitlements import check_plan_feature
-from gateway.tenants.application.retention_policy import is_zdr
+from gateway.tenants.application.retention_policy import is_zdr, is_zdr_locked
 from gateway.tenants.infrastructure.orm import TenantRow
 from gateway.usage.infrastructure.usage_repository import UsageRepository
 
@@ -225,34 +225,27 @@ async def _is_logs_explorer_entitled(session: AsyncSession, tenant_id: uuid.UUID
     return True
 
 
-async def _is_zdr_locked(session: AsyncSession, tenant_id: uuid.UUID) -> bool:
-    """LOCK-TAKING read of tenants.zdr_enabled: SELECT ... FOR UPDATE, scoped to the
-    CALLER's own already-open transaction (the caller must be inside
-    `async with session.begin()` — this does not open one itself).
-
-    Deliberately NOT the shared `is_zdr` port (tenants/application/retention_policy.py)
-    — that function's contract is FROZEN v1 and is the read every gated write choke
-    point uses (ArtifactRepository.create, ConversationRepository.create/
-    append_message, MemoryRepository.create, BatchJobRepository.create,
-    VideoJobRepository.create): adding FOR UPDATE there would take a row lock on every
-    one of those unrelated writes too, serializing them per-tenant for no reason. This
-    is a LOCAL, load-bearing helper used ONLY by ReportScheduleGenerator to make the
-    ZDR decision and the compliance_report_runs INSERT atomic (audit-remediation v2 —
-    module docstring step 4): the row lock is held until the caller's transaction
-    commits or rolls back, so a concurrent zdr_enabled flip for the SAME tenant blocks
-    on ordinary Postgres row-lock contention until this transaction resolves — it can
-    never land strictly between this read and the INSERT it gates.
-
-    Fail-open on an unknown tenant_id (mirrors is_zdr's own documented behavior) — the
-    actual authorization decision for an unknown tenant is made elsewhere.
-    """
-    row = (
-        await session.execute(
-            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
-            {"tid": str(tenant_id)},
-        )
-    ).first()
-    return bool(row[0]) if row is not None else False
+#: LOCK-TAKING read of tenants.zdr_enabled, scoped to the CALLER's own already-open
+#: transaction (the caller must be inside `async with session.begin()` — this does not
+#: open one itself). Held until that transaction commits or rolls back, so a concurrent
+#: zdr_enabled flip for the SAME tenant blocks on ordinary Postgres row-lock contention
+#: and can never land strictly between this read and the compliance_report_runs INSERT
+#: it gates (audit-remediation v2 — module docstring step 4).
+#:
+#: zdr-ingest-lock-heal CR v2 (2026-07-25, M3): this was the THIRD hand-copied instance
+#: of the identical `SELECT zdr_enabled ... FOR UPDATE` statement. It is now an alias for
+#: the SHARED primitive in tenants/application/retention_policy.py. The duplication was
+#: not cosmetic — it drifted: the vector-store ingest worker needed the same lock, got a
+#: hand-written PLAIN re-read instead, and shipped the exact TOCTOU each of these local
+#: copies had independently documented. One definition site, reached by every path that
+#: persists payload after an await.
+#:
+#: NOTE the shared `is_zdr` / `raise_if_zdr` remain the plain NON-locking reads used by
+#: the six gated write choke points (ArtifactRepository.create, ConversationRepository.
+#: create/append_message, MemoryRepository.create, BatchJobRepository.create,
+#: VideoJobRepository.create, files) — adding FOR UPDATE there would take a row lock on
+#: every one of those unrelated writes, serializing them per-tenant for no reason.
+_is_zdr_locked = is_zdr_locked
 
 
 def _audit_item(event: AuditEvent) -> dict[str, Any]:

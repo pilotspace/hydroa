@@ -837,3 +837,194 @@ async def test_concurrent_finalize_completed_race_exactly_one_wins_cas(
 
     final = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
     assert final["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# SECURITY HARD-STOP HEAL #2 (zdr-ingest-lock-heal, 2026-07-25) — the ZDR
+# re-check → finalize-commit window.
+#
+# The heal above (2026-07-24) added a SECOND raise_if_zdr inside the finalize
+# session, which closed the flip-during-EMBED window. It did NOT close the
+# window it opened by existing: that re-check is a PLAIN, non-locking SELECT,
+# so under read-committed it only sees a flip that COMMITTED BEFORE it ran. A
+# flip landing between the re-check and the commit of finalize_completed (a
+# DELETE + up to MAX_CHUNKS_PER_FILE inserts + 2 UPDATEs) still persists
+# payload chunks at rest for a now-ZDR tenant.
+#
+# The sibling path already rejected exactly this fix: responses_store/
+# application/persistence.py::_is_zdr_locked states it verbatim — "A plain
+# SELECT only catches a flip that COMMITTED BEFORE the read; the re-read ->
+# INSERT-commit window stays open." It was healed with SELECT ... FOR UPDATE.
+# That lesson was never back-applied here.
+#
+# Why the shipped test could not catch it: test_worker_zdr_flip_during_embed_
+# fails_closed_toctou flips during the EMBED, which the plain re-check DOES
+# catch. Pinning the flip inside the re-check → commit window needs a lock
+# held across it, not a sleep.
+#
+# The guarantee FOR UPDATE buys is serialization, not clairvoyance: the flip
+# lands either fully before the write (caught, fail-closed) or fully after
+# (chunks written, then swept by the retention sweeper's ZDR purge pass). It
+# can never interleave.
+# ---------------------------------------------------------------------------
+
+
+async def test_worker_zdr_flip_inflight_at_finalize_fails_closed(
+    client: Any, app: Any, tenant_a: dict[str, str]
+) -> None:
+    """covers: M1, M2, R:zdr_blocked — a ZDR flip held UNCOMMITTED (row-locked)
+    across the worker's finalize re-check must fail closed: zero chunks at rest.
+
+    Timing is structural, not racy: the holder takes the tenants row lock BEFORE
+    the worker is driven (awaited via ``flip_locked``) and releases it strictly
+    AFTER the worker would otherwise have committed (hold 0.5s > embed 0.3s).
+
+      UNPATCHED — the plain re-check reads the pre-flip value under
+        read-committed (an uncommitted UPDATE is invisible to it and never
+        blocks it), writes the chunks, commits at ~0.3s. The flip commits at
+        0.5s. Chunks survive for a ZDR tenant -> this assertion FAILS.
+      PATCHED  — the locked re-check BLOCKS on the held row lock until 0.5s,
+        then reads zdr_enabled=true, rolls the whole finalize transaction back
+        and marks the row failed/zdr_blocked -> zero chunks.
+    """
+    embedder = SlowChunkEmbedder(delay=0.3)
+    app.state.vector_store_embedder = embedder
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+
+    flip_locked = asyncio.Event()
+
+    async def _hold_uncommitted_flip() -> None:
+        """Take the tenants row lock via an UNCOMMITTED UPDATE and hold it
+        across the worker's entire finalize window, then commit."""
+        async with app.state.sessionmaker() as session:
+            await session.execute(
+                text("UPDATE tenants SET zdr_enabled = true WHERE id = :tid"),
+                {"tid": tenant_a["tenant_id"]},
+            )
+            flip_locked.set()
+            await asyncio.sleep(0.5)  # > the 0.3s embed: spans the finalize window
+            await session.commit()
+
+    async def _drive() -> None:
+        await flip_locked.wait()  # the lock is held before drive() ever starts
+        await worker.process_once()
+
+    await asyncio.gather(_drive(), _hold_uncommitted_flip())
+
+    # CONFOUND GUARD (independent refute finding, 2026-07-25): the attach router's
+    # `_enqueue_or_fallback` is FAIL-OPEN — if the Redis enqueue raises (a hiccup on
+    # a contended shared test Redis, or its 2s timeout) it spawns an UNSYNCHRONIZED
+    # `asyncio.create_task` drive. That drive can run to completion BEFORE the flip is
+    # even in flight, legitimately persisting chunks with ZERO ZDR violation — and the
+    # chunk assertion below would then read a benign infrastructure hiccup as a
+    # security regression. It is the single most alarming false signal this suite can
+    # produce, so fail here first, loudly and diagnosably, rather than there.
+    inline_tasks = getattr(app.state, "vector_store_ingest_tasks", None)
+    assert not inline_tasks, (
+        "TEST CONFOUND, not a security failure: the attach fell back to an inline"
+        " drive (Redis enqueue failed), so this run never exercised the"
+        " flip-synchronized window. Re-run; if persistent, the shared test Redis is"
+        f" unhealthy. Fallback tasks: {inline_tasks!r}"
+    )
+    assert len(embedder.calls) == 1, (
+        "TEST CONFOUND, not a security failure: expected EXACTLY ONE drive of this"
+        f" row, saw {len(embedder.calls)} embed calls — a second, unsynchronized"
+        " drive raced the flip and invalidates the window this test measures"
+    )
+
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0, (
+        "TOCTOU: a ZDR flip in flight across the finalize re-check must never"
+        " leave chunk payload at rest — the re-check must take a row lock"
+    )
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed", f"must fail closed, got: {obj}"
+    assert obj["last_error"] is not None
+    assert obj["last_error"]["code"] == "zdr_blocked"
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 0
+
+
+async def test_zdr_locked_read_has_a_single_definition_site() -> None:
+    """covers: M3 — the lock-taking ZDR read is ONE shared primitive.
+
+    Two hand-copied ``FOR UPDATE`` strings is how the first heal drifted from
+    the second: the responses-store path got the lock, the ingest worker did
+    not. Assert the primitive is defined once and reached by both callers.
+    """
+    from pathlib import Path
+
+    import gateway
+
+    src = Path(gateway.__file__).parent
+    # Match the EXACT executable SQL literal that was being hand-copied. Deliberately
+    # not a looser token match:
+    #   - a file-wide "FOR UPDATE" + "tenants" match also flags three LEGITIMATE and
+    #     unrelated locks — `FOR UPDATE OF t` on the seat-cap
+    #     (tenants/application/entitlements.py) and billing-owner
+    #     (tenants/infrastructure/users_repository.py, scim/) invariants. Those lock
+    #     DIFFERENT columns for DIFFERENT reasons and must survive untouched.
+    #   - a per-line "zdr_enabled" + "FOR UPDATE" match also flags PROSE — the
+    #     docstrings that describe the lock (e.g. "SELECT tenants.zdr_enabled ...
+    #     FOR UPDATE"). Those should stay; they are the explanation, not the copy.
+    statement = "SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"
+    definitions = sorted(
+        {path.name for path in src.rglob("*.py") if statement in path.read_text()}
+    )
+    assert definitions == ["retention_policy.py"], (
+        "the locked ZDR read must be defined ONLY in tenants/application/"
+        f"retention_policy.py; found it in: {definitions}"
+    )
+
+    from gateway.tenants.application import retention_policy
+
+    assert hasattr(retention_policy, "is_zdr_locked")
+    assert hasattr(retention_policy, "raise_if_zdr_locked")
+
+
+async def test_plain_raise_if_zdr_still_takes_no_lock(
+    app: Any, tenant_a: dict[str, str]
+) -> None:
+    """covers: M4 — the FROZEN v1 plain read must NOT gain a lock.
+
+    Six pre-existing choke points (artifacts, conversations, memories,
+    batch_job_items, video_generation_jobs, files) call raise_if_zdr on their
+    hot write paths. Adding FOR UPDATE there would serialize all of them on the
+    tenant row. With another session holding the tenants row lock, the plain
+    read must still return promptly.
+    """
+    from gateway.tenants.application.retention_policy import raise_if_zdr
+
+    async with app.state.sessionmaker() as holder:
+        await holder.execute(
+            text("SELECT zdr_enabled FROM tenants WHERE id = :tid FOR UPDATE"),
+            {"tid": tenant_a["tenant_id"]},
+        )
+        async with app.state.sessionmaker() as reader:
+            await asyncio.wait_for(
+                raise_if_zdr(reader, uuid.UUID(tenant_a["tenant_id"])),
+                timeout=2.0,  # a lock-taking read would block here until rollback
+            )
+        await holder.rollback()
+
+
+async def test_non_zdr_ingest_completes_unchanged_after_lock_heal(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: Any
+) -> None:
+    """covers: M5 — the non-ZDR majority path is behaviorally identical.
+
+    The locked re-check adds a row lock to every ingest finalize; this pins that
+    an ordinary (zdr_enabled=false) ingest still reaches completed with its
+    chunks and exactly one usage record.
+    """
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _drain(worker)
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "completed", f"majority path must be unchanged: {obj}"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) > 0
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 1

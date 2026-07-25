@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "file-search-tool",
+  "active_task": "zdr-ingest-lock-heal",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -528,6 +528,57 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "zdr-ingest-lock-heal": {
+      "title": "Close the ingest-worker ZDR TOCTOU with a lock-taking re-check",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "managed-rag-finetune",
+      "depends_on": [],
+      "created": "2026-07-25T07:33:44+00:00",
+      "updated": "2026-07-25T09:08:03+00:00",
+      "extends": [
+        "vector-store-files"
+      ],
+      "sensitivity": "security",
+      "freeze": {
+        "version": "v2",
+        "frozen_at": "2026-07-25T09:05:11+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "b7bb3b83d5967429cc30d7fb6f633deb",
+        "tests": {
+          "apps/gateway/tests/vector_store_files/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/vector_store_files/test_vector_store_files.py": "4daa3807e82b19814c7070039f1ad92c"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/application/retention_policy.py",
+          "apps/gateway/src/gateway/vector_stores/application/ingest_worker.py",
+          "apps/gateway/src/gateway/responses_store/application/persistence.py",
+          "apps/gateway/src/gateway/compliance/application/report_schedule_generator.py",
+          "apps/gateway/tests/vector_store_files/test_vector_store_files.py"
+        ],
+        "snapshot_md5": "53bfc2ab98c8d3e3151bac066a489dd2"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -573,10 +624,37 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "release-integrity": {
+      "title": "Release integrity: restore CI, close the deploy blockers, clear lint/type/suite debt",
+      "goal": "Every merge to main is proven by a green CI run on the merged artifact \u2014 no admin-merge \u2014 and a pgvector-bearing release can be deployed to managed Postgres from a written runbook without index or extension surprises",
+      "stage": "mvp",
+      "status": "active",
+      "created": "2026-07-25T07:35:36+00:00",
+      "updated": "2026-07-25T07:38:15+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-07-25T07:38:15+00:00",
+      "confirmed_by": "Tin Dang",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "planned": {
+        "ci-restoration": [],
+        "pgvector-deploy-runbook": [],
+        "lint-type-debt-sweep": [
+          "ci-restoration"
+        ],
+        "suite-stability": [
+          "ci-restoration"
+        ]
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-25T03:26:56+00:00",
+  "updated": "2026-07-25T09:08:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1727,10 +1805,11 @@
     }
   ],
   "active_milestones": [
-    "managed-rag-finetune"
+    "managed-rag-finetune",
+    "release-integrity"
   ],
   "active_tasks": {
-    "managed-rag-finetune": "file-search-tool"
+    "managed-rag-finetune": "zdr-ingest-lock-heal"
   },
   "todos": [
     {
@@ -2079,6 +2158,60 @@
       "id": 58,
       "text": "Pagination tiebreaker: list_active endpoints (vector_stores, files, +siblings) ORDER BY created_at DESC with no secondary key \u2014 rows sharing a timestamp can paginate unstably. Inherited from the files module template; a cross-module consistency pass, not task-specific. Refute-read note from vector-store-core verify 2026-07-24.",
       "created": "2026-07-24T09:20:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 59,
+      "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:136 \u2014 provider-controlled fine_tuned_model lands as the shared models PK with NO shape validation, while its sibling provider_job_id IS validated via is_valid_provider_job_id for exactly this threat. Apply the same regex before INSERT.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 60,
+      "text": "PR#89 residue (R7 pr89-residue): circuit breakers trip on 4xx \u2014 openai_client.py:126,153,176 + embedding_client.py:106 catch httpx.HTTPStatusError broadly and call on_upstream_error(). A revoked BYOK key (401) or bad training file (400) trips the tenant's OWN breaker after 5 calls -> 502 on legit traffic; poll also burns 3 attempts on a 404. Count only 5xx/transport toward the breaker; never retry 4xx.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 61,
+      "text": "PR#89 residue (R7 pr89-residue): file_search.py:201 silently ignores vector_store_ids[1:] \u2014 takes ids[0] only. OpenAI's wire is an array; two stores in, partial results out, no signal. Either 422 on len>1 in v1 or search across all supplied stores.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 62,
+      "text": "PR#89 residue (R7 pr89-residue) SCALE: file_repository.py:265 search_chunks \u2014 pgvector HNSW applies the tenant/store WHERE filter AFTER index traversal, so as vector_store_chunks grows across tenants a small tenant's top-k silently returns fewer than top_k (or zero). Needs hnsw.ef_search tuning + partitioning by vector_store_id at scale. Publish as a known monitored bound with an alert.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 63,
+      "text": "PR#89 residue (R7 pr89-residue) PERF: vector_stores/api/router.py:288 \u2014 N+1 on GET /v1/vector_stores (file_counts per row inside the page loop, up to 100 round-trips). Replace with one GROUP BY (vector_store_id, status) over the page's ids.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 64,
+      "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:55 _SELECT_MISSED_JOBS_SQL has no LIMIT \u2014 permanently-unresolvable jobs are re-swept in full every 300s forever. Bound the sweep.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 65,
+      "text": "PR#89 residue (R7, low): ingest_worker._read_bytes maps an ObjectStore outage to last_error.code='file_empty' (infra failure shown as a user data problem); ingest_worker.py:259 key_id falls back to tenant_id (tenant UUID in a key_id column); file_search._last_user_text embeds an empty string when no user message exists.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 66,
+      "text": "R6 pgvector-deploy-runbook DEPLOY BLOCKER: infra/docker-compose.prod.yml + charts/ai-proxy/values.yaml swap postgres:16-alpine -> pgvector/pgvector:pg16 = musl->glibc. Booting the Debian image on an Alpine-initdb'd volume is a collation-provider change: text btree indexes potentially mis-ordered until REINDEX. Needs dump/restore or REINDEX DATABASE + ALTER DATABASE ... REFRESH COLLATION VERSION in the runbook, not a silent tag bump.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 67,
+      "text": "R6 pgvector-deploy-runbook: migration 55dc3f920a38 runs CREATE EXTENSION IF NOT EXISTS vector \u2014 on RDS/Aurora/Cloud SQL this needs rds_superuser + an allow-listed extension or the migration hard-fails at deploy. Document the prereq AND add a boot-time preflight that fails loudly when the vector extension is absent.",
+      "created": "2026-07-25T07:33:38+00:00",
       "status": "open"
     }
   ]
