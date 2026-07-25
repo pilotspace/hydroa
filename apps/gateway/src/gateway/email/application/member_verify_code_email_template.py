@@ -12,7 +12,9 @@ from __future__ import annotations
 from gateway.email.domain.entities import EmailMessage
 
 
-def render_member_verify_code_email(*, to: str, domain: str, code: str, origin: str) -> EmailMessage:
+def render_member_verify_code_email(
+    *, to: str, domain: str, code: str, origin: str
+) -> EmailMessage:
     """Build the member-verify code EmailMessage.
 
     link = f"{origin}/admin/domain-claims" if origin else "/admin/domain-claims" — matches

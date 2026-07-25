@@ -163,7 +163,11 @@ class FinetuneJobRepository:
                 FinetuneJobRow.tenant_id == tenant_id,
                 FinetuneJobRow.status.notin_(tuple(TERMINAL_STATUSES)),
             )
-            .values(status="cancelled", updated_at=datetime.now(tz=UTC), finished_at=datetime.now(tz=UTC))
+            .values(
+                status="cancelled",
+                updated_at=datetime.now(tz=UTC),
+                finished_at=datetime.now(tz=UTC),
+            )
             .returning(FinetuneJobRow.id)
         )
         transitioned = result.fetchone() is not None

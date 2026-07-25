@@ -18,20 +18,20 @@ if TYPE_CHECKING:
     from gateway.domain_capture.application.join_tenant_use_case import (
         JoinTenantByDomainUseCase,
     )
-    from gateway.domain_capture.application.revoke_claim_use_case import (
-        RevokeDomainClaimUseCase,
-    )
-    from gateway.domain_capture.application.registrar_hint_use_case import (
-        GetRegistrarHintUseCase,
+    from gateway.domain_capture.application.member_verify_use_cases import (
+        IssueMemberVerifyCodeUseCase,
+        ResendMemberVerifyCodeUseCase,
+        VerifyMemberCodeUseCase,
     )
     from gateway.domain_capture.application.notify_use_cases import (
         NotifyOptInUseCase,
         NotifyOptOutUseCase,
     )
-    from gateway.domain_capture.application.member_verify_use_cases import (
-        IssueMemberVerifyCodeUseCase,
-        ResendMemberVerifyCodeUseCase,
-        VerifyMemberCodeUseCase,
+    from gateway.domain_capture.application.registrar_hint_use_case import (
+        GetRegistrarHintUseCase,
+    )
+    from gateway.domain_capture.application.revoke_claim_use_case import (
+        RevokeDomainClaimUseCase,
     )
     from gateway.domain_capture.application.verify_claim_use_case import (
         VerifyDomainClaimUseCase,

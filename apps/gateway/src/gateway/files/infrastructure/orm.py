@@ -57,9 +57,7 @@ class FileRow(Base):
     content_type: Mapped[str] = mapped_column(Text, nullable=False)
     # Always 'processed' this task — synchronous store, no async validation pipeline
     # (§1 assumption: a status state machine is deferred).
-    status: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'processed'")
-    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'processed'"))
     # storage_backend dispatches the byte path: 'inline' (BYTEA) or 's3' (bytes live
     # in the object store at object_key; content is NULL) — mirrors ArtifactRow.
     storage_backend: Mapped[str] = mapped_column(

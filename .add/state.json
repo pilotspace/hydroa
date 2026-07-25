@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ci-restoration",
+  "active_task": "lint-type-debt-sweep",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -662,6 +662,56 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "lint-type-debt-sweep": {
+      "title": "Clear the ruff/pyright/allowlist debt so make ci can go green",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [
+        "ci-restoration"
+      ],
+      "created": "2026-07-25T11:42:05+00:00",
+      "updated": "2026-07-25T12:34:39+00:00",
+      "sensitivity": "architecture",
+      "freeze": {
+        "version": "v4",
+        "frozen_at": "2026-07-25T12:34:33+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "62e34855798993e83895802ba231882d",
+        "tests": {
+          "apps/gateway/tests/repo_hygiene/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "35df95fe265f0c3ccb0d8271177a0236",
+          "apps/gateway/tests/mcp_connector/test_relay_failclosed_characterization.py": "0732c541df5bfcb6ce7bc99bd5e0425f"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".add/dependencies.allowlist",
+          "apps/gateway/src/",
+          "apps/gateway/tests/",
+          "apps/gateway/migrations/"
+        ],
+        "snapshot_md5": "e21ac083d4f34a9f838f1cc0b588000d"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -737,7 +787,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-25T11:31:42+00:00",
+  "updated": "2026-07-25T12:34:39+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1893,7 +1943,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "ci-restoration"
+    "release-integrity": "lint-type-debt-sweep"
   },
   "todos": [
     {
@@ -2308,6 +2358,12 @@
       "id": 69,
       "text": "R6: promote lint-type-debt-sweep from wave 2 to run IMMEDIATELY after ci-restoration \u2014 it is a hard prerequisite for ci-restoration M4 (make ci is red on 37 ruff + 3 pyright + 4 allowlist).",
       "created": "2026-07-25T10:11:43+00:00",
+      "status": "open"
+    },
+    {
+      "id": 70,
+      "text": "R7: 410 pre-existing per-line '# noqa: CODE' directives across apps/gateway carry NO written reason (143 do). lint-type-debt-sweep fixed only the 3 it added; a guard requiring justification on all of them would be a real scope of its own. Consider a ratchet: new noqas must be justified, existing ones grandfathered.",
+      "created": "2026-07-25T12:34:01+00:00",
       "status": "open"
     }
   ]

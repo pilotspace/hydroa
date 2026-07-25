@@ -460,7 +460,13 @@ class TestSecurityInvariants:
 
         async with app.state.sessionmaker() as session:
             for table in ("finetune_jobs", "finetune_job_events"):
-                rows = (await session.execute(text(f"SELECT * FROM {table}"))).mappings().all()
+                # noqa justified: `table` iterates a hardcoded literal tuple two lines
+                # above; no caller input reaches this string.
+                rows = (
+                    (await session.execute(text(f"SELECT * FROM {table}")))  # noqa: S608
+                    .mappings()
+                    .all()
+                )
                 for row in rows:
                     assert secret not in repr(dict(row)), (
                         f"plaintext credential leaked into {table}: {row}"

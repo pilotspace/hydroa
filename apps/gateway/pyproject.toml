@@ -56,6 +56,76 @@ target-version = "py312"
 # - tests/migrations: frozen by db-migrations TASK.md §4
 # - tests/ops: frozen by ops-hardening TASK.md §4
 exclude = [
+    # --- lint-type-debt-sweep (R6, 2026-07-25) ---------------------------------
+    # `make lint` is `ruff check && ruff format --check`; the && short-circuited, so
+    # while check was failing on 37 findings the FORMAT half had never run. These 63
+    # test files carry pre-existing format drift and belong to OTHER tasks' frozen §4
+    # contracts — reformatting them would edit frozen tests. Same rationale as the
+    # entries above. FORMAT-ONLY: every one of these passes `ruff check`; an exclude
+    # added to dodge a check finding is a contract violation (task §1 R:gate_weakened).
+    "tests/access_requests/test_access_requests.py",
+    "tests/agent_identity_governance/test_agent_identity_governance.py",
+    "tests/anthropic_provider/test_anthropic_upstream_beta_passthrough.py",
+    "tests/artifacts/test_artifacts_s3.py",
+    "tests/audio_endpoints/test_audio_guardrails.py",
+    "tests/audit_export/test_audit_export.py",
+    "tests/audit/test_admin_mutation_audit_coverage.py",
+    "tests/bedrock_region_guard/test_bedrock_guard_verify2_dispatch_gate.py",
+    "tests/claude_gateway_protocol_compat/test_claude_gateway_protocol_compat.py",
+    "tests/compliance_bundle/test_compliance_bundle.py",
+    "tests/domain_capture/test_domain_verify_notify.py",
+    "tests/domain_capture/test_member_verified_recognition.py",
+    "tests/domain_capture/test_registrar_hint.py",
+    "tests/embeddings_endpoint/test_embeddings_guardrails.py",
+    "tests/envoy_config/test_v1_stream_timeout.py",
+    "tests/file_search_tool/conftest.py",
+    "tests/file_search_tool/test_e2e_wiring.py",
+    "tests/file_search_tool/test_grounding_seam.py",
+    "tests/file_search_tool/test_zdr_persist_recheck.py",
+    "tests/files_uploads_api/test_files_uploads_api.py",
+    "tests/files_uploads_api/test_files_uploads_size_cap.py",
+    "tests/finetune_broker/test_finetune_broker.py",
+    "tests/finetune_model_registry/test_finetune_model_registry.py",
+    "tests/health_alerting/test_alerting_hardening.py",
+    "tests/image_edits_variations/conftest.py",
+    "tests/images_endpoint/test_images_guardrails.py",
+    "tests/invite_by_domain/test_invite_by_domain.py",
+    "tests/keys/test_key_guardrail_tenant_floor.py",
+    "tests/mcp_connector/conftest.py",
+    "tests/mcp_connector/test_admin_router.py",
+    "tests/mcp_connector/test_budget_governance.py",
+    "tests/mcp_connector/test_call_flow.py",
+    "tests/mcp_connector/test_dialer.py",
+    "tests/mcp_connector/test_relay_failclosed_characterization.py",
+    "tests/moderations_endpoint/conftest.py",
+    "tests/moderations_endpoint/test_moderations_endpoint.py",
+    "tests/pii_v2/test_custom_pattern_compile_cache.py",
+    "tests/plan_rate_enforcement/test_orm_check_constraints.py",
+    "tests/platform_credential_fallback/test_platform_credential_fallback.py",
+    "tests/proxy/test_circuit_breaker_per_provider.py",
+    "tests/proxy/test_guardrail_list_content_masking.py",
+    "tests/proxy/test_guardrail_tool_calls_masking.py",
+    "tests/proxy/test_nonchat_guardrails.py",
+    "tests/proxy/test_streaming_post_call_pii_mask.py",
+    "tests/repo_hygiene/test_repo_hygiene.py",
+    "tests/responses_api_core/test_responses_api_core.py",
+    "tests/responses_state_store/test_responses_state_store.py",
+    "tests/scoped_self_serve_signup/conftest.py",
+    "tests/scoped_self_serve_signup/test_scoped_self_serve_signup.py",
+    "tests/teams/test_teams_audit_and_tenant_guard.py",
+    "tests/tenant_activity_tab/test_tenant_activity_tab.py",
+    "tests/tenant_usage_costs_api/conftest.py",
+    "tests/tenant_usage_costs_api/test_completions.py",
+    "tests/tenant_usage_costs_api/test_costs_and_security.py",
+    "tests/tenant_usage_costs_api/test_pagination.py",
+    "tests/tenant_usage_costs_api/test_timestamp_overflow.py",
+    "tests/tool_call_metering/conftest.py",
+    "tests/tool_call_metering/test_billing_integration.py",
+    "tests/tool_call_metering/test_di_wiring.py",
+    "tests/vector_cache_unit/test_lookup_mget.py",
+    "tests/vector_store_core/test_vector_store_core.py",
+    "tests/vector_store_files/test_vector_store_files.py",
+    "tests/worker_isolation/test_worker_db_mapping.py",
     "tests/edge/test_authz_bearer.py",
     "tests/edge/test_e2e_edge.py",
     "tests/edge/test_e2e_tls.py",
@@ -151,6 +221,7 @@ ignore = ["S101"]  # assert is fine in tests; src is mypy-strict anyway
 "migrations/**" = ["F401", "RUF100"]  # Alembic env.py uses intentional side-effect imports; migration versions use legacy Union/Sequence typing from mako template
 "src/gateway/usage/api/router.py" = ["S608"]  # granularity validated against whitelist; key_filter is hardcoded literal — no injection risk
 "src/gateway/guardrail_analytics/api/router.py" = ["S608"]  # granularity/group_by validated against whitelists; key_filter is hardcoded literal — no injection risk (mirrors usage/api/router.py)
+"src/gateway/alerting/application/dispatcher.py" = ["S608"]  # _UNDELIVERED_WHERE is a module-level constant interpolated into text(); the only variable part is the BOUND parameter :meta_key — no caller input reaches the SQL (same shape as usage/api/router.py)
 "tests/migrations/**" = ["PLC0415", "ARG001", "RUF100", "RUF043"]  # frozen test files: intentional late imports (PLC0415), unused fixture args (ARG001), regex string in pytest.raises match= (RUF043)
 
 [tool.pyright]

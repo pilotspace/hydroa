@@ -160,7 +160,7 @@ class FinetuneBrokerService:
             )
             if not is_valid_provider_job_id(provider_job_id):
                 raise ValueError(f"malformed provider_job_id shape: {provider_job_id!r}")
-        except Exception as exc:  # noqa: BLE001 — honest degradation, never a half-write
+        except Exception as exc:
             error_message = f"provider unreachable at submit: {exc}"
             await self._repo.set_submit_result(
                 job_id=row.id, provider_job_id=None, status="failed", error=error_message
@@ -186,9 +186,7 @@ class FinetuneBrokerService:
         row.provider_job_id = provider_job_id
         return row
 
-    async def get_job(
-        self, *, tenant_id: uuid.UUID, job_id: uuid.UUID
-    ) -> FinetuneJobRow | None:
+    async def get_job(self, *, tenant_id: uuid.UUID, job_id: uuid.UUID) -> FinetuneJobRow | None:
         row = await self._repo.get(tenant_id=tenant_id, job_id=job_id)
         if row is None:
             return None
@@ -209,7 +207,7 @@ class FinetuneBrokerService:
             poll_result = await self._provider_port.poll(
                 tenant_id, unwrap_credential_secret(credential), row.provider_job_id
             )
-        except Exception:  # noqa: BLE001 — stale-ok, never a 5xx read
+        except Exception:
             return row
 
         new_status = fold_provider_status(str(poll_result.get("status")))
@@ -253,7 +251,7 @@ class FinetuneBrokerService:
         if new_status == "succeeded" and self._completion_listener is not None:
             try:
                 await self._completion_listener.on_succeeded(refreshed)
-            except Exception:  # noqa: BLE001 — never roll back a committed CAS
+            except Exception:
                 _log.exception(
                     "finetune_completion_listener_failed",
                     extra={"job_id": str(refreshed.id)},
@@ -266,9 +264,7 @@ class FinetuneBrokerService:
         after_uuid = parse_job_wire_id(after) if after else None
         return await self._repo.list_for_tenant(tenant_id=tenant_id, limit=limit, after=after_uuid)
 
-    async def cancel_job(
-        self, *, tenant_id: uuid.UUID, job_id: uuid.UUID
-    ) -> FinetuneJobRow | None:
+    async def cancel_job(self, *, tenant_id: uuid.UUID, job_id: uuid.UUID) -> FinetuneJobRow | None:
         row = await self._repo.get(tenant_id=tenant_id, job_id=job_id)
         if row is None:
             return None
@@ -290,7 +286,7 @@ class FinetuneBrokerService:
                 await self._provider_port.cancel(
                     tenant_id, unwrap_credential_secret(credential), row.provider_job_id
                 )
-            except Exception:  # noqa: BLE001 — status unchanged, cancel stays retryable
+            except Exception:
                 raise FINETUNE_PROVIDER_UNREACHABLE.exc() from None
         # A never-submitted job cancels locally with no outbound call (M4).
 

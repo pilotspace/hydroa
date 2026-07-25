@@ -94,9 +94,7 @@ class StoredResponseRepository:
         self._session.add(row)
         await self._session.flush()
 
-    async def resolve_prev(
-        self, *, tenant_id: uuid.UUID, response_id: str
-    ) -> ResolvedPrev | None:
+    async def resolve_prev(self, *, tenant_id: uuid.UUID, response_id: str) -> ResolvedPrev | None:
         """Fetch the previous row for chaining — tenant_id in the SAME query as the id.
 
         Returns None for an unknown, cross-tenant, deleted, or malformed id (the SELECT
@@ -119,9 +117,7 @@ class StoredResponseRepository:
             response_body=row.response_body,
         )
 
-    async def get_response_body(
-        self, *, tenant_id: uuid.UUID, response_id: str
-    ) -> Any | None:
+    async def get_response_body(self, *, tenant_id: uuid.UUID, response_id: str) -> Any | None:
         """Return the persisted Response object verbatim, or None (→ 404)."""
         row = (
             await self._session.execute(

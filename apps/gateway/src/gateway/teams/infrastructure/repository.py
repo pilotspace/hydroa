@@ -289,9 +289,7 @@ class SqlAlchemyTeamRepository:
             .where(
                 TeamMemberRow.team_id == team_id,
                 TeamMemberRow.user_id == user_id,
-                TeamMemberRow.team_id.in_(
-                    select(TeamRow.id).where(TeamRow.tenant_id == tenant_id)
-                ),
+                TeamMemberRow.team_id.in_(select(TeamRow.id).where(TeamRow.tenant_id == tenant_id)),
             )
             .returning(TeamMemberRow.user_id)
         )

@@ -57,14 +57,6 @@ class _GetAddrInfoResolver:
         return [str(info[4][0]) for info in infos]
 
 
-def _host_only(url: str) -> str:
-    """Return only the host portion of a URL for safe logging."""
-    try:
-        return urlsplit(url).hostname or url
-    except Exception:
-        return "<url>"
-
-
 def _format_host_literal(ip_literal: str) -> str:
     """IPv6 literals need brackets in a URL authority; IPv4 doesn't."""
     try:

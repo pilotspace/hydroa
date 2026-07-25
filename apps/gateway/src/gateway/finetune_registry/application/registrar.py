@@ -43,9 +43,7 @@ _INSERT_SNAPSHOT_SQL = text(
     " VALUES (:id, :model_id, :prompt, :completion, 'per_token')"
 )
 
-_SELECT_BASE_MODEL_SQL = text(
-    "SELECT context_length, region FROM models WHERE id = :id"
-)
+_SELECT_BASE_MODEL_SQL = text("SELECT context_length, region FROM models WHERE id = :id")
 
 _SELECT_LATEST_SNAPSHOT_SQL = text(
     "SELECT prompt_usd_per_token, completion_usd_per_token FROM pricing_snapshots"
@@ -165,13 +163,17 @@ class FinetuneModelRegistrar:
         path — never an unpriced callable model)."""
         for candidate in (base_model, f"openai/{base_model}"):
             model_row = (
-                await session.execute(_SELECT_BASE_MODEL_SQL, {"id": candidate})
-            ).mappings().first()
+                (await session.execute(_SELECT_BASE_MODEL_SQL, {"id": candidate}))
+                .mappings()
+                .first()
+            )
             if model_row is None:
                 continue
             snap = (
-                await session.execute(_SELECT_LATEST_SNAPSHOT_SQL, {"model_id": candidate})
-            ).mappings().first()
+                (await session.execute(_SELECT_LATEST_SNAPSHOT_SQL, {"model_id": candidate}))
+                .mappings()
+                .first()
+            )
             if snap is None:
                 return None
             return (

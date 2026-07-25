@@ -250,9 +250,7 @@ class McpCallUseCase:
             return authz.mcp_allowed_servers
         return await self._repo.get_tenant_allowed_urls(self._session, authz.tenant_id)
 
-    def _audit(
-        self, *, authz: AuthzResult, server_host: str, tool_name: str, result: str
-    ) -> None:
+    def _audit(self, *, authz: AuthzResult, server_host: str, tool_name: str, result: str) -> None:
         """Fire-and-forget, fail-open audit emit. NEVER carries upstream_headers /
         the agent's own upstream credential (M13) — only server_host/tool_name/result."""
         asyncio.ensure_future(  # noqa: RUF006
@@ -445,14 +443,18 @@ class McpCallUseCase:
         # shape without risking corrupting non-text structural fields, so this fails
         # the relay CLOSED — mirroring M9's in-band JSON-RPC block idiom — rather than
         # ever leaking the detected PII verbatim (confirmed HARD-STOP leak, conf 0.8).
-        mask_unresolved = (
-            guardrail_result.masked_messages is not None and not text_block_indices
-        )
+        mask_unresolved = guardrail_result.masked_messages is not None and not text_block_indices
 
         latency_ms = int((time.monotonic() - started) * 1000)
         relayed_body: dict[str, Any]
         trace_status: int
         audit_result: Literal["success", "blocked"]
+        # Bound ONLY on the allowed path below. `None` therefore means "no body was
+        # ever built for relay", which is not a relayable state — the guard at the
+        # relay decision treats it as blocked. `McpDialResult.body` is a non-optional
+        # dict (default {}), so None can never be a legitimate upstream body and this
+        # sentinel cannot collide with one.
+        candidate_body: dict[str, Any] | None = None
         block_relay = guardrail_result.blocked or mask_unresolved
         if not block_relay:
             candidate_body = dial_result.body
@@ -481,7 +483,13 @@ class McpCallUseCase:
             )
             if verify_result.blocked or verify_result.masked_messages is not None:
                 block_relay = True
-        if block_relay:
+        # FAIL CLOSED BY CONSTRUCTION: relaying requires a body that was actually
+        # built on the allowed path. `candidate_body is None` is unreachable today
+        # (it is bound iff block_relay is False), but stating it here means any future
+        # edit that breaks that coupling BLOCKS rather than relays an unvetted body —
+        # the safe direction for a path whose comments record a confirmed HARD-STOP.
+        # Pinned by tests/mcp_connector/test_relay_failclosed_characterization.py.
+        if block_relay or candidate_body is None:
             relayed_body = {
                 "jsonrpc": "2.0",
                 "id": message.get("id"),
@@ -506,9 +514,7 @@ class McpCallUseCase:
             status=trace_status,
             latency_ms=latency_ms,
         )
-        self._audit(
-            authz=authz, server_host=server_host, tool_name=tool_name, result=audit_result
-        )
+        self._audit(authz=authz, server_host=server_host, tool_name=tool_name, result=audit_result)
 
         if audit_result == "success":
             asyncio.ensure_future(  # noqa: RUF006

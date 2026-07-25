@@ -209,7 +209,7 @@ async def signup(
                 created_by_user_id=user_id,
                 recipient_email=body.email.lower(),
             )
-        except Exception:  # noqa: BLE001 — fail-OPEN: issuance is a convenience, never a signup gate.
+        except Exception:
             _log.warning(
                 "member_verify_issuance_failed (swallowed — fail-open); signup still 201",
                 exc_info=True,

@@ -312,9 +312,7 @@ class OpenAiUsageQueryUseCase:
         buckets: list[dict[str, object]] = []
         for bucket_start in page_buckets:
             start_unix = _naive_utc_to_unix(bucket_start)
-            results = [
-                self._result(endpoint, row) for row in by_bucket.get(bucket_start, [])
-            ]
+            results = [self._result(endpoint, row) for row in by_bucket.get(bucket_start, [])]
             buckets.append(
                 {
                     "object": "bucket",

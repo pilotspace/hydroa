@@ -100,9 +100,10 @@ def apply_tenant_guardrail_floor(
             # the mode back up.
             result = {**result, "mode": tenant_mode}
 
-        if tenant_cfg.get("failure_mode") == "fail_closed" and result.get(
-            "failure_mode", "fail_open"
-        ) != "fail_closed":
+        if (
+            tenant_cfg.get("failure_mode") == "fail_closed"
+            and result.get("failure_mode", "fail_open") != "fail_closed"
+        ):
             # Tenant mandates fail-closed failure handling; the key's
             # effective config (explicitly or via the default) is weaker --
             # clamp it up. Every OTHER field of the key's own config for this

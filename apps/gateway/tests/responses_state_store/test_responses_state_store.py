@@ -740,7 +740,13 @@ def _fault_store_create(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(StoredResponseRepository, "create", _boom)
 
 
-async def _poll_min_records(recorder: FakeUsageRecorder, minimum: int = 1, timeout: float = 5.0) -> None:
+async def _poll_min_records(  # noqa: ASYNC109 — test-helper polling budget, not a
+    # cancellation-scope parameter; the rule targets library APIs that should take a
+    # deadline from the caller's scope instead.
+    recorder: FakeUsageRecorder,
+    minimum: int = 1,
+    timeout: float = 5.0,  # noqa: ASYNC109
+) -> None:
     """Poll until the fire-and-forget usage task lands (fixed-sleep-flake lesson)."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

@@ -94,9 +94,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "tenant_id", name="uq_tenant_priority_markup_overrides_tenant"
-        ),
+        sa.UniqueConstraint("tenant_id", name="uq_tenant_priority_markup_overrides_tenant"),
         sa.CheckConstraint(
             "markup_pct >= 0", name="ck_tenant_priority_markup_overrides_markup_nonneg"
         ),

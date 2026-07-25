@@ -16,9 +16,7 @@ from fastapi import Request
 from gateway.proxy.infrastructure.guardrail_evaluator import RegexGuardrailEvaluator
 
 
-def resolve_guardrail_evaluator(
-    request: Request, tenant_credential_resolver: Any = None
-) -> Any:
+def resolve_guardrail_evaluator(request: Request, tenant_credential_resolver: Any = None) -> Any:
     """Return the guardrail evaluator for a non-chat use-case (chat-parity construction).
 
     Reads app.state.guardrail_evaluator first (tests inject failing evaluators this way),

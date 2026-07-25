@@ -45,9 +45,7 @@ class StoredResponseRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     # Bare pointer, NO FK: a deleted parent leaves an honest dangling echo.
     previous_response_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chain_depth: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    chain_depth: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     context_messages: Mapped[Any] = mapped_column(JSONB, nullable=False)
     response_body: Mapped[Any] = mapped_column(JSONB, nullable=False)
     usage: Mapped[Any] = mapped_column(JSONB, nullable=False)

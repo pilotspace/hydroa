@@ -44,9 +44,6 @@ from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers S
     SamlProviderConfigRow as _SamlProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
-from gateway.finetune.api.router import finetune_router
-from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
-from gateway.finetune_registry.application.registrar import FinetuneModelRegistrar
 from gateway.batches.api.stats_router import batch_stats_router
 from gateway.batches.application.window_flusher import (
     DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
@@ -141,6 +138,9 @@ from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
 from gateway.files.api.router import files_router
+from gateway.finetune.api.router import finetune_router
+from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
+from gateway.finetune_registry.application.registrar import FinetuneModelRegistrar
 from gateway.guardrail_analytics.api.router import guardrail_analytics_router
 from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
     GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -184,10 +184,6 @@ from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_rou
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
 from gateway.proxy.api.responses_router import responses_router
-from gateway.responses_store.api.router import stored_responses_router
-from gateway.responses_store.infrastructure.orm import (  # noqa: F401 — registers StoredResponseRow on Base.metadata
-    StoredResponseRow as _StoredResponseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
-)
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -241,6 +237,10 @@ from gateway.rate_limits.application.passthrough import PassthroughBandwidthBuck
 from gateway.rate_limits.infrastructure.plan_rate_limit_resolver import PlanRateLimitResolver
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
+from gateway.responses_store.api.router import stored_responses_router
+from gateway.responses_store.infrastructure.orm import (  # noqa: F401 — registers StoredResponseRow on Base.metadata
+    StoredResponseRow as _StoredResponseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
 from gateway.scim.api.errors import register_scim_error_handlers
 from gateway.scim.api.scim_router import scim_router
 from gateway.scim.api.token_router import scim_token_router
@@ -310,8 +310,10 @@ from gateway.vector_stores.api.router import vector_stores_router
 from gateway.vector_stores.application.ingest_worker import (
     RedisVectorStoreIngestQueue,
     VectorStoreIngestWorker,
-    recover_orphans as recover_vector_store_ingest_orphans,
     should_start_vector_store_ingest_worker,
+)
+from gateway.vector_stores.application.ingest_worker import (
+    recover_orphans as recover_vector_store_ingest_orphans,
 )
 from gateway.vector_stores.infrastructure.embedding_client import VectorStoreEmbeddingClient
 from gateway.video.api.router import video_router

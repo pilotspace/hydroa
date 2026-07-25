@@ -75,7 +75,12 @@ class IssueMemberVerifyCodeUseCase:
         self._origin = origin
 
     async def execute(
-        self, *, tenant_id: uuid.UUID, domain: str, created_by_user_id: uuid.UUID, recipient_email: str
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        domain: str,
+        created_by_user_id: uuid.UUID,
+        recipient_email: str,
     ) -> None:
         norm = normalize_domain(domain)
         # R-sec-5: generic/public providers never get a code (silent skip — signup 201).
@@ -150,9 +155,7 @@ class VerifyMemberCodeUseCase:
         # R3/R5: wrong code — atomic increment; invalidate at the cap.
         new_count = state.attempt_count + 1
         invalidate = new_count >= self._max_attempts
-        await self._repository.bump_member_verify_attempt(
-            claim_id=claim_id, invalidate=invalidate
-        )
+        await self._repository.bump_member_verify_attempt(claim_id=claim_id, invalidate=invalidate)
         if invalidate:
             raise MemberVerifyTooManyAttemptsError
         raise MemberVerifyCodeInvalidError

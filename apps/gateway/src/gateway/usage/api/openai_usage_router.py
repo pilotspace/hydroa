@@ -57,9 +57,7 @@ async def _serve(
     aggregation_repo = SqlAlchemyUsageAggregationRepository(session)
     use_case = OpenAiUsageQueryUseCase(authz, aggregation_repo)
     try:
-        page = await use_case.execute(
-            endpoint=endpoint, raw_key=_raw_key(request), params=params
-        )
+        page = await use_case.execute(endpoint=endpoint, raw_key=_raw_key(request), params=params)
     except UsageQueryError as err:
         return JSONResponse(status_code=err.status, content={"error": err.code})
     return JSONResponse(status_code=200, content=page)

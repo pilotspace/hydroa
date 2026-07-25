@@ -180,4 +180,4 @@ class OpenAIFinetuneClient:
         raise last_exc
 
 
-__all__ = ["OpenAIFinetuneClient", "CircuitOpenError"]
+__all__ = ["CircuitOpenError", "OpenAIFinetuneClient"]
