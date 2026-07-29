@@ -61,8 +61,14 @@ in an incident. Steps:
      -e POSTGRES_PASSWORD=gateway \
      -e POSTGRES_DB=gateway_restore \
      -p 5434:5432 \
-     postgres:16
+     pgvector/pgvector:pg16
    ```
+
+   > The image must be `pgvector/pgvector:pg16`, not stock `postgres:16`. From 0.13.0
+   > every dump carries `CREATE EXTENSION vector` and a `vector(1536)` column, and a
+   > stock image has no `vector.control` to satisfy them — the restore fails partway,
+   > which is the worst moment to discover it. Pinned by
+   > `apps/gateway/tests/pgvector_deploy/`.
 
 2. **Restore the backup:**
 

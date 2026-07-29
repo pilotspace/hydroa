@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "suite-stability",
+  "active_task": "pgvector-deploy-runbook",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -768,6 +768,58 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "pgvector-deploy-runbook": {
+      "title": "A pgvector-bearing release deploys to managed Postgres from a written runbook",
+      "phase": "done",
+      "gate": "RISK-ACCEPTED",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-07-29T15:07:31+00:00",
+      "updated": "2026-07-29T18:03:15+00:00",
+      "relates_to": [
+        "vector-store-core"
+      ],
+      "sensitivity": "data",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-29T16:05:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "f0a0170410df3241a6912a75b4635839",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "scripts/",
+          "docs/runbooks/",
+          "apps/gateway/tests/pgvector_deploy/",
+          "Makefile"
+        ],
+        "snapshot_md5": "9009adf9311c2f5e193250a8eee5d96e"
+      },
+      "waiver": {
+        "owner": "Tin Dang",
+        "ticket": "M3 operator walkthrough on a real target + M6 provider privilege verification (runbook \u00a73 UNVERIFIED block)",
+        "expires": "2026-09-30"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -843,7 +895,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-29T12:41:09+00:00",
+  "updated": "2026-07-29T18:03:15+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1999,7 +2051,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "suite-stability"
+    "release-integrity": "pgvector-deploy-runbook"
   },
   "todos": [
     {
@@ -2486,6 +2538,12 @@
       "id": 81,
       "text": "suite-stability M14 residual: tests/catalog_refresh_scheduler::test_default_off_not_wired stalled 300s once under -n 6 (2026-07-29 ev1) and did NOT reproduce in the next full run. Evidence brackets it to late lifespan STARTUP or the first shutdown cancel-join; the join is now bounded (M14), the startup branch is not. Suspected mechanism: a startup DB read queued behind per-test DDL (pg sampler caught real relation-lock waits of 0.5s and 3.7s on gw3). If it recurs, the stallwatch plugin recipe is in the task notes. Owner: Tin Dang",
       "created": "2026-07-29T11:45:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 82,
+      "text": "todo #79 concrete sites: tests/response_caching/test_response_caching.py:393 and :1074/:1089 still use bare asyncio.sleep(0.1/0.15) with the comment 'allow fire-and-forget recording'. Failed as 'expected 2 usage rows, found 1' in a slow full run (12m59s vs the usual 6m19s) on 2026-07-29; passes in isolation. Convert to tests._polling.poll_until, the same fix suite-stability M10 applied to the four usage/team_attribution sites. Owner: Tin Dang",
+      "created": "2026-07-29T16:28:55+00:00",
       "status": "open"
     }
   ]

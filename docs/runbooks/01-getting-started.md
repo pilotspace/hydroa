@@ -44,7 +44,7 @@ against.
 
 | Container | Image | Host port |
 |-----------|-------|-----------|
-| `hydroa-e2e-postgres-1` | `postgres:16-alpine` | — (internal) |
+| `hydroa-e2e-postgres-1` | `pgvector/pgvector:pg16` | — (internal) |
 | `hydroa-e2e-redis-1` | `redis:7-alpine` | — (internal) |
 | `hydroa-e2e-gateway-1` | built from `apps/gateway/Dockerfile` | — (internal `:8000`) |
 | `hydroa-e2e-envoy-1` | `envoyproxy/envoy:v1.29-latest` | **8080, 8443, 9901** |

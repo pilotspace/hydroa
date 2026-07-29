@@ -75,6 +75,14 @@ migrate:
 migrate-check:
 	cd $(GATEWAY) && uv run alembic check
 
+# Collation-lineage preflight — run BEFORE any deploy that reuses an existing volume or
+# restores an existing dump. Exit 0 = OK, 1 = FAIL (remedy required), 2 = UNKNOWN
+# ("could not check", never a pass). See docs/runbooks/pgvector-deploy.md.
+#   make pg-preflight DATABASE_URL='postgresql://user:pass@host:5432/db'
+pg-preflight:
+	@test -n "$(DATABASE_URL)" || { echo "usage: make pg-preflight DATABASE_URL='postgresql://...'"; exit 2; }
+	cd $(GATEWAY) && uv run python ../../scripts/pg_preflight.py --database-url '$(DATABASE_URL)'
+
 ci: lint typecheck allowlist allowlist-node test
 	@echo "✅ pipeline green"
 
