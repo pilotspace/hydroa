@@ -27,6 +27,7 @@ from gateway.mcp_connector.domain.entities import McpDialResult
 from gateway.mcp_connector.domain.errors import McpDialTimeoutError, McpRedirectRejectedError
 from gateway.mcp_connector.infrastructure.breaker_registry import McpCircuitBreakerRegistry
 from tests.agent_token_authn_seam.conftest import mint_agent_token
+from tests._polling import poll_until
 from tests.mcp_connector.conftest import (
     MCP_CALL,
     StubMcpDialer,
@@ -90,8 +91,7 @@ async def test_unlisted_server_refused_zero_dials(
     )
     assert_problem(resp, 403, "ERR_MCP_SERVER_NOT_ALLOWED")
 
-    await asyncio.sleep(0.3)
-    rows = await _audit_rows(db_session, owner["tenant_id"], "mcp_call")
+    rows = await poll_until(lambda: _audit_rows(db_session, owner["tenant_id"], "mcp_call"), lambda v: len(v) >= 1)
     assert len(rows) == 1
     assert rows[0][0] == "refused"
 
@@ -234,8 +234,7 @@ async def test_clean_result_passes_through_and_writes_exactly_one_trace_row(
     assert resp.status_code == 200, resp.text
     assert resp.json()["result"]["content"][0]["text"] == "clean result"
 
-    await asyncio.sleep(0.3)
-    rows = await _request_log_rows(db_session, owner["tenant_id"])
+    rows = await poll_until(lambda: _request_log_rows(db_session, owner["tenant_id"]), lambda v: len(v) >= 1)
     assert len(rows) == 1
 
 
@@ -653,8 +652,7 @@ async def test_refused_call_still_writes_one_trace_row(
     )
     assert resp.status_code == 403
 
-    await asyncio.sleep(0.3)
-    rows = await _request_log_rows(db_session, owner["tenant_id"])
+    rows = await poll_until(lambda: _request_log_rows(db_session, owner["tenant_id"]), lambda v: len(v) >= 1)
     assert len(rows) == 1
 
 
@@ -863,8 +861,7 @@ async def test_upstream_credential_never_appears_in_trace_or_audit(
     # The dialer DID receive it (the real upstream call needs it) —
     assert dialer.calls[0]["upstream_headers"] == {"Authorization": secret_header}
 
-    await asyncio.sleep(0.3)
-    rows = await _request_log_rows(db_session, owner["tenant_id"])
+    rows = await poll_until(lambda: _request_log_rows(db_session, owner["tenant_id"]), lambda v: len(v) >= 1)
     assert len(rows) == 1
     for row in rows:
         row_text = str(row)

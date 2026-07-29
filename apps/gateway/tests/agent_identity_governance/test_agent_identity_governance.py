@@ -50,6 +50,7 @@ from gateway.proxy.application.governance import NonChatGovernance
 from gateway.proxy.domain.ports import ModelAccess
 from gateway.tenants.domain.entities import Role
 from tests.agent_identity_governance.conftest import mint_agent_token, mint_role_jwt
+from tests._polling import poll_until
 
 _AGENTS = "/admin/agents"
 
@@ -406,9 +407,8 @@ async def test_agent_principal_spend_counter_increments_and_enforces_on_next_cal
     assert first.status_code == 200, first.text
 
     # Fire-and-forget recorder coroutine — allow it to complete.
-    await asyncio.sleep(0.3)
 
-    raw = await redis_client.get(spend_key)
+    raw = await poll_until(lambda: redis_client.get(spend_key), lambda v: v is not None)
     assert raw is not None, (
         f"usage:spend:agent_principal:{principal['id']}:<YYYYMM> was never written — "
         "the write-side INCR did not fire"

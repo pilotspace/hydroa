@@ -109,7 +109,6 @@ class FinetuneJobRepository:
                 status=status,
                 provider_job_id=provider_job_id,
                 error=error,
-                updated_at=datetime.now(tz=UTC),
                 finished_at=datetime.now(tz=UTC) if status in TERMINAL_STATUSES else None,
             )
         )
@@ -132,8 +131,14 @@ class FinetuneJobRepository:
         fine_tuned_model is persisted verbatim ONLY when new_status=="succeeded";
         otherwise the existing column value is left untouched.
         """
+        # updated_at is NOT named: the column's `onupdate=func.now()` owns it (M9).
+        # finished_at IS app-clock, deliberately — that column has no server_default
+        # (DEFAULT NULL), so the app clock is its only writer and there is no second
+        # clock to disagree with. It must also stay a plain Python value: a SQL
+        # function here is not evaluatable, so `synchronize_session` would EXPIRE the
+        # in-session row, and the SYNC serializer `_job_object` reads `row.finished_at`.
         now = datetime.now(tz=UTC)
-        values: dict[str, Any] = {"status": new_status, "updated_at": now}
+        values: dict[str, Any] = {"status": new_status}
         if new_status in TERMINAL_STATUSES:
             values["finished_at"] = now
         if new_status == "succeeded":
@@ -165,7 +170,6 @@ class FinetuneJobRepository:
             )
             .values(
                 status="cancelled",
-                updated_at=datetime.now(tz=UTC),
                 finished_at=datetime.now(tz=UTC),
             )
             .returning(FinetuneJobRow.id)

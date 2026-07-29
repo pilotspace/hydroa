@@ -16,11 +16,13 @@ context so asyncpg uses the same loop throughout.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -77,6 +79,34 @@ class _RaiseSTT:
 # ---------------------------------------------------------------------------
 
 
+def _bootstrap_schema(settings: Settings) -> None:
+    """Build this suite's schema BEFORE the app lifespan starts.
+
+    This suite manages its own schema (it deliberately bypasses the shared
+    conftest `app` fixture). It used to do that from INSIDE a live TestClient,
+    which races the ~18 `run_forever()` tasks the lifespan starts: several of
+    them query these very tables, so `drop_all` and a background query deadlock
+    on the same relations. Postgres picked us as the victim and the run showed
+    `DeadlockDetectedError: DROP TABLE alert_events`, with the partner named in
+    the log as `catalog_refresh: refresh_once failed (swallowed)`.
+
+    Doing the DDL before `__enter__` removes the concurrency rather than racing
+    it — there are no background tasks yet. Own engine, own loop, disposed
+    immediately, so nothing is shared across event loops.
+    """
+
+    async def _run() -> None:
+        engine = create_async_engine(settings.database_url)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
@@ -89,7 +119,9 @@ def settings() -> Settings:
 
 @pytest.fixture
 def app_with_stubs(settings: Settings) -> Any:
-    """Create app and install stubs on app.state. Schema bootstrapped inside TestClient context."""
+    """Create app and install stubs on app.state. Schema is bootstrapped HERE — before
+    any TestClient enters, so the DDL cannot race the lifespan's background tasks."""
+    _bootstrap_schema(settings)
     application = create_app(settings)
     application.state.realtime_stt = _stub_stt
     application.state.realtime_chat = _stub_chat
@@ -109,50 +141,46 @@ def client_and_key(app_with_stubs: Any) -> tuple[TestClient, str]:
     # Use TestClient as a context manager so the anyio loop is live for all DB operations.
     # We do NOT use `with` here because we want to return the open client to the test.
     # Instead we manage entry/exit manually via __enter__/__exit__.
+    #
+    # EVERYTHING after __enter__ is wrapped in try/finally (suite-stability M7). The
+    # app lifespan starts ~18 `run_forever()` background tasks and cancels them only
+    # on shutdown; if a bootstrap step below raises, an exit placed after `yield` is
+    # never reached, so those tasks outlive the test and keep the xdist worker's
+    # event loop alive FOREVER. That is not theoretical — it stalled a full run for
+    # 10h23m on 2026-07-26 with a `brpop` client still looping in Redis, and printed
+    # no summary line. Guarded by
+    # tests/repo_hygiene/test_repo_hygiene.py::test_no_fixture_enters_a_lifespan_without_exiting_it.
     tc = TestClient(app, raise_server_exceptions=True)
     tc.__enter__()  # starts the anyio loop + app lifespan
+    try:
+        # Seed: signup → login → create key
+        signup = tc.post(
+            "/admin/auth/signup",
+            json={
+                "tenant_name": "RealtimeTest",
+                "email": "realtime-test@example.io",
+                "password": "realtime battery test",
+            },
+        )
+        assert signup.status_code == 201, f"signup failed: {signup.text}"
 
-    # Bootstrap schema (inside the live anyio loop)
-    import asyncio
+        login = tc.post(
+            "/admin/auth/login",
+            json={"email": "realtime-test@example.io", "password": "realtime battery test"},
+        )
+        token = login.json()["access_token"]
 
-    async def _bootstrap() -> None:
-        engine = app.state.engine
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
+        created = tc.post(
+            "/admin/keys",
+            json={"name": "realtime-ci"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert created.status_code == 201, f"key creation failed: {created.text}"
+        sk_key: str = created.json()["key"]
 
-    # Run bootstrap via the TestClient's portal (anyio from_thread)
-    # TestClient exposes its anyio portal via .portal attribute (set by __enter__)
-    tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
-    # Seed: signup → login → create key
-    signup = tc.post(
-        "/admin/auth/signup",
-        json={
-            "tenant_name": "RealtimeTest",
-            "email": "realtime-test@example.io",
-            "password": "realtime battery test",
-        },
-    )
-    assert signup.status_code == 201, f"signup failed: {signup.text}"
-
-    login = tc.post(
-        "/admin/auth/login",
-        json={"email": "realtime-test@example.io", "password": "realtime battery test"},
-    )
-    token = login.json()["access_token"]
-
-    created = tc.post(
-        "/admin/keys",
-        json={"name": "realtime-ci"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert created.status_code == 201, f"key creation failed: {created.text}"
-    sk_key: str = created.json()["key"]
-
-    yield tc, sk_key
-
-    tc.__exit__(None, None, None)
+        yield tc, sk_key
+    finally:
+        tc.__exit__(None, None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -241,17 +269,6 @@ def test_bad_auth_closes_4401(app_with_stubs: Any) -> None:
     """An invalid/missing token in the auth frame → server closes with 4401."""
     app = app_with_stubs
     with TestClient(app, raise_server_exceptions=True) as tc:
-        # Bootstrap schema
-        import asyncio
-
-        async def _bootstrap() -> None:
-            engine = app.state.engine
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)
-                await conn.run_sync(Base.metadata.create_all)
-
-        tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with tc.websocket_connect("/v1/realtime") as ws:
                 ws.send_json({"type": "auth", "token": "sk-invalid-bad-token"})
@@ -263,16 +280,6 @@ def test_first_frame_not_auth_closes_4401(app_with_stubs: Any) -> None:
     """First frame is binary (not auth JSON) → server closes with 4401."""
     app = app_with_stubs
     with TestClient(app, raise_server_exceptions=True) as tc:
-        import asyncio
-
-        async def _bootstrap() -> None:
-            engine = app.state.engine
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)
-                await conn.run_sync(Base.metadata.create_all)
-
-        tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with tc.websocket_connect("/v1/realtime") as ws:
                 ws.send_bytes(b"audio-before-auth")
@@ -284,16 +291,6 @@ def test_first_frame_commit_not_auth_closes_4401(app_with_stubs: Any) -> None:
     """First frame is a commit frame (wrong type, not 'auth') → 4401."""
     app = app_with_stubs
     with TestClient(app, raise_server_exceptions=True) as tc:
-        import asyncio
-
-        async def _bootstrap() -> None:
-            engine = app.state.engine
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)
-                await conn.run_sync(Base.metadata.create_all)
-
-        tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with tc.websocket_connect("/v1/realtime") as ws:
                 ws.send_json({"type": "commit", "model_stt": MODEL_STT})
@@ -308,16 +305,6 @@ def test_auth_timeout_closes_4408(app_with_stubs: Any) -> None:
     app.state.settings.realtime_auth_timeout_seconds = 0.05
 
     with TestClient(app, raise_server_exceptions=True) as tc:
-        import asyncio
-
-        async def _bootstrap() -> None:
-            engine = app.state.engine
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)
-                await conn.run_sync(Base.metadata.create_all)
-
-        tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
         with pytest.raises(WebSocketDisconnect) as exc_info:
             with tc.websocket_connect("/v1/realtime") as ws:
                 time.sleep(0.3)  # outlast the timeout

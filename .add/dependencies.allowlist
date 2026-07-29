@@ -51,5 +51,15 @@ pytest-rerunfailures  # flaky-quarantine for the shared-Postgres suites (todos #
 pytest-xdist          # parallel suite execution (-n 6 --dist loadscope, ~4.6x on this
                       # host, PR #70); each worker gets a private Postgres database and
                       # Redis logical db via tests/_redis_env.py. Test-only.
+pytest-timeout        # suite-stability M8 (R6, 2026-07-26) — hang tripwire. A leaked app
+                      # lifespan parked an xdist worker for 10h23m with no summary line and
+                      # nothing naming the test; the only diagnosis route was inspecting the
+                      # live process. This fails an overrunning test with a stack instead, so
+                      # the next hang costs minutes rather than a blind ten hours. Test-only,
+                      # never imported by src/. Chosen over rolling our own SIGALRM handler because it
+                      # already handles the xdist-worker and fixture-teardown cases correctly.
+                      # KNOWN LIMIT: it bounds a TEST, so a stall in session teardown — after
+                      # the last test — is still silent. Accepted; the observed leak stalls
+                      # inside a test.
 ruff
 pyright

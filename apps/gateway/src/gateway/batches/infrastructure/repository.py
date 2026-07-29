@@ -23,7 +23,6 @@ Methods:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -189,14 +188,13 @@ class BatchJobRepository:
 
     async def set_in_progress(self, *, job_id: uuid.UUID) -> None:
         """Transition to status=in_progress — only from validating (idempotent otherwise)."""
-        now = datetime.now(tz=UTC)
         await self._session.execute(
             update(BatchJobRow)
             .where(
                 BatchJobRow.id == job_id,
                 BatchJobRow.status == "validating",
             )
-            .values(status="in_progress", updated_at=now)
+            .values(status="in_progress")
         )
         await self._session.flush()
 
@@ -207,14 +205,13 @@ class BatchJobRepository:
         A terminal job never leaves pending items behind (TASK.md §1 Must / §2 Scenario
         "A terminal job never leaves pending items behind").
         """
-        now = datetime.now(tz=UTC)
         result = await self._session.execute(
             update(BatchJobRow)
             .where(
                 BatchJobRow.id == job_id,
                 BatchJobRow.status.in_(_JOB_NONTERMINAL_STATUSES),
             )
-            .values(status="failed", error=error, updated_at=now)
+            .values(status="failed", error=error)
             .returning(BatchJobRow.id)
         )
         transitioned = result.fetchone() is not None
@@ -225,7 +222,7 @@ class BatchJobRepository:
                     BatchJobItemRow.batch_job_id == job_id,
                     BatchJobItemRow.status == "pending",
                 )
-                .values(status="errored", error=error, updated_at=now)
+                .values(status="errored", error=error)
             )
         await self._session.flush()
 
@@ -247,7 +244,6 @@ class BatchJobRepository:
             )
             .values(
                 retry_count=BatchJobRow.retry_count + 1,
-                updated_at=datetime.now(tz=UTC),
             )
             .returning(BatchJobRow.retry_count)
         )

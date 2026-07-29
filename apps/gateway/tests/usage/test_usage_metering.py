@@ -38,6 +38,42 @@ SSE_CHUNKS_WITH_USAGE: list[bytes] = [
 COMPLETIONS = "/v1/chat/completions"
 ADMIN_USAGE = "/admin/usage"
 
+
+async def _flush_until_rows(
+    flusher: Any, db_session: AsyncSession, tenant_id: Any, expected: int
+) -> list[Any]:
+    """Flush repeatedly until `expected` ledger rows exist, then return them.
+
+    usage_recorder.record() is fire-and-forget — `use_cases.py` wraps it in
+    `asyncio.ensure_future`, so the XADD lands AFTER the HTTP response returns.
+    A single flush_once() right after the POST therefore races the write.
+
+    That race was invisible until suite-stability M10, because flush_once issued
+    `XREADGROUP ... BLOCK 0` — which in Redis means "block FOREVER", so the read
+    waited (up to redis-py's 5s socket timeout) for the entry to show up. Once the
+    read became genuinely non-blocking the hidden wait vanished and these tests
+    read an empty stream. The wait is now EXPLICIT and bounded, and re-flushes each
+    round because the entry has to be re-READ, not just re-queried.
+
+    The caller still makes the real assertion on the returned rows, so a write that
+    never lands fails exactly as before — just later.
+    """
+    from tests._polling import poll_until
+
+    async def _fetch() -> list[Any]:
+        await flusher.flush_once()
+        return list(
+            (
+                await db_session.execute(
+                    text("SELECT * FROM usage_records WHERE tenant_id = :tid"),
+                    {"tid": tenant_id},
+                )
+            ).fetchall()
+        )
+
+    return await poll_until(_fetch, lambda rows: len(rows) >= expected)
+
+
 # ---------------------------------------------------------------------------
 # Helpers / fakes
 # ---------------------------------------------------------------------------
@@ -261,14 +297,7 @@ async def test_non_streaming_ledger_row_correct_decimal_cost(
     assert resp.status_code == 200
 
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
-
-    rows = (
-        await db_session.execute(
-            text("SELECT * FROM usage_records WHERE tenant_id = :tid"),
-            {"tid": api_key["tenant_id"]},
-        )
-    ).fetchall()
+    rows = await _flush_until_rows(flusher, db_session, api_key["tenant_id"], 1)
 
     assert len(rows) == 1
     row = rows[0]._mapping  # type: ignore[union-attr]
@@ -335,14 +364,7 @@ async def test_streaming_usage_extracted_from_sse_and_priced(
     assert resp.content == b"".join(SSE_CHUNKS_WITH_USAGE)
 
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
-
-    rows = (
-        await db_session.execute(
-            text("SELECT * FROM usage_records WHERE tenant_id = :tid"),
-            {"tid": api_key["tenant_id"]},
-        )
-    ).fetchall()
+    rows = await _flush_until_rows(flusher, db_session, api_key["tenant_id"], 1)
 
     assert len(rows) == 1
     row = rows[0]._mapping  # type: ignore[union-attr]
@@ -909,3 +931,38 @@ async def test_normal_record_carries_explicit_id_and_flusher_uses_it(
         )
     ).scalar()
     assert count_second == 1, "double-flush must stay idempotent on the explicit id"
+
+
+async def test_flush_once_returns_promptly_when_stream_is_drained(
+    app: Any, redis_client: Any
+) -> None:
+    """An idle flush cycle must return immediately, not burn the socket timeout.
+
+    Redis `XREADGROUP ... BLOCK 0` means "block FOREVER", not "do not block" —
+    the opposite of what this module's own docstring claimed. redis-py's 5s
+    DEFAULT_SOCKET_TIMEOUT was the only thing ending it, so every cycle with
+    nothing to read cost 5s, raised redis.TimeoutError, dropped the connection
+    and logged a WARNING with a full traceback. `block=None` omits BLOCK, which
+    is the actual non-blocking form.
+
+    Threshold is 1.0s against a 5s socket timeout: generous enough that a loaded
+    host cannot make a genuinely prompt call look slow, tight enough that it
+    cannot pass while the call still blocks.
+    """
+    import time
+
+    from gateway.usage.application.flusher import UsageLedgerFlusher
+
+    flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
+    # First call creates the consumer group (MKSTREAM) and drains anything present,
+    # so the SECOND call is the genuine "nothing to read" cycle under measurement.
+    await flusher.flush_once()
+
+    started = time.monotonic()
+    await flusher.flush_once()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 1.0, (
+        f"flush_once() on a drained stream took {elapsed:.2f}s — it is blocking. "
+        "XREADGROUP must be issued without BLOCK (block=None); BLOCK 0 blocks forever."
+    )

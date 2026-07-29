@@ -25,6 +25,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
 from tests.payload_capture.test_payload_capture_store import (
     ADMIN_CAPTURE,
     COMPLETIONS,
@@ -88,9 +89,7 @@ async def test_repro_capture_on_without_guardrails_persists_raw_pii(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_rows(db_session, tenant_id)
+    rows = await poll_until(lambda: _request_log_rows(db_session, tenant_id), lambda v: len(v) >= 1)
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     req_body, resp_body, scrub_status, truncated, stream, cached = rows[0]
     dumped = json.dumps(req_body) + json.dumps(resp_body)

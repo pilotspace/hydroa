@@ -18,6 +18,8 @@ Scenarios (one test per TASK.md §2 scenario):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import asyncio
 import datetime
 import uuid
@@ -26,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import text
+from tests._polling import poll_until
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # ---------------------------------------------------------------------------
@@ -175,7 +178,7 @@ def _make_sweeper(app: Any, settings: Any) -> RetentionSweeper:
 
 
 @pytest.fixture
-async def audit_trigger_session(db_session: AsyncSession, app: Any) -> AsyncSession:
+async def audit_trigger_session(db_session: AsyncSession, app: Any) -> AsyncIterator[AsyncSession]:
     """Apply audit_events_immutable_guard trigger to the test DB.
 
     Base.metadata.create_all creates the table without the trigger (migration
@@ -211,7 +214,16 @@ async def audit_trigger_session(db_session: AsyncSession, app: Any) -> AsyncSess
         """)
     )
     await db_session.commit()
-    return db_session
+    try:
+        yield db_session
+    finally:
+        # suite-stability M2: the schema is now built ONCE per xdist worker, so a
+        # trigger installed here survives every later test on this worker. Under the
+        # old per-test drop_all, DROP TABLE took it with them. Drop it explicitly.
+        await db_session.execute(
+            text("DROP TRIGGER IF EXISTS audit_events_immutable_guard ON audit_events")
+        )
+        await db_session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -650,18 +662,20 @@ async def test_purge_is_audited(client: Any, db_session: AsyncSession, app: Any)
     result = await sweeper.sweep_once()
     assert result.get("usage_records", 0) == 5, f"Expected 5 usage rows purged, got {result}"
 
-    # Allow background audit tasks to complete
-    await asyncio.sleep(0.1)
-
-    # Check that a data.purge audit event was emitted
-    audit_check = await db_session.execute(
-        text(
-            "SELECT COUNT(*) FROM audit_events"
-            " WHERE action = 'data.purge' AND target_type = 'retention'"
-            " AND target_id = 'usage_records'"
+    # Allow background audit tasks to complete — POLL, don't sleep a fixed 0.1 s.
+    # A fixed sleep passes on an idle machine and fails under `-n 6` on a loaded
+    # host; it did exactly that on 2026-07-29 ("got 0").
+    async def _audit_count() -> int:
+        audit_check = await db_session.execute(
+            text(
+                "SELECT COUNT(*) FROM audit_events"
+                " WHERE action = 'data.purge' AND target_type = 'retention'"
+                " AND target_id = 'usage_records'"
+            )
         )
-    )
-    count = audit_check.scalar()
+        return audit_check.scalar() or 0
+
+    count = await poll_until(_audit_count, lambda n: n >= 1)
     assert count >= 1, f"Expected at least one data.purge audit event, got {count}"
 
 

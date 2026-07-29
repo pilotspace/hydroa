@@ -36,6 +36,7 @@ dev = [
     "pytest-cov>=6.0",
     "pytest-xdist>=3.6",
     "pytest-rerunfailures>=14.0",
+    "pytest-timeout>=2.3",
     "ruff>=0.9",
     "pyright>=1.1.390",
 ]
@@ -246,6 +247,18 @@ reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# suite-stability M8 — a hang must be LOUD. Without this a stalled test simply
+# stops the run: on 2026-07-26 a leaked app lifespan parked a worker for 10h23m
+# and printed nothing naming the test. `timeout` fails the overrunning test with
+# a stack instead. 300 s is ~4x the slowest legitimate test observed (realtime,
+# ~98 s for the whole module). method=signal, verified rather than assumed: it
+# interrupts the exact frame the real hang sat in (selectors.py `_selector.control`,
+# i.e. kevent) and lets the REST of the session continue. timeout_method=thread was
+# tried first and rejected — it kills the whole worker process, losing every
+# remaining test on that node to punish one slow one.
+# Pinned by tests/repo_hygiene/test_repo_hygiene.py::test_hang_tripwire_is_armed.
+timeout = 300
+timeout_method = "signal"
 testpaths = ["tests"]
 markers = [
     "e2e: end-to-end tests requiring the infra/docker-compose.e2e.yml stack (excluded by default)",

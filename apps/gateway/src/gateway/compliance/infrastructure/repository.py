@@ -41,7 +41,6 @@ class ReportScheduleRepository:
         day_of_month: int,
         created_by: uuid.UUID | None,
         next_run_at: datetime | None,
-        now: datetime,
     ) -> TenantReportScheduleRow:
         """Insert-or-update the tenant's one schedule row; returns the resulting row."""
         existing = await self.get(tenant_id)
@@ -51,8 +50,6 @@ class ReportScheduleRepository:
                 enabled=enabled,
                 day_of_month=day_of_month,
                 created_by=created_by,
-                created_at=now,
-                updated_at=now,
                 next_run_at=next_run_at,
             )
             self._session.add(row)
@@ -62,7 +59,6 @@ class ReportScheduleRepository:
 
         existing.enabled = enabled
         existing.day_of_month = day_of_month
-        existing.updated_at = now
         existing.next_run_at = next_run_at
         if created_by is not None:
             existing.created_by = created_by
