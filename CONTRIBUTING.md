@@ -14,8 +14,22 @@ Required checks on `main`:
 | `gateway` | `.github/workflows/ci.yml` | lint · typecheck · dependency allow-lists · full gateway suite · Alembic migration parity |
 | `dashboard` | `.github/workflows/ci.yml` | vitest suite · `next build` |
 
-`enforce_admins` is on: repository admins are **not** exempt. Apply or re-apply the
-protection with `.github/branch-protection.sh` (needs `repo` admin rights).
+The rule above is the standard this repo holds itself to. Be precise about what is
+currently **enforced by GitHub** versus what is enforced by convention, because the two
+are not the same today:
+
+> **NOT YET MECHANICALLY ENFORCED.** Branch protection is **not** configured on `main`,
+> and cannot be until the plan changes. `pilotspace` is on the GitHub **free** plan and
+> `hydroa` is **private**; the protection API is a paid-plan feature for private repos,
+> so `.github/branch-protection.sh` currently fails with
+> `403 — Upgrade to GitHub Pro or make this repository public`. Until that is resolved,
+> every statement below about required checks and `enforce_admins` describes the
+> **intended** gate, and the actual gate is reviewer discipline. Owner: Tin Dang.
+
+Once the plan supports it, apply (and re-apply) the protection with
+`.github/branch-protection.sh` — it sets `enforce_admins: true`, so repository admins
+are **not** exempt. Verify with the `gh api` call in that script's header; treat the
+gate as in force only when that call reports the required contexts back.
 
 `kind-e2e` (`.github/workflows/kind-e2e.yml`) is deliberately **not** required. It is
 path-filtered, so it reports no status at all on a PR that touches none of its paths —

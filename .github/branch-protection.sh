@@ -7,6 +7,17 @@
 # Needs repository-admin rights on pilotspace/hydroa. Idempotent — re-run it any time
 # to re-assert the protection (e.g. after someone relaxes it).
 #
+# PREREQUISITE — A PAID PLAN. Verified 2026-07-30: this script currently FAILS with
+#   403 — "Upgrade to GitHub Pro or make this repository public to enable this feature"
+# because `pilotspace` is on the GitHub **free** plan and `hydroa` is **private**, and
+# the branch-protection API is a paid-plan feature for private repositories.
+#
+# This is a SECOND, INDEPENDENT blocker from the Actions-runner billing fault (jobs
+# ending at 0 steps). Fixing the runner billing does NOT make this script work; the org
+# must move to Team/Pro, or the repo must become public. Both blockers have to clear
+# before the merge gate in CONTRIBUTING.md is mechanically enforced rather than
+# aspirational. Until then the script is the recorded intent, not the active control.
+#
 # `kind-e2e` is deliberately absent from the required set: it is path-filtered, so it
 # reports no status at all on a PR touching none of its paths, and a required
 # path-filtered check deadlocks such a PR permanently. See CONTRIBUTING.md.
