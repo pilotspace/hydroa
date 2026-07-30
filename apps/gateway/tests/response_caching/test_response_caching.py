@@ -85,6 +85,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_for_count, poll_until
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -387,20 +388,26 @@ async def test_key_enabled_cache_hit(
         "cached response body should be byte-identical to original"
     )
 
-    # Verify usage row 2 has cached=true and cost_usd=0
-    # Allow a moment for fire-and-forget recording to complete
-    import asyncio
-    await asyncio.sleep(0.1)
-
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT cost_usd, raw FROM usage_records"
-                " WHERE key_id = :kid ORDER BY created_at ASC"
-            ),
-            {"kid": key_info["key_id"]},
+    # Verify usage row 2 has cached=true and cost_usd=0.
+    # Both rows are written fire-and-forget, so they land AFTER the HTTP response
+    # returns. The fixed `await asyncio.sleep(0.1)` this replaces failed twice under
+    # `-n 6` with "expected 2 usage rows, found 1" (todo #82) — the write had simply
+    # not landed inside the window.
+    async def _fetch_rows() -> list[Any]:
+        db_session.expire_all()
+        return list(
+            (
+                await db_session.execute(
+                    text(
+                        "SELECT cost_usd, raw FROM usage_records"
+                        " WHERE key_id = :kid ORDER BY created_at ASC"
+                    ),
+                    {"kid": key_info["key_id"]},
+                )
+            ).fetchall()
         )
-    ).fetchall()
+
+    rows = await poll_for_count(_fetch_rows, 2)
 
     # Two usage rows should exist (one per request)
     assert len(rows) == 2, f"expected 2 usage rows, found {len(rows)}"
@@ -1071,13 +1078,20 @@ async def test_spend_counter_not_incremented_on_cache_hit(
     # First request: miss → upstream called → spend counter incremented
     resp1 = await client.post(COMPLETIONS, json=payload, headers=api_headers)
     assert resp1.status_code == 200
-    await asyncio.sleep(0.15)  # allow fire-and-forget recording
 
     import datetime
 
     yyyymm = datetime.datetime.now(datetime.UTC).strftime("%Y%m")
     spend_key = f"usage:spend:key:{key_id}:{yyyymm}"
-    spend_after_miss = float((await redis_client.get(spend_key)) or b"0")
+
+    async def _spend() -> float:
+        return float((await redis_client.get(spend_key)) or b"0")
+
+    # POSITIVE wait — the counter MUST appear; same fire-and-forget race as above.
+    spend_after_miss = await poll_until(_spend, lambda value: value > 0)
+    # poll_until returns the LAST value even on timeout, so this assertion still carries
+    # the test. Without it a counter that never moves reads 0.0 here AND 0.0 below, and
+    # the "must not change" assertion below would pass vacuously.
     assert spend_after_miss > 0, (
         f"spend counter should be > 0 after first request (miss), got {spend_after_miss}"
     )
@@ -1086,9 +1100,13 @@ async def test_spend_counter_not_incremented_on_cache_hit(
     resp2 = await client.post(COMPLETIONS, json=payload, headers=api_headers)
     assert resp2.status_code == 200
     assert resp2.headers.get("x-cache") == "hit"
+    # DELIBERATELY a fixed sleep, not poll_until. This assertion is NEGATIVE — the
+    # counter must NOT move — and polling would return the instant the current value is
+    # read, never giving an unwanted write the chance to appear. Converting this one
+    # would turn a real assertion into a vacuous one; see tests/_polling.py's warning.
     await asyncio.sleep(0.15)
 
-    spend_after_hit = float((await redis_client.get(spend_key)) or b"0")
+    spend_after_hit = await _spend()
     assert spend_after_hit == spend_after_miss, (
         f"spend counter should not change on cache hit: "
         f"before={spend_after_miss}, after={spend_after_hit}"
