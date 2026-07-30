@@ -308,13 +308,34 @@ def test_runbook_documents_every_preflight_status() -> None:
         )
 
 
-def test_runbook_covers_both_deploy_shapes() -> None:
-    """Both supported shapes, each with its own remedy. covers: M3"""
+def test_runbook_covers_the_supported_deploy_shape() -> None:
+    """The one supported shape, with both remedies. covers: M3"""
     body = PGVECTOR_RUNBOOK.read_text().lower()
     assert "statefulset" in body, "the in-cluster StatefulSet PVC path is not covered"
-    assert "managed" in body, "the managed-Postgres path is not covered"
     assert "reindex" in body, "REINDEX (same-cluster remedy) is not documented"
     assert "dump" in body and "restore" in body, "the dump/restore remedy is not documented"
+
+
+def test_runbook_declares_managed_postgres_unsupported() -> None:
+    """Out-of-scope must be SAID, not merely omitted. covers: M3 (CR v3)
+
+    Managed Postgres was dropped from scope on 2026-07-30. Simply deleting the section
+    would leave the next reader unable to tell "we decided against this" from "nobody
+    has written it yet" — and the second reading invites someone to improvise one.
+    """
+    body = PGVECTOR_RUNBOOK.read_text().lower()
+    # The disclaimer has to be ABOUT managed Postgres. A bare "not supported" anywhere in
+    # the document would satisfy a looser check while saying nothing about this decision.
+    declarations = [
+        line
+        for line in body.splitlines()
+        if "managed postgres" in line
+        and ("not a supported target" in line or "not supported" in line)
+    ]
+    assert declarations, (
+        "the runbook must state plainly, in one line, that MANAGED POSTGRES is out of "
+        "scope; its silent absence reads as an omission rather than a decision"
+    )
 
 
 def test_runbook_documents_interrupted_remedy_rollback() -> None:
@@ -335,17 +356,25 @@ def test_runbook_warns_against_refresh_collation_version() -> None:
     )
 
 
-def test_provider_privilege_claims_are_evidenced() -> None:
-    """No bare provider assertions. covers: M6, R:unverified_provider_claim"""
-    body = PGVECTOR_RUNBOOK.read_text()
-    for claim in ("rds_superuser", "RDS_SUPERUSER"):
-        if claim in body:
-            assert "UNVERIFIED" in body or "http" in body, (
-                f"the runbook asserts {claim!r} without a citation or an explicit "
-                "UNVERIFIED marker — a provider privilege claim written from memory "
-                "is how a runbook sends an operator down the wrong path"
-            )
-            break
+def test_runbook_makes_no_provider_privilege_claim() -> None:
+    """With no managed target, there is nothing to verify a claim against. covers: M6, R:unverified_provider_claim
+
+    CR v3. While the target was undecided, an UNVERIFIED marker was the honest hedge.
+    Once the answer is "there is no managed target", the same text stops being a hedge
+    and becomes an invitation to act on unchecked guidance about a platform nobody here
+    runs — so the claim is gone entirely, role name included.
+    """
+    body = PGVECTOR_RUNBOOK.read_text().lower()
+    offenders = [
+        token
+        for token in ("rds_superuser", "azure.extensions", "cloudsql.enable_pgvector")
+        if token in body
+    ]
+    assert not offenders, (
+        f"the runbook still carries provider privilege claims {offenders}; with managed "
+        "Postgres out of scope there is no live instance to verify them against, so they "
+        "cannot be written down at all"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

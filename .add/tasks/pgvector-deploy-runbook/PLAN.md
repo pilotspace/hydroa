@@ -58,17 +58,19 @@ Must:
   - M2 the preflight is honest about the case it cannot judge: a database it cannot
     reach, or a Postgres too old to expose the version, reports UNKNOWN and exits
     non-zero — never a green that means "not checked".
-  - M3 a written runbook covers BOTH supported deploy shapes — the in-cluster
-    StatefulSet PVC (`charts/ai-proxy`) and managed Postgres (`cloud-deploy.md`'s
-    EKS/GKE/AKS) — and states, for each, the REMEDY when the preflight fails (REINDEX
-    vs dump/restore) and the rollback if the remedy is interrupted.
+  - M3 (NARROWED, CR v3) a written runbook covers the ONE supported deploy shape, the
+    in-cluster StatefulSet PVC (`charts/ai-proxy`), and states the REMEDY when the
+    preflight fails (REINDEX vs dump/restore) and the rollback if the remedy is
+    interrupted. It must ALSO state plainly that managed Postgres is not a supported
+    target — silence would read as "not documented yet" rather than "out of scope".
   - M4 the restore drill in `backup-rollback.md` works for a pgvector-bearing dump: the
     image it names can serve `CREATE EXTENSION vector`.
   - M5 no Postgres image pinned anywhere in `docs/runbooks/` may drift from the single
     deployed pin — the same parity the code paths already enforce.
-  - M6 every managed-provider privilege claim in the runbook (e.g. `CREATE EXTENSION
-    vector` requiring `rds_superuser`) is either VERIFIED against that provider with the
-    evidence cited, or explicitly marked UNVERIFIED with what would settle it.
+  - M6 (NARROWED, CR v3) the runbook makes NO managed-provider privilege claim at all.
+    With managed Postgres out of scope there is no target to verify against, and the
+    honest move is to delete the speculation rather than keep an UNVERIFIED block that
+    invites someone to act on it.
 </must>
 Reject:
 <reject>
@@ -165,7 +167,24 @@ root Makefile is `./../../../Makefile`, the same form the ci-restoration task us
 root files. Nothing about the contract, the Musts or the tests changed — caught at the
 freeze output rather than as a scope_violation at the gate.
 
-Status: FROZEN @ v2 — approved by Tin Dang
+CR v3 (2026-07-30) — Tin: the deploy target is the in-cluster StatefulSet ONLY; there
+is no managed Postgres. NARROWING, decided after the build rather than guessed before it.
+
+M3 loses the managed-Postgres shape and M6 loses the provider-privilege obligation,
+because with no managed target there is nothing to verify a claim against. The v2
+runbook carried an explicit UNVERIFIED block describing RDS/Cloud SQL/Azure behaviour
+from general knowledge; that block is now DELETED rather than left in place. An
+UNVERIFIED marker is the right hedge while a target is still undecided — once the answer
+is "there is no such target", the same text stops being a hedge and becomes an invitation
+to act on unverified guidance about a platform we do not run.
+
+The runbook still SAYS managed Postgres is unsupported. Deleting the section outright
+would leave a reader unable to tell "out of scope" from "nobody wrote it yet".
+
+This closes the M6 half of the task's RISK-ACCEPTED gate. The other half — that nobody
+has WALKED the runbook on a real target — is unaffected and still open.
+
+Status: FROZEN @ v3 — approved by Tin Dang
 Reported: no
 
 ### Build-strategy — Scope (may touch) is HARD scope-lock; the rest is SOFT (the builder self-improves and records actual at verify)
@@ -215,8 +234,11 @@ Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
   - test_runbook_documents_every_preflight_status: parse docs/runbooks/pgvector-deploy.md;
     assert OK, FAIL and UNKNOWN each appear with a remedy or next action — an operator
     hitting UNKNOWN at 3am must not find it undocumented · covers: M3, R:unverifiable_runbook
-  - test_runbook_covers_both_deploy_shapes: assert the runbook names both the in-cluster
-    StatefulSet PVC path and the managed-Postgres path, each with its own remedy section
+  - test_runbook_covers_the_supported_deploy_shape: assert the runbook names the
+    in-cluster StatefulSet PVC path with both remedies (REINDEX, dump/restore)
+    · covers: M3
+  - test_runbook_declares_managed_postgres_unsupported: assert the runbook says managed
+    Postgres is NOT supported, so its absence cannot be misread as an omission
     · covers: M3
   - test_runbook_documents_interrupted_remedy_rollback: assert each remedy section states
     what to do if it is interrupted midway · covers: M3
@@ -232,9 +254,10 @@ Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
     vector(1536) column, restore it into a container started from the image the drill
     names, assert exit 0 and the extension present. Marked slow/docker; skips with a
     reason when the daemon is absent rather than passing · covers: M4
-  - test_provider_privilege_claims_are_evidenced: every managed-provider claim in the
-    runbook carries either a citation or an explicit UNVERIFIED marker with what would
-    settle it — no bare assertion · covers: M6, R:unverified_provider_claim
+  - test_runbook_makes_no_provider_privilege_claim: the runbook contains no
+    managed-provider privilege assertion (rds_superuser, azure.extensions,
+    cloudsql.enable_pgvector) at all — there is no target to verify one against
+    · covers: M6, R:unverified_provider_claim
 </test_plan>
 
 Build-guidance, NOT gated (no `covers:` tag, no red test): the preflight's human-readable
@@ -268,12 +291,16 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [x] all tests (or §4 acceptance checks) pass — 13/13 new; regression floor
-      `tests/migrations` green; `make ci` exit 0, 4513 passed, 32m44s (2026-07-30)
+- [x] all tests (or §4 acceptance checks) pass — 14/14 new (13 at v2, +1 for CR v3's
+      "managed Postgres is declared unsupported" guard); regression floor
+      `tests/migrations` green; `make ci` exit 0, 4513 passed, 32m44s (2026-07-30 @ v2)
+      and re-run at v3 (2026-07-30) covering the CR v3 doc/test change
 - [x] coverage did not decrease — `--cov-fail-under=80` holds inside `make ci`
 - [x] no test or contract was altered during build — §4 tests were fixed BEFORE the
       build (three guard defects, below); the frozen §3 shape is unchanged. CR v2 was a
-      scope-TOKEN correction only.
+      scope-TOKEN correction only. CR v3 changed §1 M3/M6 and therefore the §4 tests —
+      recorded as a CR and re-crossed direction->build so the tripwire re-snapshotted,
+      NOT edited underneath a frozen build.
 - [x] the green was EARNED, not gamed — one vacuous green was found and killed; see
       the refute-read verdict below
 - [x] concurrency / timing of the risky operation is safe — the preflight is read-only
@@ -312,7 +339,7 @@ By: self · adversarially checked:
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
 Outcome: RISK-ACCEPTED
-If RISK-ACCEPTED -> owner: Tin Dang · ticket: M3 operator walkthrough on a real target + M6 provider privilege verification (runbook §3 UNVERIFIED block) · expires: 2026-09-30
+If RISK-ACCEPTED -> owner: Tin Dang · ticket: M3 operator walkthrough on a real target — nobody has WALKED the runbook end to end, and a green suite cannot sign that off (M6 is CLOSED by CR v3: with no managed target there is no provider privilege claim left to verify) · expires: 2026-09-30
 Reviewed by: Tin Dang · date: 2026-07-30
 
 ---

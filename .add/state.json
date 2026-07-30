@@ -776,7 +776,7 @@
       "milestone": "release-integrity",
       "depends_on": [],
       "created": "2026-07-29T15:07:31+00:00",
-      "updated": "2026-07-29T18:03:15+00:00",
+      "updated": "2026-07-30T03:59:17+00:00",
       "relates_to": [
         "vector-store-core"
       ],
@@ -797,8 +797,11 @@
         "by": null
       },
       "tripwire": {
-        "contract_md5": "f0a0170410df3241a6912a75b4635839",
-        "tests": {}
+        "contract_md5": "6c6af6cc6b98f9dd58a4ea3705df4b68",
+        "tests": {
+          "apps/gateway/tests/pgvector_deploy/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/pgvector_deploy/test_pgvector_deploy.py": "eb2121a6aa796cc4ace1fd9d5e809598"
+        }
       },
       "scope": {
         "declared": [
@@ -807,11 +810,11 @@
           "apps/gateway/tests/pgvector_deploy/",
           "Makefile"
         ],
-        "snapshot_md5": "9009adf9311c2f5e193250a8eee5d96e"
+        "snapshot_md5": "e8839e0beebe42d8e208cc0e194156e3"
       },
       "waiver": {
         "owner": "Tin Dang",
-        "ticket": "M3 operator walkthrough on a real target + M6 provider privilege verification (runbook \u00a73 UNVERIFIED block)",
+        "ticket": "M3 operator walkthrough on a real target",
         "expires": "2026-09-30"
       },
       "target_hit": "yes",
@@ -895,7 +898,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-29T18:03:15+00:00",
+  "updated": "2026-07-30T03:59:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",

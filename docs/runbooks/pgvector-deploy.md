@@ -41,9 +41,9 @@ ever emitted**. "We saw no warnings" is therefore not evidence of anything. UNKN
 exists so that "could not check" can never be reported as "checked and fine".
 
 On UNKNOWN: confirm the host, port and credentials, confirm the server is Postgres 15 or
-newer, then re-run. If a managed provider genuinely does not expose
-`pg_database_collation_actual_version()`, record that fact against the provider before
-proceeding — do not assume it means OK.
+newer, then re-run. If the server genuinely does not expose
+`pg_database_collation_actual_version()`, record that fact before proceeding — never
+assume UNKNOWN means OK.
 
 ---
 
@@ -69,35 +69,32 @@ kubectl -n <ns> exec -it <release>-postgres-0 -- \
 Take a backup first (`docs/runbooks/backup-rollback.md`) regardless of which case you
 are in.
 
-## 3 · Managed Postgres
+## 3 · Managed Postgres is not a supported target
 
-`docs/runbooks/cloud-deploy.md` targets a managed Kubernetes cluster (EKS / GKE / AKS)
-with either in-cluster or managed datastores. For a managed Postgres instance:
+**The in-cluster StatefulSet in `charts/ai-proxy` is the only supported Postgres for
+this deployment** (Tin, 2026-07-30). Managed Postgres — RDS, Aurora, Cloud SQL, Azure
+Database — is out of scope, and this section exists so that its absence reads as a
+decision rather than as a gap somebody forgot to fill.
 
-1. **The extension must be installable.** `CREATE EXTENSION IF NOT EXISTS vector` runs
-   as part of migration `55dc3f920a38` under the application's migration role. If that
-   role cannot create extensions, the deploy stops there with a permission error.
+Two things would have to be settled before any of them could be added, and neither has
+been:
 
-   > **UNVERIFIED — provider privilege requirements.** On AWS RDS/Aurora, creating
-   > extensions is commonly restricted to a role in `rds_superuser`, and pgvector must
-   > additionally appear in that engine version's supported-extensions list; equivalent
-   > restrictions exist on Cloud SQL and Azure Database. **None of this has been
-   > verified against our actual target**, because the target provider has not been
-   > chosen and recorded yet. Do not treat the paragraph above as fact.
-   >
-   > What would settle it, in one step, before this runbook claims anything:
-   > ```bash
-   > psql "$DATABASE_URL" -c "SHOW rds.extensions"        # or the provider equivalent
-   > psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector"
-   > ```
-   > Record the provider, engine version, role and result here, then delete this block.
+- **Extension provisioning.** Migration `55dc3f920a38` runs `CREATE EXTENSION IF NOT
+  EXISTS vector` under the migration role. Every managed provider gates extension
+  creation differently — through a role, a server parameter, or an allow-list — and
+  each gate would need to be checked against a live instance, not inferred.
+- **Collation lineage on a platform we do not control.** §1's preflight reads
+  `pg_database_collation_actual_version()`. A provider that does not populate it reports
+  UNKNOWN, and UNKNOWN would need a documented meaning per provider.
 
-2. **Run the §1 preflight against the managed instance**, not only against a local
-   copy. A provider that does not populate `datcollversion` reports UNKNOWN, and you
-   need to know that before an incident, not during one.
-
-3. **A restore into a managed instance crosses lineages by definition** — the dump came
-   from somewhere else. Treat it as §4's dump/restore case.
+An earlier draft of this runbook named the elevated role one provider is commonly said
+to require for extension creation, marked UNVERIFIED. It has been removed, deliberately
+including the role name, so that no reader can copy a privilege requirement nobody here
+checked. While a target was still undecided
+that marker was an honest hedge; now that the answer is "there is no managed target", the
+same words would be an invitation to act on unchecked guidance about a platform nobody
+here runs. If a managed target is ever adopted, verify it against the live instance and
+write what you observed — do not restore that paragraph from memory.
 
 ---
 
