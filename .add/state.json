@@ -898,7 +898,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-30T03:59:17+00:00",
+  "updated": "2026-08-05T05:10:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2547,6 +2547,30 @@
       "id": 82,
       "text": "todo #79 concrete sites: tests/response_caching/test_response_caching.py:393 and :1074/:1089 still use bare asyncio.sleep(0.1/0.15) with the comment 'allow fire-and-forget recording'. Failed as 'expected 2 usage rows, found 1' in a slow full run (12m59s vs the usual 6m19s) on 2026-07-29; passes in isolation. Convert to tests._polling.poll_until, the same fix suite-stability M10 applied to the four usage/team_attribution sites. Owner: Tin Dang",
       "created": "2026-07-29T16:28:55+00:00",
+      "status": "open"
+    },
+    {
+      "id": 83,
+      "text": "make ci has no precondition check: if the dev Postgres/Redis dies mid-run the suite emits thousands of 'Connect call failed (127.0.0.1, 5433)' errors 40min in, indistinguishable from a real regression (hit for real 2026-08-05: 131 failed/2130 errors, all infra). Add a fail-fast preflight to the make test/ci target \u2014 Postgres reachable, gateway_test present, Redis PING \u2014 that aborts at second zero with a named error.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 84,
+      "text": "Date-bomb test class: tests seeding an ABSOLUTE date then querying a RELATIVE window (bare window=month, resolved from the wall clock) pass until the month rolls over. Fired 2026-08-01 in tests/margin_dashboard (6 tests, fixed in #92 via INSIDE_CURRENT_MONTH). ~20 other test files carry hardcoded 2026-07/2026-08 dates and have NOT been audited for this specific pattern. Sweep them; consider a guard that flags an absolute seed constant used with a bare relative window.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 85,
+      "text": "release-integrity exit criterion 4 NOT DELIVERED and unowned: a gateway started against a Postgres lacking the vector extension still boots and serves /v1/vector_stores. scripts/pg_preflight.py is a COLLATION preflight (todo #66); the boot-time EXTENSION preflight (todo #67 second half, milestone 'the preflight fails CLOSED') was never built, and the pgvector-deploy-runbook RISK-ACCEPTED note covers M6 + the unwalked runbook, not this. Needs a lifespan check before the ingest worker starts.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 86,
+      "text": "Release provenance is broken across 4 sources: git tags stop at v0.11.0 (0.9.0, 0.10.0, 0.12.0, 0.13.0 untagged); RELEASES.md has no 0.13.0 entry though #89 merged; apps/gateway/pyproject.toml says 0.7.0; main.py hardcodes FastAPI(version='0.1.0') which is what /openapi.json advertises to every API consumer; dashboard package.json 0.1.0. Under SOC 2 CC8.1 'what version is in production' has no defensible answer. Single-source the version + backfill tags + add a drift guard test.",
+      "created": "2026-08-05T05:10:29+00:00",
       "status": "open"
     }
   ]
