@@ -26,9 +26,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # A fixed UTC window the tests seed into — July 2026 calendar month, matching the §2
 # scenarios' own "July 2026" framing and the tie-out period=2026-07 examples.
+#
+# USE `INSIDE` ONLY WITH AN ABSOLUTE WINDOW — a request that pins the period itself,
+# i.e. `start=`/`end=` query params or `period=2026-07`. For those, July 2026 is the
+# window under test and a fixed date is exactly right.
 WINDOW_FROM = datetime.datetime(2026, 7, 1, 0, 0, 0, tzinfo=datetime.UTC)
 WINDOW_TO = datetime.datetime(2026, 8, 1, 0, 0, 0, tzinfo=datetime.UTC)
 INSIDE = datetime.datetime(2026, 7, 15, 12, 0, 0, tzinfo=datetime.UTC)
+
+
+def _inside_current_month() -> datetime.datetime:
+    """A timestamp guaranteed to fall inside the CURRENT calendar month.
+
+    Requests that pass a bare `window=month` (no `start`/`end`) resolve the period
+    from the WALL CLOCK: `_compute_window_bounds` returns
+    [first-of-this-month 00:00, first-of-next-month 00:00). Seeding such a test at the
+    fixed `INSIDE` above silently stops matching the moment the real month rolls over.
+
+    That is not hypothetical — it happened. Six tests here seeded `INSIDE`
+    (2026-07-15) and queried a bare `window=month`; they passed every day through
+    2026-07-31 and began failing on 2026-08-01 with `billed_total == 0`, on a tree
+    nobody had touched. `make ci` went red with no code change behind it.
+
+    Day 15 at 12:00 UTC is strictly between the two bounds for every month of every
+    year (every month has a 15th), so this needs no per-month special-casing. It is
+    deliberately NOT `now()`: the window is the whole calendar month, so a mid-month
+    fixed point is stable against a run that straddles midnight, and it keeps the
+    seeded instant reproducible within a session.
+    """
+    return datetime.datetime.now(datetime.UTC).replace(
+        day=15, hour=12, minute=0, second=0, microsecond=0
+    )
+
+
+# USE THIS WITH A RELATIVE WINDOW — a bare `window=month`/`week`/`day` that the server
+# resolves against the wall clock. Evaluated once at import, so every test in a session
+# seeds the same instant.
+INSIDE_CURRENT_MONTH = _inside_current_month()
 
 
 async def seed_row(

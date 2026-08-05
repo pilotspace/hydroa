@@ -34,6 +34,7 @@ from gateway.usage.application.reconciliation import (
 
 from .conftest import (
     INSIDE,
+    INSIDE_CURRENT_MONTH,
     WINDOW_FROM,
     WINDOW_TO,
     audit_count,
@@ -172,7 +173,7 @@ async def test_m2_never_calls_resolve_markup_pct(
         cost_usd=Decimal("1.00"),
         provider_cost=Decimal("0.50"),
         cost_basis="provider",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
@@ -180,7 +181,7 @@ async def test_m2_never_calls_resolve_markup_pct(
         model_id="claude-3",
         cost_usd=Decimal("2.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     async def _raise(*args: Any, **kwargs: Any) -> Decimal:
@@ -216,7 +217,7 @@ async def test_m3_catalog_basis_never_fabricated_margin(
         cost_usd=Decimal("3.50"),
         provider_cost=None,
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
@@ -225,7 +226,7 @@ async def test_m3_catalog_basis_never_fabricated_margin(
         cost_usd=Decimal("1.50"),
         provider_cost=None,
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     resp = await client.get(
@@ -254,7 +255,7 @@ async def test_m3_provider_basis_real_computed_margin(
         cost_usd=Decimal("7.00"),
         provider_cost=Decimal("5.00"),
         cost_basis="provider",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
@@ -263,7 +264,7 @@ async def test_m3_provider_basis_real_computed_margin(
         cost_usd=Decimal("5.00"),
         provider_cost=Decimal("3.00"),
         cost_basis="provider",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     resp = await client.get(
@@ -297,7 +298,7 @@ async def test_m4_per_tenant_per_model_grouping(
         model_id="gpt-4o",
         cost_usd=Decimal("1.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
@@ -305,7 +306,7 @@ async def test_m4_per_tenant_per_model_grouping(
         model_id="claude-3",
         cost_usd=Decimal("2.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
@@ -313,7 +314,7 @@ async def test_m4_per_tenant_per_model_grouping(
         model_id="gpt-4o",
         cost_usd=Decimal("3.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     resp = await client.get(
@@ -567,7 +568,7 @@ async def test_m10_by_tenant_model_keyset_pagination(
                 model_id=f"model-{m}",
                 cost_usd=Decimal("1.00"),
                 cost_basis="catalog",
-                created_at=INSIDE,
+                created_at=INSIDE_CURRENT_MONTH,
             )
 
     seen: set[tuple[str, str]] = set()
@@ -611,7 +612,7 @@ async def test_m11_money_fields_are_exact_decimal_strings(
         cost_usd=Decimal("0.10000003"),
         provider_cost=Decimal("0.05"),
         cost_basis="provider",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     resp = await client.get(
