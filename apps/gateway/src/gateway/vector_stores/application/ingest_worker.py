@@ -174,7 +174,9 @@ class VectorStoreIngestWorker:
         self._get_embedder = get_embedder
         self._object_store = object_store
         # Billing (M6): the SAME shared rate-card resolver every billable op uses.
-        self._usage_recorder = RecordingUsageRecorder(redis=queue.redis, session_factory=sessionmaker)
+        self._usage_recorder = RecordingUsageRecorder(
+            redis=queue.redis, session_factory=sessionmaker
+        )
         self._flusher = UsageLedgerFlusher(redis=queue.redis, session_factory=sessionmaker)
 
     async def run_forever(self) -> None:
@@ -188,9 +190,7 @@ class VectorStoreIngestWorker:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                _log.exception(
-                    "vector_store_ingest_worker: loop error (swallowed, continuing)"
-                )
+                _log.exception("vector_store_ingest_worker: loop error (swallowed, continuing)")
                 continue
 
     async def process_once(self) -> bool:
@@ -251,7 +251,9 @@ class VectorStoreIngestWorker:
             )
 
         if file_row is None:
-            await self._fail(row_id, code="file_empty", message="Source file is no longer available")
+            await self._fail(
+                row_id, code="file_empty", message="Source file is no longer available"
+            )
             return
 
         content = await self._read_bytes(file_row)
@@ -269,7 +271,9 @@ class VectorStoreIngestWorker:
 
         async with self._sessionmaker() as session:
             store_row = await session.get(VectorStoreRow, vector_store_id)
-        embedding_model = store_row.embedding_model if store_row is not None else _DEFAULT_EMBEDDING_MODEL
+        embedding_model = (
+            store_row.embedding_model if store_row is not None else _DEFAULT_EMBEDDING_MODEL
+        )
         key_id = store_row.key_id if store_row is not None else tenant_id
 
         embedder = self._get_embedder()
@@ -432,7 +436,8 @@ async def recover_orphans(
             enqueued += 1
         except Exception:
             _log.exception(
-                "vector_store_ingest_worker: recover_orphans failed to enqueue row %s (Redis down?)",
+                "vector_store_ingest_worker: recover_orphans failed to enqueue "
+                "row %s (Redis down?)",
                 row_id,
             )
     return enqueued

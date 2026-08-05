@@ -41,9 +41,7 @@ REGISTRAR_SUFFIX_MAP: tuple[tuple[str, RegistrarHint], ...] = (
     ),
     (
         "awsdns",
-        RegistrarHint(
-            "AWS Route 53", "https://console.aws.amazon.com/route53/v2/hostedzones"
-        ),
+        RegistrarHint("AWS Route 53", "https://console.aws.amazon.com/route53/v2/hostedzones"),
     ),
     (
         "digitalocean.com",

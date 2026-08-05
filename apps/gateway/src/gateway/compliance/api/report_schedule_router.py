@@ -193,7 +193,6 @@ async def put_report_schedule(
         day_of_month=day_of_month,
         created_by=identity.user_id,
         next_run_at=next_run_at,
-        now=now.replace(tzinfo=None),
     )
     await session.commit()
 

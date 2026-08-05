@@ -29,7 +29,8 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 
 # revision identifiers, used by Alembic.
 revision: str = "9cb98362515f"
-down_revision: str | None = "5c8f3a1e9b2d"  # re-parented onto mcp head at R1 integration (was 4583689a7b8b)
+# re-parented onto mcp head at R1 integration (was 4583689a7b8b)
+down_revision: str | None = "5c8f3a1e9b2d"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

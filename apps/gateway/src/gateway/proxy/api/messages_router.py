@@ -183,13 +183,9 @@ async def messages(
                 authz_for_gate = await use_case._authenticate(raw_key)  # pyright: ignore[reportPrivateUsage]
             except ProblemError as exc:
                 return _problem_to_anthropic_response(exc)
-            candidate_providers = {
-                c: await resolve_model_provider(session, c) for c in candidates
-            }
+            candidate_providers = {c: await resolve_model_provider(session, c) for c in candidates}
             if has_no_eligible_anthropic_candidate(candidate_providers):
-                allowed = await tenant_allows_non_claude_failover(
-                    session, authz_for_gate.tenant_id
-                )
+                allowed = await tenant_allows_non_claude_failover(session, authz_for_gate.tenant_id)
                 if not allowed:
                     return _problem_to_anthropic_response(
                         NO_ELIGIBLE_ANTHROPIC_CANDIDATE.exc(model_id=internal_body["model"])

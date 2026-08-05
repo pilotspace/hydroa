@@ -107,6 +107,32 @@ def auth_key(key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"}
 
 
+async def _flush_until_rows(
+    flusher: Any, db_session: AsyncSession, sql: str, expected: int
+) -> list[Any]:
+    """Flush repeatedly until `sql` returns `expected` rows, then return them.
+
+    usage_recorder.record() is fire-and-forget (`asyncio.ensure_future` in
+    use_cases.py), so the XADD lands AFTER the HTTP response returns and a single
+    flush_once() right after the POST races it. suite-stability M10 removed the
+    accidental wait that used to hide this: flush_once issued `XREADGROUP ...
+    BLOCK 0`, which in Redis means "block FOREVER", so the read sat there (up to
+    redis-py's 5s socket timeout) until the entry appeared. The wait is now
+    explicit and bounded, and re-flushes each round because the entry must be
+    re-READ from the stream, not just re-queried.
+
+    The caller still makes the real assertion, so a write that never lands fails
+    exactly as before — just later.
+    """
+    from tests._polling import poll_until
+
+    async def _fetch() -> list[Any]:
+        await flusher.flush_once()
+        return list((await db_session.execute(text(sql))).fetchall())
+
+    return await poll_until(_fetch, lambda rows: len(rows) >= expected)
+
+
 async def create_team(
     client: httpx.AsyncClient,
     jwt: str,
@@ -262,9 +288,7 @@ async def test_teamed_key_ledger_row_has_team_id(
     )
     app.state.usage_recorder = recorder
 
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="AttrCo1", email="owner1@attr.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="AttrCo1", email="owner1@attr.io")
     team = await create_team(client, jwt, name="engineering")
     team_id = team["id"]
 
@@ -281,18 +305,14 @@ async def test_teamed_key_ledger_row_has_team_id(
 
     # Flush the stream event to the ledger
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
-
-    # Assert: ledger row carries team_id (RED: column does not exist yet)
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT id, tenant_id, key_id, team_id"
-                " FROM usage_records"
-                " WHERE key_id = (SELECT id FROM api_keys WHERE name = 'teamed-key' LIMIT 1)"
-            ),
-        )
-    ).fetchall()
+    rows = await _flush_until_rows(
+        flusher,
+        db_session,
+        "SELECT id, tenant_id, key_id, team_id"
+        " FROM usage_records"
+        " WHERE key_id = (SELECT id FROM api_keys WHERE name = 'teamed-key' LIMIT 1)",
+        1,
+    )
 
     assert len(rows) == 1, f"expected 1 usage_record row, got {len(rows)}"
     row = rows[0]._mapping  # type: ignore[union-attr]
@@ -330,9 +350,7 @@ async def test_unteamed_key_ledger_row_null_team_id(
     )
     app.state.usage_recorder = recorder
 
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="AttrCo2", email="owner2@attr.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="AttrCo2", email="owner2@attr.io")
 
     # No team — solo key
     key_body = await create_key(client, jwt, name="solo-key")
@@ -346,16 +364,13 @@ async def test_unteamed_key_ledger_row_null_team_id(
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
-
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT id, team_id FROM usage_records"
-                " WHERE key_id = (SELECT id FROM api_keys WHERE name = 'solo-key' LIMIT 1)"
-            ),
-        )
-    ).fetchall()
+    rows = await _flush_until_rows(
+        flusher,
+        db_session,
+        "SELECT id, team_id FROM usage_records"
+        " WHERE key_id = (SELECT id FROM api_keys WHERE name = 'solo-key' LIMIT 1)",
+        1,
+    )
 
     assert len(rows) == 1, f"expected 1 usage_record row, got {len(rows)}"
     row = rows[0]._mapping  # type: ignore[union-attr]
@@ -412,7 +427,9 @@ async def test_old_format_event_flushes_with_null_team_id(
         "cost_usd": "0.00001000",
         "pricing_snapshot_id": "",
         "status": "200",
-        "raw": json.dumps({"tenant_id": tenant_id, "key_id": key_id, "model": "openai/gpt-4o-mini"}),
+        "raw": json.dumps(
+            {"tenant_id": tenant_id, "key_id": key_id, "model": "openai/gpt-4o-mini"}
+        ),
         "created_at": "2026-06-11T00:00:00+00:00",
         # DELIBERATELY NO "team_id" field — simulates a pre-deploy event
     }
@@ -425,10 +442,7 @@ async def test_old_format_event_flushes_with_null_team_id(
     # Assert: row was inserted with team_id IS NULL; no crash
     rows = (
         await db_session.execute(
-            text(
-                "SELECT id, tenant_id, team_id FROM usage_records"
-                " WHERE tenant_id = :tid"
-            ),
+            text("SELECT id, tenant_id, team_id FROM usage_records WHERE tenant_id = :tid"),
             {"tid": tenant_id},
         )
     ).fetchall()
@@ -459,9 +473,7 @@ async def test_ledger_rollup_shows_ledger_cost_usd(
     db_session: AsyncSession,
 ) -> None:
     """GET /admin/spend?group_by=team_id breakdown items include ledger_cost_usd field."""
-    jwt, tenant_id = await signup_and_login(
-        client, tenant_name="AttrCo4", email="owner4@attr.io"
-    )
+    jwt, tenant_id = await signup_and_login(client, tenant_name="AttrCo4", email="owner4@attr.io")
 
     team = await create_team(client, jwt, name="ledger-team")
     team_id = team["id"]
@@ -550,9 +562,7 @@ async def test_ledger_rollup_shows_ledger_cost_usd(
 
     # NULL-team bucket
     null_bucket = next((b for b in breakdown if b.get("team_id") is None), None)
-    assert null_bucket is not None, (
-        f"No NULL-team bucket in breakdown; buckets: {breakdown}"
-    )
+    assert null_bucket is not None, f"No NULL-team bucket in breakdown; buckets: {breakdown}"
     assert "ledger_cost_usd" in null_bucket, (
         f"'ledger_cost_usd' absent from NULL-team bucket; keys: {list(null_bucket.keys())}"
     )
@@ -578,8 +588,6 @@ async def test_counter_and_ledger_both_visible(
     active_model: str,
 ) -> None:
     """After a completion + flush: breakdown item has both cost_usd and ledger_cost_usd."""
-    import asyncio
-
     from gateway.usage.application.flusher import UsageLedgerFlusher
     from gateway.usage.application.recorder import RecordingUsageRecorder
 
@@ -589,9 +597,7 @@ async def test_counter_and_ledger_both_visible(
     )
     app.state.usage_recorder = recorder
 
-    jwt, _tenant_id = await signup_and_login(
-        client, tenant_name="AttrCo5", email="owner5@attr.io"
-    )
+    jwt, _tenant_id = await signup_and_login(client, tenant_name="AttrCo5", email="owner5@attr.io")
     team = await create_team(client, jwt, name="reconcile-team")
     team_id = team["id"]
 
@@ -606,12 +612,18 @@ async def test_counter_and_ledger_both_visible(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    # Allow recorder fire-and-forget to finish
-    await asyncio.sleep(0.1)
-
-    # Flush to ledger
+    # Wait for the fire-and-forget recorder by POLLING for the row, not by sleeping a
+    # fixed 0.1s — that passes on an idle laptop and fails under `-n 6` on a loaded
+    # host (suite-stability M3). Same class as the four sites M10 exposed; this one
+    # survived only because the sleep happened to be long enough.
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
+    await _flush_until_rows(
+        flusher,
+        db_session,
+        "SELECT id FROM usage_records"
+        " WHERE key_id = (SELECT id FROM api_keys WHERE name = 'recon-key' LIMIT 1)",
+        1,
+    )
 
     resp2 = await client.get(
         f"{ADMIN_SPEND}?group_by=team_id&window=month",
@@ -784,9 +796,7 @@ async def test_team_id_column_exists(
     # The test will fail with an exception rather than AssertionError — both are
     # right-reason failures (missing implementation: ORM column not added yet).
     try:
-        result = await db_session.execute(
-            text("SELECT team_id FROM usage_records LIMIT 0")
-        )
+        result = await db_session.execute(text("SELECT team_id FROM usage_records LIMIT 0"))
         # If we get here, the column exists — this should only happen after Build
         columns = [col for col in (result.keys() if hasattr(result, "keys") else [])]
         # Just assert we didn't crash — the column exists

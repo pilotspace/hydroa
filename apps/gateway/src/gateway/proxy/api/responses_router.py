@@ -35,7 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
-    ErrorSpec,
     RESPONSE_NOT_FOUND,
     RESPONSES_BACKGROUND_UNSUPPORTED,
     RESPONSES_CHAIN_TOO_DEEP,
@@ -45,6 +44,7 @@ from gateway.core.error_catalog import (
     RESPONSES_STORE_UNSUPPORTED,
     RESPONSES_TOOL_UNSUPPORTED,
     UPSTREAM_UNAVAILABLE,
+    ErrorSpec,
 )
 from gateway.proxy.api.deps import (
     get_completion_upstream,
@@ -92,7 +92,7 @@ _CODE_TO_SPEC: dict[str, ErrorSpec] = {
 class _ChainPlan:
     """The pre-dial state decision for one POST (store gate + chain materialization)."""
 
-    __slots__ = ("store", "previous_response_id", "chain_depth", "tenant_id", "key_id")
+    __slots__ = ("chain_depth", "key_id", "previous_response_id", "store", "tenant_id")
 
     def __init__(
         self,
@@ -198,7 +198,10 @@ async def responses(
     try:
         raw_body: Any = await request.json()
     except Exception:
-        raise RESPONSES_PAYLOAD_INVALID.exc(detail="Request body must be valid JSON")
+        # `from None` deliberately: the parser's own exception must not become the
+        # __cause__ of a client-facing error, or its internals surface in traces.
+        # The response body is unchanged.
+        raise RESPONSES_PAYLOAD_INVALID.exc(detail="Request body must be valid JSON") from None
 
     try:
         validate_responses_request(raw_body)

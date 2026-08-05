@@ -44,9 +44,6 @@ from gateway.auth.infrastructure.saml_orm import (  # noqa: F401 — registers S
     SamlProviderConfigRow as _SamlProviderConfigRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.batches.api.router import batch_router
-from gateway.finetune.api.router import finetune_router
-from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
-from gateway.finetune_registry.application.registrar import FinetuneModelRegistrar
 from gateway.batches.api.stats_router import batch_stats_router
 from gateway.batches.application.window_flusher import (
     DEFAULT_TICK_INTERVAL_SECONDS as BATCH_WINDOW_TICK_INTERVAL_SECONDS,
@@ -141,6 +138,9 @@ from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
 from gateway.files.api.router import files_router
+from gateway.finetune.api.router import finetune_router
+from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
+from gateway.finetune_registry.application.registrar import FinetuneModelRegistrar
 from gateway.guardrail_analytics.api.router import guardrail_analytics_router
 from gateway.guardrail_analytics.infrastructure.orm import (  # noqa: F401 — registers GuardrailVerdictEventRow on Base.metadata
     GuardrailVerdictEventRow as _GuardrailVerdictEventRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
@@ -184,10 +184,6 @@ from gateway.proxy.api.provider_keys_admin_router import provider_keys_admin_rou
 from gateway.proxy.api.realtime_relay_ws import realtime_relay_router
 from gateway.proxy.api.realtime_ws import realtime_router
 from gateway.proxy.api.responses_router import responses_router
-from gateway.responses_store.api.router import stored_responses_router
-from gateway.responses_store.infrastructure.orm import (  # noqa: F401 — registers StoredResponseRow on Base.metadata
-    StoredResponseRow as _StoredResponseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
-)
 from gateway.proxy.api.router import proxy_router
 from gateway.proxy.api.routing_admin_router import routing_admin_router
 from gateway.proxy.application.fallback_router import FallbackModelRouter
@@ -241,6 +237,10 @@ from gateway.rate_limits.application.passthrough import PassthroughBandwidthBuck
 from gateway.rate_limits.infrastructure.plan_rate_limit_resolver import PlanRateLimitResolver
 from gateway.rate_limits.infrastructure.redis_lua_limiter import RedisLuaRateLimiter
 from gateway.rate_limits.infrastructure.redis_token_bucket import RedisTokenBucket
+from gateway.responses_store.api.router import stored_responses_router
+from gateway.responses_store.infrastructure.orm import (  # noqa: F401 — registers StoredResponseRow on Base.metadata
+    StoredResponseRow as _StoredResponseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import
+)
 from gateway.scim.api.errors import register_scim_error_handlers
 from gateway.scim.api.scim_router import scim_router
 from gateway.scim.api.token_router import scim_token_router
@@ -310,8 +310,10 @@ from gateway.vector_stores.api.router import vector_stores_router
 from gateway.vector_stores.application.ingest_worker import (
     RedisVectorStoreIngestQueue,
     VectorStoreIngestWorker,
-    recover_orphans as recover_vector_store_ingest_orphans,
     should_start_vector_store_ingest_worker,
+)
+from gateway.vector_stores.application.ingest_worker import (
+    recover_orphans as recover_vector_store_ingest_orphans,
 )
 from gateway.vector_stores.infrastructure.embedding_client import VectorStoreEmbeddingClient
 from gateway.video.api.router import video_router
@@ -952,178 +954,138 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield  # ── application is running ──
 
         # ── Shutdown ─────────────────────────────────────────────────────
-        # 1. Cancel dispatcher + health_checker tasks (before flusher drain)
-        dispatcher_task: asyncio.Task[None] | None = getattr(app.state, "dispatcher_task", None)
-        if dispatcher_task is not None:
-            dispatcher_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await dispatcher_task
+        # Every wait below is BOUNDED (suite-stability M13/M14). Shutdown as a whole
+        # must have an upper bound: while it runs, the ASGI server has not emitted
+        # `lifespan.shutdown.complete`, so a single unbounded await here is a pod
+        # that never terminates until the orchestrator SIGKILLs it — which also
+        # kills the flusher drain in step 4, the whole point of the graceful path.
+        _shutdown_budget = max(1.0, float(_settings.shutdown_drain_timeout_seconds))
 
-        health_task: asyncio.Task[None] | None = getattr(app.state, "health_checker_task", None)
-        if health_task is not None:
-            health_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await health_task
+        async def _cancel_and_join(label: str, task: asyncio.Task[Any] | None) -> None:
+            """Cancel a background task and wait — BOUNDED — for it to actually stop.
 
-        drift_task: asyncio.Task[None] | None = getattr(app.state, "drift_checker_task", None)
-        if drift_task is not None:
-            drift_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await drift_task
+            `task.cancel()` only REQUESTS termination. The previous
+            `with suppress(CancelledError): await task` handled the task RAISING
+            CancelledError but placed no limit on how long it took to get there, so
+            a task that swallows the cancellation, sits in a slow `finally:`, or is
+            blocked in a driver that only polls for cancellation between statements
+            held shutdown open forever. Guarded by tests/ops/test_lifespan::
+            test_shutdown_cancel_join_is_bounded.
+            """
+            if task is None:
+                return
+            task.cancel()
+            try:
+                async with asyncio.timeout(_shutdown_budget):
+                    await task
+            except asyncio.CancelledError:
+                pass  # the normal path — the task honoured the cancellation
+            except TimeoutError:
+                structlog.get_logger(__name__).warning(
+                    "shutdown_cancel_join_timed_out", step=label, budget=_shutdown_budget
+                )
+            except Exception:
+                structlog.get_logger(__name__).warning(
+                    "shutdown_cancel_join_failed", step=label, exc_info=True
+                )
 
-        sweep_task: asyncio.Task[None] | None = getattr(app.state, "recovery_sweep_task", None)
-        if sweep_task is not None:
-            sweep_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweep_task
+        # 1. Cancel the background task fleet (before the flusher drain).
+        #
+        # ORDER MATTERS and is preserved: the dispatcher goes first, then the health
+        # checker, then everything else. A stall in the first join is the one that
+        # leaves every later task still running — which is exactly how M14 surfaced,
+        # as live 60s upstream health pings continuing through a 300s test stall.
+        for _task_attr in (
+            "dispatcher_task",
+            "health_checker_task",
+            "drift_checker_task",
+            "recovery_sweep_task",
+            "credit_recovery_sweep_task",
+            "retention_sweeper_task",
+            "catalog_refresh_task",
+            "finetune_registry_repair_task",
+            "domain_verify_notify_task",
+            "video_worker_task",
+            "batch_worker_task",
+            "vector_store_worker_task",
+            "batch_window_flusher_task",
+            "invoice_generator_task",
+            "report_schedule_generator_task",
+        ):
+            await _cancel_and_join(_task_attr, getattr(app.state, _task_attr, None))
 
-        credit_sweep_task: asyncio.Task[None] | None = getattr(
-            app.state, "credit_recovery_sweep_task", None
-        )
-        if credit_sweep_task is not None:
-            credit_sweep_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await credit_sweep_task
+        # 2. Final run_once()/check_once() drain cycle for dispatcher/health.
+        #
+        # Each is BOUNDED, not merely exception-guarded (suite-stability M13).
+        # `contextlib.suppress(Exception)` bounds ERRORS; it does nothing about
+        # DURATION. Two of these three do network I/O — webhook delivery and an
+        # upstream health ping — so an upstream that accepts the connection and
+        # then never answers held lifespan shutdown open forever: the ASGI server
+        # never emits `lifespan.shutdown.complete`, which in production is a pod
+        # that will not terminate until the orchestrator SIGKILLs it (losing the
+        # flusher drain below, which is the whole point of the graceful path).
+        # Found as a 300s stall in tests/realtime, parked in TestClient's
+        # wait_shutdown. These are courtesy "one last cycle" calls: skipping one
+        # is always better than never shutting down.
+        async def _bounded_final_cycle(label: str, awaitable: Any) -> None:
+            try:
+                async with asyncio.timeout(_shutdown_budget):
+                    await awaitable
+            except TimeoutError:
+                structlog.get_logger(__name__).warning(
+                    "shutdown_final_cycle_timed_out", step=label, budget=_shutdown_budget
+                )
+            except Exception:
+                structlog.get_logger(__name__).warning(
+                    "shutdown_final_cycle_failed", step=label, exc_info=True
+                )
 
-        retention_task: asyncio.Task[None] | None = getattr(
-            app.state, "retention_sweeper_task", None
-        )
-        if retention_task is not None:
-            retention_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await retention_task
-
-        catalog_refresh_task: asyncio.Task[None] | None = getattr(
-            app.state, "catalog_refresh_task", None
-        )
-        if catalog_refresh_task is not None:
-            catalog_refresh_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await catalog_refresh_task
-
-        finetune_registry_repair_task: asyncio.Task[None] | None = getattr(
-            app.state, "finetune_registry_repair_task", None
-        )
-        if finetune_registry_repair_task is not None:
-            finetune_registry_repair_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await finetune_registry_repair_task
-
-        domain_verify_notify_task: asyncio.Task[None] | None = getattr(
-            app.state, "domain_verify_notify_task", None
-        )
-        if domain_verify_notify_task is not None:
-            domain_verify_notify_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await domain_verify_notify_task
-
-        video_worker_task: asyncio.Task[None] | None = getattr(app.state, "video_worker_task", None)
-        if video_worker_task is not None:
-            video_worker_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await video_worker_task
-
-        batch_worker_task: asyncio.Task[None] | None = getattr(app.state, "batch_worker_task", None)
-        if batch_worker_task is not None:
-            batch_worker_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await batch_worker_task
-
-        vector_store_worker_task: asyncio.Task[None] | None = getattr(
-            app.state, "vector_store_worker_task", None
-        )
-        if vector_store_worker_task is not None:
-            vector_store_worker_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await vector_store_worker_task
-
-        batch_window_flusher_task: asyncio.Task[None] | None = getattr(
-            app.state, "batch_window_flusher_task", None
-        )
-        if batch_window_flusher_task is not None:
-            batch_window_flusher_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await batch_window_flusher_task
-
-        invoice_generator_task: asyncio.Task[None] | None = getattr(
-            app.state, "invoice_generator_task", None
-        )
-        if invoice_generator_task is not None:
-            invoice_generator_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await invoice_generator_task
-
-        report_schedule_generator_task: asyncio.Task[None] | None = getattr(
-            app.state, "report_schedule_generator_task", None
-        )
-        if report_schedule_generator_task is not None:
-            report_schedule_generator_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await report_schedule_generator_task
-
-        # 2. Final run_once()/check_once() drain cycle for dispatcher/health
-        with contextlib.suppress(Exception):
-            await dispatcher.run_once()
+        await _bounded_final_cycle("dispatcher.run_once", dispatcher.run_once())
         if _settings.health_check_interval_seconds > 0:
             hc = getattr(app.state, "health_checker", None)
             if hc is not None:
-                with contextlib.suppress(Exception):
-                    await hc.check_once()
+                await _bounded_final_cycle("health_checker.check_once", hc.check_once())
         dc = getattr(app.state, "drift_checker", None)
         if dc is not None:  # only set when the default-OFF guard started it
-            with contextlib.suppress(Exception):
-                await dc.check_once()
+            await _bounded_final_cycle("drift_checker.check_once", dc.check_once())
 
         # 2b. Cancel OtelFlusher task + final flush_once()
-        otel_flusher_task: asyncio.Task[None] | None = getattr(app.state, "otel_flusher_task", None)
-        if otel_flusher_task is not None:
-            otel_flusher_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await otel_flusher_task
+        await _cancel_and_join("otel_flusher_task", getattr(app.state, "otel_flusher_task", None))
         otel_flusher = getattr(app.state, "otel_flusher", None)
         if otel_flusher is not None:
-            with contextlib.suppress(Exception):
-                await otel_flusher.flush_once()
+            await _bounded_final_cycle("otel_flusher.flush_once", otel_flusher.flush_once())
 
-        # 2c. Cancel outstanding video generation job tasks
-        video_tasks: set[asyncio.Task[None]] = getattr(app.state, "video_jobs_tasks", set())
-        for _vt in list(video_tasks):
-            _vt.cancel()
-        if video_tasks:
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(*video_tasks, return_exceptions=True)
-
-        # 2d. Cancel outstanding batch job tasks
-        batch_tasks: set[asyncio.Task[None]] = getattr(app.state, "batch_jobs_tasks", set())
-        for _bt in list(batch_tasks):
-            _bt.cancel()
-        if batch_tasks:
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.gather(*batch_tasks, return_exceptions=True)
+        # 2c/2d. Cancel outstanding video + batch generation job tasks. These are
+        # per-job tasks running third-party generation calls, so they are the most
+        # likely of all to be mid-network-call when the cancel lands.
+        for _label, _attr in (
+            ("video_jobs_tasks", "video_jobs_tasks"),
+            ("batch_jobs_tasks", "batch_jobs_tasks"),
+        ):
+            _job_tasks: set[asyncio.Task[None]] = getattr(app.state, _attr, set())
+            for _jt in list(_job_tasks):
+                _jt.cancel()
+            if _job_tasks:
+                await _bounded_final_cycle(
+                    _label, asyncio.gather(*_job_tasks, return_exceptions=True)
+                )
 
         # 3. Cancel the flusher background task
-        flusher_task: asyncio.Task[None] | None = getattr(app.state, "flusher_task", None)
-        if flusher_task is not None:
-            flusher_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await flusher_task
+        await _cancel_and_join("flusher_task", getattr(app.state, "flusher_task", None))
 
         # 4. Drain remaining PEL entries up to the timeout
         await flusher.drain_until_empty(timeout=float(_settings.shutdown_drain_timeout_seconds))
 
-        # 5. Close Redis client
-        with contextlib.suppress(Exception):
-            await _redis.aclose()
-
-        # 6. Dispose SQLAlchemy engine
-        with contextlib.suppress(Exception):
-            await _engine.dispose()
-
-        # 7. Close httpx client if stored on app.state
+        # 5-7. Close the connection holders. Bounded for the same reason as the rest:
+        # `engine.dispose()` waits for checked-out connections to come back, and
+        # `aclose()` can wait on a socket, so an unresponsive Redis/Postgres/upstream
+        # would otherwise park shutdown here — past the drain, but still short of
+        # `lifespan.shutdown.complete`.
+        await _bounded_final_cycle("redis.aclose", _redis.aclose())
+        await _bounded_final_cycle("engine.dispose", _engine.dispose())
         httpx_client: httpx.AsyncClient | None = getattr(app.state, "httpx_client", None)
         if httpx_client is not None:
-            with contextlib.suppress(Exception):
-                await httpx_client.aclose()
+            await _bounded_final_cycle("httpx_client.aclose", httpx_client.aclose())
 
     app = FastAPI(title="Hydroa Gateway", version="0.1.0", lifespan=lifespan)
 

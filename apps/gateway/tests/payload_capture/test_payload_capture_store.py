@@ -42,6 +42,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_for_count
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -265,9 +267,7 @@ async def test_non_streaming_capture_writes_one_scrubbed_row(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await asyncio.sleep(0.3)  # allow the fire-and-forget capture task to complete
-
-    rows = await _request_log_rows(db_session, tenant_id)
+    rows = await poll_until(lambda: _request_log_rows(db_session, tenant_id), lambda v: len(v) >= 1)
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     req_body, resp_body, scrub_status, truncated, stream, cached = rows[0]
     assert scrub_status == "scrubbed"
@@ -310,9 +310,7 @@ async def test_streaming_capture_assembles_full_response_text(
     content = resp.text  # fully consume the SSE body so the generator runs to close
     assert "data:" in content
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_rows(db_session, tenant_id)
+    rows = await poll_for_count(lambda: _request_log_rows(db_session, tenant_id), 1)
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     req_body, resp_body, scrub_status, truncated, stream, cached = rows[0]
     assert stream is True
@@ -364,9 +362,7 @@ async def test_cache_hit_capture_uses_served_masked_body(
         f"expected X-Cache: hit on 2nd identical request, got {resp2.headers.get('x-cache')!r}"
     )
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_rows(db_session, tenant_id)
+    rows = await poll_for_count(lambda: _request_log_rows(db_session, tenant_id), 2)
     assert len(rows) == 2, f"expected 2 request_logs rows (miss + hit), got {len(rows)}"
     cached_flags = sorted(r.cached for r in rows)
     assert cached_flags == [False, True], f"expected one miss + one cache-hit row, got {rows}"

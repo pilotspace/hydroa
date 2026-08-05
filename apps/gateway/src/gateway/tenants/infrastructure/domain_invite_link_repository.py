@@ -176,9 +176,7 @@ class DomainInviteLinkRepository:
         )
         return [_row_to_link(r) for r in rows]
 
-    async def revoke(
-        self, *, link_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> DomainInviteLink:
+    async def revoke(self, *, link_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainInviteLink:
         """Lock, validate tenant-scoped, flip to revoked (idempotent target state), commit
         (M5). Unknown id OR cross-tenant id → InviteNotFoundError (no oracle, R13)."""
         row = await self._session.scalar(
@@ -191,7 +189,9 @@ class DomainInviteLinkRepository:
         )
         if row is None:
             await self._session.rollback()
-            raise InviteNotFoundError(f"Domain invite link {link_id} not found in tenant {tenant_id}")
+            raise InviteNotFoundError(
+                f"Domain invite link {link_id} not found in tenant {tenant_id}"
+            )
         row.status = DomainInviteLinkStatus.REVOKED.value
         await self._session.commit()
         await self._session.refresh(row)
@@ -298,9 +298,7 @@ class DomainInviteLinkRepository:
             attempt_count=redemption.attempt_count if redemption is not None else 0,
         )
 
-    async def bump_redemption_attempt(
-        self, *, redemption_id: uuid.UUID, invalidate: bool
-    ) -> None:
+    async def bump_redemption_attempt(self, *, redemption_id: uuid.UUID, invalidate: bool) -> None:
         """Persist a wrong-guess: increment attempt_count, OR (at the cap) DELETE the row to
         invalidate the code. Committed BEFORE the use case raises so concurrent guesses
         serialize (safety rule)."""

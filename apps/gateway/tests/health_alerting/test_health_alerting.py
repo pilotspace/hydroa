@@ -47,6 +47,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from tests import _redis_env
+from tests._polling import poll_for_count
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -504,9 +506,9 @@ async def test_s06_breaker_open_emits_exactly_one_row_per_episode(
     # 5th failure → OPEN transition → should emit event
     breaker.record_failure()
     # Allow fire-and-forget task to complete
-    await asyncio.sleep(0.1)
-
-    rows = await _get_alert_rows_by_type(session_factory, "circuit_breaker_open")
+    rows = await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "circuit_breaker_open"), 1
+    )
     assert len(rows) == 1, (
         f"expected exactly 1 circuit_breaker_open row after OPEN transition, got {len(rows)}"
     )
@@ -523,9 +525,8 @@ async def test_s06_breaker_open_emits_exactly_one_row_per_episode(
 
     # 6th failure (already OPEN) must not add a second row
     breaker.record_failure()
-    await asyncio.sleep(0.1)
 
-    rows_after = await _get_alert_rows_by_type(session_factory, "circuit_breaker_open")
+    rows_after = await poll_until(lambda: _get_alert_rows_by_type(session_factory, "circuit_breaker_open"), lambda v: len(v) >= 1)
     assert len(rows_after) == 1, (
         f"second record_failure() while OPEN must NOT produce a second row; got {len(rows_after)}"
     )
@@ -558,9 +559,9 @@ async def test_s07_breaker_new_episode_after_recovery_produces_new_row(
     # Episode 2: trip open again
     for _ in range(5):
         breaker.record_failure()
-    await asyncio.sleep(0.1)
-
-    rows = await _get_alert_rows_by_type(session_factory, "circuit_breaker_open")
+    rows = await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "circuit_breaker_open"), 2
+    )
     assert len(rows) == 2, (
         f"expected 2 circuit_breaker_open rows (two episodes), got {len(rows)}"
     )
@@ -673,9 +674,8 @@ async def test_s09_health_3_consecutive_failures_emit_one_fail_event(
     # 3 failures → should emit on the 3rd
     for i in range(3):
         await checker.check_once()
-        await asyncio.sleep(0.05)
 
-    rows = await _get_alert_rows_by_type(session_factory, "upstream_health_fail")
+    rows = await poll_until(lambda: _get_alert_rows_by_type(session_factory, "upstream_health_fail"), lambda v: len(v) >= 1)
     assert len(rows) == 1, (
         f"expected exactly 1 upstream_health_fail row after 3 consecutive failures; got {len(rows)}"
     )
@@ -692,8 +692,7 @@ async def test_s09_health_3_consecutive_failures_emit_one_fail_event(
 
     # 4th failure (same episode) — must NOT produce a second row
     await checker.check_once()
-    await asyncio.sleep(0.05)
-    rows_after = await _get_alert_rows_by_type(session_factory, "upstream_health_fail")
+    rows_after = await poll_until(lambda: _get_alert_rows_by_type(session_factory, "upstream_health_fail"), lambda v: len(v) >= 1)
     assert len(rows_after) == 1, (
         f"4th failure in same episode must NOT produce a second row; got {len(rows_after)}"
     )
@@ -726,9 +725,8 @@ async def test_s10_health_recovery_emits_recovered_with_matching_episode_id(
     # Trigger fail episode
     for _ in range(3):
         await checker.check_once()
-    await asyncio.sleep(0.05)
 
-    fail_rows = await _get_alert_rows_by_type(session_factory, "upstream_health_fail")
+    fail_rows = await poll_until(lambda: _get_alert_rows_by_type(session_factory, "upstream_health_fail"), lambda v: len(v) >= 1)
     assert len(fail_rows) == 1
     fail_dedupe_key: str = fail_rows[0]["dedupe_key"]
     # episode_id is the UUID suffix after "health_fail:"
@@ -738,9 +736,9 @@ async def test_s10_health_recovery_emits_recovered_with_matching_episode_id(
     # Now recover
     pinger.fail = False
     await checker.check_once()
-    await asyncio.sleep(0.05)
-
-    recovered_rows = await _get_alert_rows_by_type(session_factory, "upstream_health_recovered")
+    recovered_rows = await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "upstream_health_recovered"), 1
+    )
     assert len(recovered_rows) == 1, (
         f"expected exactly 1 upstream_health_recovered row; got {len(recovered_rows)}"
     )
@@ -793,9 +791,9 @@ async def test_s11_health_new_failure_run_after_recovery_new_episode(
     pinger.fail = True
     for _ in range(3):
         await checker.check_once()
-    await asyncio.sleep(0.05)
-
-    rows = await _get_alert_rows_by_type(session_factory, "upstream_health_fail")
+    rows = await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "upstream_health_fail"), 2
+    )
     assert len(rows) == 2, (
         f"expected 2 upstream_health_fail rows (two episodes); got {len(rows)}"
     )

@@ -92,9 +92,7 @@ def upgrade() -> None:
         sa.Column("email", sa.Text(), nullable=False),
         sa.Column("code_hash", sa.Text(), nullable=False),
         sa.Column("code_expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column(
-            "attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -107,9 +105,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.CheckConstraint(
-            "email = lower(email)", name="ck_domain_invite_redemptions_email_lower"
-        ),
+        sa.CheckConstraint("email = lower(email)", name="ck_domain_invite_redemptions_email_lower"),
     )
     op.create_index(
         "uq_domain_invite_redemptions_link_email",
@@ -121,9 +117,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Drop both tables (redemptions first — it FKs domain_invite_links)."""
-    op.drop_index(
-        "uq_domain_invite_redemptions_link_email", table_name="domain_invite_redemptions"
-    )
+    op.drop_index("uq_domain_invite_redemptions_link_email", table_name="domain_invite_redemptions")
     op.drop_table("domain_invite_redemptions")
     op.drop_index("uq_domain_invite_links_active_domain", table_name="domain_invite_links")
     op.drop_index("uq_domain_invite_links_token_hash", table_name="domain_invite_links")

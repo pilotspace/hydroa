@@ -159,9 +159,7 @@ def _inject_grounding(body: dict[str, Any], chunk_texts: list[str]) -> None:
             "If it is not relevant, say so.\n\n" + joined
         )
     else:
-        content = (
-            "No matching context was retrieved from the attached vector store for this query."
-        )
+        content = "No matching context was retrieved from the attached vector store for this query."
     messages.insert(0, {"role": "system", "content": content})
 
 

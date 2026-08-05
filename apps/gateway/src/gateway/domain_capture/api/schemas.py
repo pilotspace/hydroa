@@ -126,7 +126,7 @@ class RegistrarHintResponse(BaseModel):
     fallback: bool
 
 
-def to_registrar_hint_response(result: "RegistrarHintResult") -> RegistrarHintResponse:
+def to_registrar_hint_response(result: RegistrarHintResult) -> RegistrarHintResponse:
     return RegistrarHintResponse(
         domain=result.domain,
         registrar=result.registrar,

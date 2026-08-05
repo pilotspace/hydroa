@@ -54,6 +54,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests._polling import poll_until
 
 from gateway.core.config import Settings
 from gateway.core.db import Base
@@ -1026,13 +1027,19 @@ async def test_all_7_routes_now_emit_audit_events(
         )
     ).status_code == 200
 
-    await asyncio.sleep(0.05)  # let each fire-and-forget audit write complete
+    # Let each fire-and-forget audit write complete — POLL, don't sleep a fixed
+    # 0.05 s. A fixed sleep passes idle and fails under `-n 6` on a loaded host;
+    # it did exactly that on 2026-07-29 ("assert 6 == 7" — one write had not
+    # landed). The `== 7` assertion below is unchanged: polling stops at 7, and
+    # anything arriving later was equally invisible to the old fixed sleep.
+    async def _audit_count() -> int:
+        return (
+            await db_session.execute(
+                text("SELECT count(*) FROM audit_events WHERE tenant_id = :tid"), {"tid": other}
+            )
+        ).scalar_one()
 
-    count = (
-        await db_session.execute(
-            text("SELECT count(*) FROM audit_events WHERE tenant_id = :tid"), {"tid": other}
-        )
-    ).scalar_one()
+    count = await poll_until(_audit_count, lambda n: n >= 7)
     assert count == 7
 
 

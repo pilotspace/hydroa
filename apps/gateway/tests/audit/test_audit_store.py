@@ -18,6 +18,8 @@ Scenarios (one test per TASK.md §2 scenario):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import asyncio
 import uuid
 from datetime import UTC, datetime
@@ -209,7 +211,7 @@ def test_no_mutate_method_app() -> None:
 
 
 @pytest.fixture
-async def immutable_audit_session(db_session: AsyncSession) -> AsyncSession:
+async def immutable_audit_session(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
     """Apply the immutability TRIGGER to the test DB after create_all.
 
     Base.metadata.create_all creates the table but does NOT run the migration's
@@ -260,7 +262,16 @@ async def immutable_audit_session(db_session: AsyncSession) -> AsyncSession:
         """)
     )
     await db_session.commit()
-    return db_session
+    try:
+        yield db_session
+    finally:
+        # suite-stability M2: the schema is now built ONCE per xdist worker, so a
+        # trigger installed here survives every later test on this worker. Under the
+        # old per-test drop_all, DROP TABLE took it with them. Drop it explicitly.
+        await db_session.execute(
+            text("DROP TRIGGER IF EXISTS audit_events_immutable_guard ON audit_events")
+        )
+        await db_session.commit()
 
 
 @pytest.mark.asyncio

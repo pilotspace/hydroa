@@ -43,6 +43,7 @@ import pytest
 from sqlalchemy import text
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from tests._polling import poll_until
 
 pytestmark = pytest.mark.asyncio
 
@@ -826,9 +827,32 @@ async def test_concurrent_finalize_completed_race_exactly_one_wins_cas(
                 await session.rollback()
             return won
 
-    results = await asyncio.gather(
-        _finalize_in_own_session(), _finalize_in_own_session()
-    )
+    # ARRANGE the precondition instead of assuming it. The CAS requires
+    # status == "in_progress", but `_attach` ENQUEUES the row and the app's own
+    # ingest worker — one of the ~18 run_forever tasks the lifespan starts — races
+    # the test to finalize it. On a loaded host under `-n 6` the worker wins, both
+    # explicit racers then lose their CAS, and the assertion sees [False, False].
+    #
+    # So: wait for the worker to be DONE (its queue entry consumed, so it will not
+    # touch this row again), then put the row back to in_progress. Now the only two
+    # contenders are the two racers, which is what this test is actually about.
+    async def _status() -> str | None:
+        async with app.state.sessionmaker() as session:
+            result = await session.execute(
+                text("SELECT status FROM vector_store_files WHERE id = :rid"),
+                {"rid": str(row_id)},
+            )
+            return result.scalar_one_or_none()
+
+    await poll_until(_status, lambda s: s in ("completed", "failed"))
+    async with app.state.sessionmaker() as session:
+        await session.execute(
+            text("UPDATE vector_store_files SET status = 'in_progress' WHERE id = :rid"),
+            {"rid": str(row_id)},
+        )
+        await session.commit()
+
+    results = await asyncio.gather(_finalize_in_own_session(), _finalize_in_own_session())
     assert sorted(results) == [False, True], "exactly one racer must win the CAS"
     assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == len(chunks), (
         "the loser's chunk inserts must roll back with its whole transaction —"

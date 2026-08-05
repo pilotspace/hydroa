@@ -20,7 +20,7 @@ import pytest
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
 from sqlalchemy import text as sa_text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from gateway.core.config import Settings
 from gateway.core.db import Base
@@ -35,6 +35,28 @@ from tests import _redis_env
 TEST_DATABASE_URL = _redis_env.TEST_DATABASE_URL
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
 
+
+# ---------------------------------------------------------------------------
+# suite-stability M11 — the suite must not reach the internet on its own account.
+# ---------------------------------------------------------------------------
+# `catalog_refresh_interval_seconds` (3600) and `health_check_interval_seconds` (60)
+# both default ON, and both schedulers run an IMMEDIATE first cycle at lifespan
+# startup against the REAL https://openrouter.ai. Instrumenting socket.getaddrinfo
+# over the lifespan-driving modules measured 50 live DNS lookups across 20 tests —
+# an internet round-trip, and an unbounded socket read, inside `make ci`. Nothing
+# asserts on those responses; the egress is purely incidental. The fix is at the
+# source, in the `settings` fixture below: 0 is each knob's documented opt-OUT
+# sentinel, so no task is started at all.
+#
+# A blanket DNS block was TRIED here and REVERTED, which is worth recording so it is
+# not re-attempted blind. It broke 14 tests in tests/azure_aad + tests/azure_audio,
+# and for a reason that matters: `EgressPolicy.check()` resolves the target host on
+# purpose, as the SSRF / DNS-rebinding control (azure_ad.py:148, checked fresh before
+# the client_secret enters the POST body). Blocking or synthesising DNS makes a
+# SECURITY control observe whatever the test harness decides to answer — the class of
+# change that hides a real vulnerability rather than a flake. Those suites already
+# resolved real names before this task, so the block added risk without fixing the
+# defect that was actually measured. Residual exposure is recorded as a todo.
 
 _PRESERVE_KEYS = (b"usage:events", "usage:events")
 
@@ -184,24 +206,71 @@ def settings() -> Settings:
         # (tests/signup_routing_authz/conftest.py `second_app_client`) with the flag
         # explicitly False. The production default itself stays OFF (config.py).
         public_signup_enabled=True,  # type: ignore[call-arg]
+        # suite-stability M11: both of these default to ON in production
+        # (catalog 3600s, health 60s) and their schedulers fire an IMMEDIATE cycle at
+        # lifespan startup against the REAL https://openrouter.ai — measured at 50 live
+        # DNS lookups across 20 tests. That put an internet round-trip, and an unbounded
+        # socket read, inside `make ci`. 0 is each knob's documented opt-OUT sentinel, so
+        # no task is started at all. Suites that actually exercise these schedulers build
+        # their own Settings and stub the source (tests/catalog_refresh_scheduler).
+        catalog_refresh_interval_seconds=0,  # type: ignore[call-arg]
+        health_check_interval_seconds=0,  # type: ignore[call-arg]
     )
 
 
+@pytest.fixture(scope="session")
+async def _schema(_ensure_worker_database: None) -> AsyncIterator[list[str]]:
+    """Build this worker's schema ONCE, and return the sequences to reset per test.
+
+    suite-stability §3: this DDL used to run in the function-scoped `app` fixture —
+    `drop_all` + `create_all` over 56 tables, for each of 4488 tests, ~500k DDL
+    statements per run. Every `drop_all` takes an AccessExclusiveLock across
+    pg_catalog, so N xdist workers serialise on the catalog and the run stalls near
+    completion (todo #39; reproduced 2026-07-25 as a 64-minute hang at 99%).
+    Measured: 663 ms/test here vs ~11 ms for the DELETE sweep below.
+
+    Sequences are DISCOVERED from pg_sequences rather than hand-listed, so one added
+    by a future migration is reset automatically instead of drifting out of a manifest.
+    """
+    engine = create_async_engine(_redis_env.TEST_DATABASE_URL)
+    async with engine.begin() as conn:
+        # vector-store-core PLAN.md §3 provisioning plan: the chunk ORM registers a
+        # Vector column on Base.metadata, so EVERY create_all needs the extension —
+        # idempotent, a no-op once the dev postgres image ships pgvector.
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    async with engine.connect() as conn:
+        sequences = list(
+            (
+                await conn.execute(
+                    sa_text("SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'")
+                )
+            ).scalars()
+        )
+    await engine.dispose()
+    yield sequences
+
+
 @pytest.fixture
-async def app(settings: Settings) -> AsyncIterator[object]:
+async def app(settings: Settings, _schema: list[str]) -> AsyncIterator[object]:
     application = create_app(settings)
     # credential-resolution-seam §3: override the real DbTenantProviderKeyStore-backed
     # resolver (which would need a Fernet key + a seeded per-tenant key) with a stub, so
     # these feature suites' completions resolve a credential without per-test key seeding.
     install_stub_resolver(application)
     engine = application.state.engine
+    # Per-test reset: rows and identity state, NO DDL. `session_replication_role =
+    # replica` disables FK triggers for the transaction so delete order is irrelevant;
+    # `setval(..., 1, false)` restores sequences to the state a fresh schema has
+    # (deliberately NOT `ALTER SEQUENCE ... RESTART`, which is DDL).
     async with engine.begin() as conn:
-        # vector-store-core PLAN.md §3 provisioning plan: the chunk ORM registers a
-        # Vector column on Base.metadata, so EVERY suite's create_all needs the
-        # extension — idempotent, a no-op once the dev postgres image ships pgvector.
-        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(sa_text("SET session_replication_role = replica"))
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(sa_text(f'DELETE FROM "{table.name}"'))  # noqa: S608
+        for sequence in _schema:
+            await conn.execute(sa_text(f"SELECT setval('\"{sequence}\"', 1, false)"))
+        await conn.execute(sa_text("SET session_replication_role = origin"))
     yield application
     await engine.dispose()
 

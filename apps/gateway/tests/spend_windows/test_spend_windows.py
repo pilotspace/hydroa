@@ -36,6 +36,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Constants — mirror §3 CONTRACT
@@ -852,24 +853,27 @@ async def test_soft_budget_crossing_persists_one_alert_event(
 
     assert fake_upstream.calls == 3, f"Expected 3 upstream calls, got {fake_upstream.calls}"
 
-    # Allow fire-and-forget task to complete
-    import asyncio
-    await asyncio.sleep(0.05)
-
+    # Allow fire-and-forget task to complete — POLL, don't sleep a fixed 0.05 s.
+    # A fixed sleep passes idle and fails under `-n 6` on a loaded host; it did
+    # exactly that on 2026-07-29 ("got none").
+    #
     # Assert: exactly 1 row in alert_events with correct shape
     # RED: this SELECT raises ProgrammingError (table absent) → test FAILS for right reason
-    row = (
-        await db_session.execute(
-            text(
-                "SELECT event_type, dedupe_key, payload, delivered_at"
-                " FROM alert_events"
-                " WHERE key_id = :kid"
-                " ORDER BY created_at DESC"
-                " LIMIT 1"
-            ),
-            {"kid": key_id},
-        )
-    ).fetchone()
+    async def _latest_alert() -> Any:
+        return (
+            await db_session.execute(
+                text(
+                    "SELECT event_type, dedupe_key, payload, delivered_at"
+                    " FROM alert_events"
+                    " WHERE key_id = :kid"
+                    " ORDER BY created_at DESC"
+                    " LIMIT 1"
+                ),
+                {"kid": key_id},
+            )
+        ).fetchone()
+
+    row = await poll_until(_latest_alert, lambda r: r is not None)
 
     assert row is not None, (
         f"Expected 1 alert_events row for key {key_id}, got none"

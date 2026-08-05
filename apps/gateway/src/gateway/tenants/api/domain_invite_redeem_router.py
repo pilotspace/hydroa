@@ -154,9 +154,7 @@ async def redeem_domain_invite_link(
         origin=settings.dashboard_public_origin,
     )
     try:
-        email = await use_case.execute(
-            token=token, email_raw=body.email, now=datetime.now(UTC)
-        )
+        email = await use_case.execute(token=token, email_raw=body.email, now=datetime.now(UTC))
     except InviteNotFoundError:
         raise INVITE_NOT_FOUND.exc() from None
     except DomainInviteLinkInactiveError:

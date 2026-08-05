@@ -240,7 +240,8 @@ class AlertDispatcher:
 
     async def _record_cycle_exhausted(self, session: AsyncSession, row: dict) -> None:  # type: ignore[type-arg]
         """Persist the bumped cycle_attempts count; dead-letter on cap exhaustion."""
-        existing_meta = row["payload"].get(_DISPATCH_META_KEY, {}) if isinstance(row["payload"], dict) else {}
+        payload = row["payload"]
+        existing_meta = payload.get(_DISPATCH_META_KEY, {}) if isinstance(payload, dict) else {}
         cycle_attempts = int(existing_meta.get("cycle_attempts", 0)) + 1
         dead_letter = cycle_attempts >= self._dead_letter_max_cycles
 

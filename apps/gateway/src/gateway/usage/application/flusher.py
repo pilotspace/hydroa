@@ -2,7 +2,7 @@
 
 Responsibilities per TASK.md §1 Must:
   - Consumer group: XGROUP CREATE with MKSTREAM (idempotent).
-  - Read: XREADGROUP with count=100, block=0 (non-blocking in tests).
+  - Read: XREADGROUP with count=100 and NO BLOCK (block=None) — returns immediately.
   - Insert: ON CONFLICT (id) DO NOTHING — exactly-once semantic in ledger.
   - Acknowledge: XACK after successful INSERT (at-least-once + idempotency).
   - flush_once() is the deterministic test entry point.
@@ -229,7 +229,7 @@ class UsageLedgerFlusher:
     """Read pending events from Redis Stream and upsert them into usage_records.
 
     flush_once() processes all currently pending messages (XREADGROUP COUNT 100
-    with block=0 — returns immediately).  Called directly by tests; also
+    with no BLOCK — returns immediately).  Called directly by tests; also
     invoked by the background lifespan task at 1s intervals.
     """
 
@@ -301,12 +301,18 @@ class UsageLedgerFlusher:
                 )
 
         try:
+            # block=None omits BLOCK entirely — the actual non-blocking read.
+            # NOT block=0: in Redis `BLOCK 0` means "block FOREVER", so every cycle
+            # with nothing to read hung until redis-py's 5s DEFAULT_SOCKET_TIMEOUT
+            # fired, then raised TimeoutError, dropped the connection and logged a
+            # WARNING traceback. Guarded by tests/usage::
+            # test_flush_once_returns_promptly_when_stream_is_drained.
             messages = await self._redis.xreadgroup(
                 CONSUMER_GROUP,
                 CONSUMER_NAME,
                 {STREAM_KEY: ">"},
                 count=100,
-                block=0,
+                block=None,
             )
         except Exception as exc:
             _log.warning("flusher: xreadgroup failed", exc_info=exc)

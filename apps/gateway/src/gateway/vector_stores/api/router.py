@@ -52,8 +52,8 @@ from gateway.core.error_catalog import (
     VECTOR_STORE_METADATA_INVALID,
     VECTOR_STORE_NAME_TOO_LONG,
     VECTOR_STORE_NOT_FOUND,
+    ErrorSpec,
 )
-from gateway.core.error_catalog import ErrorSpec
 from gateway.files.infrastructure.repository import FileRepository
 from gateway.files.wire_id import parse_wire_id as parse_file_wire_id
 from gateway.files.wire_id import to_wire_id as to_file_wire_id
@@ -294,7 +294,9 @@ async def list_vector_stores(
     }
 
 
-@vector_stores_router.get("/v1/vector_stores/{vector_store_id}", status_code=200, response_model=None)
+@vector_stores_router.get(
+    "/v1/vector_stores/{vector_store_id}", status_code=200, response_model=None
+)
 async def retrieve_vector_store(
     vector_store_id: str,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
@@ -315,7 +317,9 @@ async def retrieve_vector_store(
     return _vector_store_object(row, file_counts=counts)
 
 
-@vector_stores_router.delete("/v1/vector_stores/{vector_store_id}", status_code=200, response_model=None)
+@vector_stores_router.delete(
+    "/v1/vector_stores/{vector_store_id}", status_code=200, response_model=None
+)
 async def delete_vector_store(
     vector_store_id: str,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
@@ -372,7 +376,7 @@ async def _enqueue_or_fallback(request: Request, row_id: uuid.UUID) -> None:
 
     # Import here (not at module top) to avoid a hard import-time dependency of
     # this router on the worker module in the common (queue-already-wired) path.
-    from gateway.vector_stores.application.ingest_worker import (  # noqa: PLC0415
+    from gateway.vector_stores.application.ingest_worker import (
         RedisVectorStoreIngestQueue,
         VectorStoreIngestWorker,
     )
@@ -394,9 +398,7 @@ async def _enqueue_or_fallback(request: Request, row_id: uuid.UUID) -> None:
         try:
             await worker.drive(row_id)
         except Exception:
-            _log.exception(
-                "vector_store ingest: inline fallback drive failed for row %s", row_id
-            )
+            _log.exception("vector_store ingest: inline fallback drive failed for row %s", row_id)
         finally:
             tasks_set.discard(task)
 

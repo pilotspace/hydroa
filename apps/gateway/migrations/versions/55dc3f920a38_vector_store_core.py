@@ -91,12 +91,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(
-            ["vector_store_id"], ["vector_stores.id"], ondelete="CASCADE"
-        ),
-        sa.UniqueConstraint(
-            "vector_store_id", "file_id", name="uq_vector_store_files_store_file"
-        ),
+        sa.ForeignKeyConstraint(["vector_store_id"], ["vector_stores.id"], ondelete="CASCADE"),
+        sa.UniqueConstraint("vector_store_id", "file_id", name="uq_vector_store_files_store_file"),
     )
     op.create_index(
         "ix_vector_store_files_store_created",
@@ -129,9 +125,7 @@ def upgrade() -> None:
             ["vector_store_file_id"], ["vector_store_files.id"], ondelete="CASCADE"
         ),
     )
-    op.create_index(
-        "ix_vector_store_chunks_store", "vector_store_chunks", ["vector_store_id"]
-    )
+    op.create_index("ix_vector_store_chunks_store", "vector_store_chunks", ["vector_store_id"])
     op.execute(
         "CREATE INDEX ix_vector_store_chunks_embedding_hnsw ON vector_store_chunks "
         "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)"

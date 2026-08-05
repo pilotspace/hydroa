@@ -15,6 +15,8 @@ is designed specifically so that existing test keeps passing unmodified (see TAS
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import uuid
 from typing import Any
 
@@ -86,7 +88,7 @@ async def customer_tenant_id(db_session: AsyncSession) -> uuid.UUID:
 
 
 @pytest.fixture
-async def superadmin_guard_session(db_session: AsyncSession) -> AsyncSession:
+async def superadmin_guard_session(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
     """Apply the superadmin/platform-tenant guard TRIGGER to the create_all schema.
 
     Base.metadata.create_all creates the table + the widened CHECK constraint (both are
@@ -123,7 +125,16 @@ async def superadmin_guard_session(db_session: AsyncSession) -> AsyncSession:
         """)
     )
     await db_session.commit()
-    return db_session
+    try:
+        yield db_session
+    finally:
+        # suite-stability M2: the schema is now built ONCE per xdist worker, so a
+        # trigger installed here survives every later test on this worker. Under the
+        # old per-test drop_all, DROP TABLE took it with them. Drop it explicitly.
+        await db_session.execute(
+            text("DROP TRIGGER IF EXISTS users_superadmin_platform_tenant_guard ON users")
+        )
+        await db_session.commit()
 
 
 @pytest.fixture

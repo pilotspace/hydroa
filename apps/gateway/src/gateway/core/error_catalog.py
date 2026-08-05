@@ -1626,9 +1626,7 @@ USAGE_RANGE_TOO_LARGE = ErrorSpec(
 USAGE_PAGE_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "page cursor is malformed")
 
 #: limit non-integer or outside 1..180.
-USAGE_LIMIT_INVALID = ErrorSpec(
-    422, "ERR_PAYLOAD_INVALID", "limit must be an integer in 1..180"
-)
+USAGE_LIMIT_INVALID = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "limit must be an integer in 1..180")
 
 # ---------------------------------------------------------------------------
 # Stored responses + chaining (responses-state-store PLAN.md §3 — FROZEN @ v1)

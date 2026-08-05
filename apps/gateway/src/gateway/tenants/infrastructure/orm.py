@@ -428,9 +428,7 @@ class DomainInviteLinkRow(Base):
 
     __tablename__ = "domain_invite_links"
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('active', 'revoked')", name="ck_domain_invite_links_status"
-        ),
+        CheckConstraint("status IN ('active', 'revoked')", name="ck_domain_invite_links_status"),
         CheckConstraint("domain = lower(domain)", name="ck_domain_invite_links_domain_lower"),
         Index("uq_domain_invite_links_token_hash", "token_hash", unique=True),
         Index(

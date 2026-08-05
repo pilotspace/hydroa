@@ -101,9 +101,7 @@ def _get_repo(
 # ---------------------------------------------------------------------------
 
 
-@domain_invite_links_router.post(
-    "", response_model=DomainInviteLinkCreateResponse, status_code=201
-)
+@domain_invite_links_router.post("", response_model=DomainInviteLinkCreateResponse, status_code=201)
 async def create_domain_invite_link(
     request: Request,
     body: DomainInviteLinkCreateRequest,
@@ -186,9 +184,7 @@ async def list_domain_invite_links(
 # ---------------------------------------------------------------------------
 
 
-@domain_invite_links_router.delete(
-    "/{link_id}", response_model=DomainInviteLinkRevokeResponse
-)
+@domain_invite_links_router.delete("/{link_id}", response_model=DomainInviteLinkRevokeResponse)
 async def revoke_domain_invite_link(
     request: Request,
     link_id: uuid.UUID,

@@ -14,7 +14,12 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16-alpine
+        # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
+        # charts/ai-proxy/values.yaml — the suite runs `CREATE EXTENSION vector`
+        # (tests/conftest.py) and the ORM carries a Vector(1536) column, so a
+        # stock/alpine Postgres fails the whole vector-store surface.
+        # Guarded by tests/migrations/test_ci_workflow_parity.py.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: gateway
           POSTGRES_PASSWORD: gateway
@@ -44,6 +49,11 @@ jobs:
         run: make typecheck
       - name: Dependency allowlist gate
         run: make allowlist
+      - name: Node dependency allowlist gate
+        # `make ci` = lint typecheck allowlist allowlist-node test; this workflow
+        # must enforce the SAME set. Guarded by
+        # tests/migrations/test_ci_workflow_parity.py::test_ci_enforces_every_make_ci_gate.
+        run: make allowlist-node
       - name: Tests
         run: make test
       - name: Migration parity gate

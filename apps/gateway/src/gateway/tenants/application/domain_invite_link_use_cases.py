@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from gateway.domain_capture.domain.domain_validation import normalize_domain
 from gateway.domain_capture.domain.errors import DomainInvalidError
@@ -130,9 +130,7 @@ class RevokeDomainInviteLinkUseCase:
     def __init__(self, repo: DomainInviteLinkRepository) -> None:
         self._repo = repo
 
-    async def execute(
-        self, *, link_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> DomainInviteLink:
+    async def execute(self, *, link_id: uuid.UUID, tenant_id: uuid.UUID) -> DomainInviteLink:
         return await self._repo.revoke(link_id=link_id, tenant_id=tenant_id)
 
 
@@ -230,13 +228,13 @@ class VerifyDomainRedemptionUseCase:
             MemberVerifyCodeInvalidError,
             MemberVerifyTooManyAttemptsError,
         )
+        from gateway.tenants.domain.entities import DomainInviteLinkStatus
         from gateway.tenants.domain.errors import (
             DomainInviteDomainMismatchError,
             DomainInviteLinkInactiveError,
             InviteExpiredError,
             InviteNotFoundError,
         )
-        from gateway.tenants.domain.entities import DomainInviteLinkStatus
 
         if len(password) < MIN_PASSWORD_LENGTH:
             raise WeakPasswordError

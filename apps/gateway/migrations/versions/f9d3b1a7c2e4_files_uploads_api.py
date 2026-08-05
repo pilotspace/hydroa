@@ -42,9 +42,7 @@ def upgrade() -> None:
         sa.Column("bytes", sa.Integer(), nullable=False),
         sa.Column("content_type", sa.Text(), nullable=False),
         sa.Column("status", sa.Text(), nullable=False, server_default=sa.text("'processed'")),
-        sa.Column(
-            "storage_backend", sa.Text(), nullable=False, server_default=sa.text("'inline'")
-        ),
+        sa.Column("storage_backend", sa.Text(), nullable=False, server_default=sa.text("'inline'")),
         sa.Column("object_key", sa.Text(), nullable=True),
         sa.Column("content", sa.LargeBinary(), nullable=True),
         sa.Column(

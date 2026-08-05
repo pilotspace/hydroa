@@ -28,6 +28,7 @@ __all__ = [
     "PERSONA_FLOW_VALUES",
     "TASK_KINDS",
     "SPEC_DDS",
+    "METHOD_PERSONAS",
     "PERSONA_HINT",
     "PERSONA_FIT_HINT_TEMPLATE",
     "GUIDELINE_FILES",
@@ -82,7 +83,7 @@ def book_url(chapter: str) -> str:
 # `add.py guide` copy: per-phase (concrete next action, book chapter to read).
 # Keep the action wording aligned with each phase's EXIT line in the TASK template.
 PHASE_GUIDE = {
-    "direction": ("draft the Direction bundle top-to-bottom — §1 rules (Must / Reject + named codes / After, assumptions ranked lowest-confidence first) · §2 one scenario per rule · §3 the change PLAN: ground the real code, draft the contract, and DESCRIBE what this task will do (scope · ordered batches · approach — the plan-of-action the freeze report shows the human) · §4 red suite failing for the right reason; then the ONE approval: freeze --by <name> --cross",
+    "direction": ("draft the Direction bundle top-to-bottom — §1 rules (Must / Reject + named codes / After, assumptions ranked lowest-confidence first) · §3 the change PLAN: ground the real code, draft the contract, and DESCRIBE what this task will do (scope · ordered batches · approach — the plan-of-action the freeze report shows the human) · §4 red suite failing for the right reason, one case per rule (scenarios live here with the tests); then the ONE approval: freeze --by <name> --cross",
                   "03-step-1-specify.md"),
     "build":     ("write the minimum code to pass the tests; change no test and no contract",
                   "07-step-5-build.md"),
@@ -148,6 +149,15 @@ TASK_KINDS = ("feature", "refactor", "test", "docs", "ui",
 # `delta-append <dd>` routes a lesson to its file. Closed on purpose: the five lenses ARE
 # the method's competency model (DDD·SDD·UDD·TDD·ADD) — an unknown dd is a refusal
 # (delta_dd_unknown), because a delta filed under a sixth ad-hoc lens is a delta lost.
+# seed-method-personas: the ONLY personas ADD ships. The shipping criterion (written
+# into persona-author/references/contract.md) is deliberately narrow — a persona ships
+# only if it reasons about ADD's OWN artifacts (PLAN.md sections, the frozen contract,
+# the milestone DAG, the release cut), never about a project domain (security, data,
+# UX). Domain lenses are the project's to author; that distinction is what separates
+# these from the 12 preset personas retired at preset-patterns-fold for having no
+# consumer. Adding a slug here without meeting the criterion re-opens that failure.
+METHOD_PERSONAS = ("task-planner", "milestone-planner", "release-planner")
+
 SPEC_DDS = {
     "ddd": ("domain.md", "Domain",
             "what the system IS: entities, rules, ubiquitous language (DDD)"),

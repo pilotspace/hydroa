@@ -81,7 +81,13 @@ class TenantReportScheduleRow(Base):
     delivery_target: Mapped[str] = mapped_column(Text, nullable=False, server_default="in_app")
     created_by: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
+    # onupdate keeps the Postgres clock that supplies server_default as the column's
+    # ONLY writer (suite-stability M9). Without it, dropping the repository's explicit
+    # bump would silently freeze this column. Not a schema change — SQLAlchemy renders
+    # it into the UPDATE, so alembic autogenerate is unaffected.
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now(), nullable=False
+    )
     last_run_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_run_status: Mapped[str | None] = mapped_column(Text, nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(nullable=True)

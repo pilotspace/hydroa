@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "zdr-ingest-lock-heal",
+  "active_task": "pgvector-deploy-runbook",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -579,6 +579,250 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "ci-restoration": {
+      "title": "Restore a genuinely green CI and make it required on main",
+      "phase": "done",
+      "gate": "RISK-ACCEPTED",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-07-25T09:26:19+00:00",
+      "updated": "2026-07-25T11:31:42+00:00",
+      "sensitivity": "architecture",
+      "freeze": {
+        "version": "v4",
+        "frozen_at": "2026-07-25T11:31:04+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "c4eb779a96b5f65840e5fe9d274d97a9",
+        "tests": {
+          "apps/gateway/tests/migrations/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/migrations/conftest.py": "f7e65483877c514e0f9e42d332b196cd",
+          "apps/gateway/tests/migrations/test_account_type_backfill.py": "beec5a7af3aec7581de3701bcd11a80b",
+          "apps/gateway/tests/migrations/test_billing_owner_of_record_backfill.py": "d8b647a3c1bebe03eeffd416de9a5023",
+          "apps/gateway/tests/migrations/test_ci_workflow_parity.py": "3f31807836e658117f8c8c5215130a6b",
+          "apps/gateway/tests/migrations/test_domain_routing_backfill.py": "919b4a911853a70385da91bee0a8ae5d",
+          "apps/gateway/tests/migrations/test_migrations.py": "d0109f972a3cf01cff2f53c09b034fea",
+          "apps/gateway/tests/migrations/test_plan_tiers_and_base_fee.py": "009300761d54e37c2cb3567be0b3a144",
+          "apps/gateway/tests/migrations/test_seat_billing_backfill.py": "44d375215b8f506bfc59805259b0b27e",
+          "apps/gateway/tests/migrations/test_seat_billing_backfill_adversarial.py": "89ae4dd572835ba3171bdd3fdf1aa604",
+          "apps/gateway/tests/migrations/test_tool_call_metering_seed.py": "c26bbdceb7a16874b6ebc5785afed7c0"
+        }
+      },
+      "scope": {
+        "declared": [
+          "CONTRIBUTING.md",
+          "CLAUDE.md",
+          "AGENTS.md",
+          ".clinerules",
+          ".github/",
+          "apps/gateway/tests/migrations/"
+        ],
+        "snapshot_md5": "22ca94cdcc01379ae401702e7d31f8d8"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-25T11:30:37+00:00",
+            "reason": "tamper_detected:build_tampered:apps/gateway/tests/migrations/test_ci_workflow_parity.py",
+            "source": "tamper"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-07-25T11:30:37+00:00",
+            "source": "tamper",
+            "note": null
+          }
+        ]
+      },
+      "waiver": {
+        "owner": "Tin Dang",
+        "ticket": "todos #68/#69 + release-integrity MILESTONE.md exit criteria",
+        "expires": "2026-08-15"
+      },
+      "target_hit": "partial",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "lint-type-debt-sweep": {
+      "title": "Clear the ruff/pyright/allowlist debt so make ci can go green",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [
+        "ci-restoration"
+      ],
+      "created": "2026-07-25T11:42:05+00:00",
+      "updated": "2026-07-25T12:34:39+00:00",
+      "sensitivity": "architecture",
+      "freeze": {
+        "version": "v4",
+        "frozen_at": "2026-07-25T12:34:33+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "62e34855798993e83895802ba231882d",
+        "tests": {
+          "apps/gateway/tests/repo_hygiene/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "35df95fe265f0c3ccb0d8271177a0236",
+          "apps/gateway/tests/mcp_connector/test_relay_failclosed_characterization.py": "0732c541df5bfcb6ce7bc99bd5e0425f"
+        }
+      },
+      "scope": {
+        "declared": [
+          ".add/dependencies.allowlist",
+          "apps/gateway/src/",
+          "apps/gateway/tests/",
+          "apps/gateway/migrations/"
+        ],
+        "snapshot_md5": "e21ac083d4f34a9f838f1cc0b588000d"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "suite-stability": {
+      "title": "Make the full gateway suite finish deterministically",
+      "phase": "done",
+      "gate": "RISK-ACCEPTED",
+      "milestone": "release-integrity",
+      "depends_on": [
+        "ci-restoration"
+      ],
+      "created": "2026-07-25T15:58:51+00:00",
+      "updated": "2026-07-29T12:41:09+00:00",
+      "sensitivity": "architecture",
+      "freeze": {
+        "version": "v3",
+        "frozen_at": "2026-07-28T16:48:10+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "247618c6ed745de66fb77921be8401a3",
+        "tests": {
+          "apps/gateway/tests/suite_isolation/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/suite_isolation/test_suite_isolation.py": "83f582da79001aab44b3be193bf6fc78",
+          "apps/gateway/tests/repo_hygiene/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "4522642e40e586c2655b812c5f50b039"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/",
+          "apps/gateway/src/gateway/",
+          "apps/gateway/pyproject.toml",
+          ".add/dependencies.allowlist"
+        ],
+        "snapshot_md5": "c87f0e24582e86c4265e6b139b4a12bc"
+      },
+      "waiver": {
+        "owner": "Tin Dang",
+        "ticket": "todo #81 (unreproduced catalog_refresh_scheduler stall) + todo #80 (azure egress DNS)",
+        "expires": "2026-09-30"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "pgvector-deploy-runbook": {
+      "title": "A pgvector-bearing release deploys to managed Postgres from a written runbook",
+      "phase": "done",
+      "gate": "RISK-ACCEPTED",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-07-29T15:07:31+00:00",
+      "updated": "2026-07-30T03:59:17+00:00",
+      "relates_to": [
+        "vector-store-core"
+      ],
+      "sensitivity": "data",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-29T16:05:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "6c6af6cc6b98f9dd58a4ea3705df4b68",
+        "tests": {
+          "apps/gateway/tests/pgvector_deploy/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/pgvector_deploy/test_pgvector_deploy.py": "eb2121a6aa796cc4ace1fd9d5e809598"
+        }
+      },
+      "scope": {
+        "declared": [
+          "scripts/",
+          "docs/runbooks/",
+          "apps/gateway/tests/pgvector_deploy/",
+          "Makefile"
+        ],
+        "snapshot_md5": "e8839e0beebe42d8e208cc0e194156e3"
+      },
+      "waiver": {
+        "owner": "Tin Dang",
+        "ticket": "M3 operator walkthrough on a real target",
+        "expires": "2026-09-30"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -654,7 +898,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-07-25T09:08:36+00:00",
+  "updated": "2026-07-30T03:59:17+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1809,7 +2053,8 @@
     "release-integrity"
   ],
   "active_tasks": {
-    "managed-rag-finetune": "zdr-ingest-lock-heal"
+    "managed-rag-finetune": "zdr-ingest-lock-heal",
+    "release-integrity": "pgvector-deploy-runbook"
   },
   "todos": [
     {
@@ -2212,6 +2457,96 @@
       "id": 67,
       "text": "R6 pgvector-deploy-runbook: migration 55dc3f920a38 runs CREATE EXTENSION IF NOT EXISTS vector \u2014 on RDS/Aurora/Cloud SQL this needs rds_superuser + an allow-listed extension or the migration hard-fails at deploy. Document the prereq AND add a boot-time preflight that fails loudly when the vector extension is absent.",
       "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 68,
+      "text": "R6: dependency allowlist gate has been RED since #89 \u2014 dnspython, pgvector, pytest-rerunfailures, pytest-xdist entered without the justified PR .add/dependencies.allowlist demands. Tin approved allowlisting all four WITH written justification; owned by lint-type-debt-sweep.",
+      "created": "2026-07-25T10:11:43+00:00",
+      "status": "open"
+    },
+    {
+      "id": 69,
+      "text": "R6: promote lint-type-debt-sweep from wave 2 to run IMMEDIATELY after ci-restoration \u2014 it is a hard prerequisite for ci-restoration M4 (make ci is red on 37 ruff + 3 pyright + 4 allowlist).",
+      "created": "2026-07-25T10:11:43+00:00",
+      "status": "open"
+    },
+    {
+      "id": 70,
+      "text": "R7: 410 pre-existing per-line '# noqa: CODE' directives across apps/gateway carry NO written reason (143 do). lint-type-debt-sweep fixed only the 3 it added; a guard requiring justification on all of them would be a real scope of its own. Consider a ratchet: new noqas must be justified, existing ones grandfathered.",
+      "created": "2026-07-25T12:34:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 71,
+      "text": "ruff EXCLUDE list is a lint blind spot: the 63 test files excluded by lint-type-debt-sweep CR v2 get NO ruff check at all, so a missing import in one reads as 'All checks passed'. Hit for real on 2026-07-26 editing tests/semantic_cache (missing 'import time', caught only by reading the imports). Options: re-include with per-file format-only ignores, or add a syntax/name-resolution check that covers excluded files.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 72,
+      "text": "pytest-timeout (suite-stability M8) bounds a TEST, not the SESSION: a stall in session teardown, after the last test, is still silent. If a teardown hang ever shows up, add an outer wall-clock kill in the CI job rather than widening the plugin's remit.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 73,
+      "text": "tests/realtime bootstraps its own schema and bypasses the shared conftest app/_schema fixtures entirely (own settings, own drop_all/create_all, own TestClient). It now does that BEFORE the lifespan starts, but it is still a second, divergent isolation mechanism. Fold it onto the shared session-scoped _schema + DELETE reset so there is one reset path, not two.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 74,
+      "text": "Fixed-sleep-then-assert flake class, 7 files still carrying it: guardrails/test_guardrails_core, health_alerting, mcp_connector/test_budget_governance, mcp_connector/test_call_flow, obs_callbacks, payload_capture/{test_payload_capture_store,test_verify_repro_scrub_gap}, request_log_metering_fields. They sleep a fixed 0.1s then assert on a fire-and-forget write \u2014 passes idle, fails under -n 6 on a loaded host. Both semantic_cache instances were converted to bounded polls in suite-stability (they actually failed); the rest are latent. Same class as [[fire-and-forget-audit-test-flake]]. Convert to poll-until-present per file.",
+      "created": "2026-07-28T10:37:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 75,
+      "text": "MIXED CLOCK SOURCES on updated_at \u2014 real product defect, found by suite-stability run 3 (2026-07-28). ORM columns default to func.now() (POSTGRES clock, transaction-start time); explicit bumps write datetime.now(tz=UTC) (APPLICATION clock). When the app host clock trails the Postgres container's, a bump writes a timestamp EARLIER than the value it replaces \u2014 observed 22ms backwards, failing conversations::test_append_bumps_updated_at and test_conversation_rename::test_rename_bumps_updated_at. Not cosmetic: conversations/infrastructure/orm.py:55 indexes updated_at DESC for the list view, so a just-touched row can sort BELOW untouched ones. Same pattern in 7 repositories: conversations, video, compliance, finetune, batches, credits/{api/router,ledger_store}. Fix direction: make the bump use func.now() so one clock owns the column, or move the bump into a DB trigger. PRE-EXISTING \u2014 the suite speed-up only exposed it.",
+      "created": "2026-07-28T16:17:26+00:00",
+      "status": "done"
+    },
+    {
+      "id": 76,
+      "text": "MIXED CLOCK SOURCES on updated_at \u2014 PARTIALLY FIXED in suite-stability CR v3 (2026-07-28): 9 write sites in batches/conversations/finetune/video now use func.now(), guarded by repo_hygiene::test_timestamp_columns_have_one_clock_owner. REMAINING: (a) compliance/infrastructure/repository.py:54-55 takes 'now' as a PARAMETER, so the guard cannot see the clock at the call site \u2014 audit its callers; (b) created_at is only covered where it is written explicitly, and the guard's scope is */infrastructure/ so a write from an application-layer service would be missed. Two candidates were checked and REJECTED as false positives: credits/api/router.py:211 (response field, not a column) and credits/infrastructure/ledger_store.py (already SQL now()).",
+      "created": "2026-07-28T17:05:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 77,
+      "text": "Tests ordering by a func.now() column cannot break ties: usage_records.created_at is server_default=func.now() (transaction-START time), so rows written in one flusher transaction share a timestamp and ORDER BY created_at is nondeterministic. Fixed in tests/semantic_cache SC1+SC9 by identifying rows by their cached marker. No repo_hygiene guard exists for this class \u2014 a naive ban on 'ORDER BY created_at' in tests would false-positive on the many suites that order across separate transactions. Needs a smarter guard (e.g. flag ORDER BY created_at where the test also asserts on rows[0]/rows[1] positionally).",
+      "created": "2026-07-29T04:47:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 78,
+      "text": "finetune repository writes two clocks into ONE row: set_status/cancel now use updated_at=func.now() (M9) but keep finished_at=datetime.now(tz=UTC). Contract-compliant (M9 scopes to created_at/updated_at) and currently harmless (nothing orders by or compares finished_at), but it is the same latent class CR v3 removed \u2014 a terminal row can carry finished_at EARLIER than its own updated_at. Fix: finished_at=func.now() in src/gateway/finetune/infrastructure/repository.py (2 sites).",
+      "created": "2026-07-29T05:13:32+00:00",
+      "status": "done"
+    },
+    {
+      "id": 79,
+      "text": "Fixed-sleep-then-assert remains the suite's largest flake class: 250 asyncio.sleep sites in tests/, of which ~83 are positive waits (pollable via tests/_polling.py), 29 are NEGATIVE (the sleep proves something never happens \u2014 polling would make the assert vacuous, do NOT convert), 89 need per-site judgement. suite-stability converted 21. The rest still fail randomly under -n 6 on a loaded host \u2014 each full run surfaced a DIFFERENT subset. Sweep the remaining positive waits; the classifier is at scratchpad/classify.py and the conservative converter at scratchpad/convert.py (note: convert.py's import insertion breaks multi-line parenthesized imports \u2014 fix before reuse).",
+      "created": "2026-07-29T06:54:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 80,
+      "text": "tests/azure_aad + tests/azure_audio resolve real hostnames (r.openai.azure.com, login.microsoftonline.com) because EgressPolicy.check() resolves the target as the SSRF/DNS-rebinding control. So the suite still needs a working resolver for 14 tests. A blanket DNS block was tried in suite-stability M11 and reverted: blocking or synthesising DNS makes a SECURITY control observe harness-chosen answers. Right fix is to give those suites an injected resolver/policy double, not a global socket patch. Owner: Tin Dang",
+      "created": "2026-07-29T10:50:34+00:00",
+      "status": "open"
+    },
+    {
+      "id": 81,
+      "text": "suite-stability M14 residual: tests/catalog_refresh_scheduler::test_default_off_not_wired stalled 300s once under -n 6 (2026-07-29 ev1) and did NOT reproduce in the next full run. Evidence brackets it to late lifespan STARTUP or the first shutdown cancel-join; the join is now bounded (M14), the startup branch is not. Suspected mechanism: a startup DB read queued behind per-test DDL (pg sampler caught real relation-lock waits of 0.5s and 3.7s on gw3). If it recurs, the stallwatch plugin recipe is in the task notes. Owner: Tin Dang",
+      "created": "2026-07-29T11:45:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 82,
+      "text": "todo #79 concrete sites: tests/response_caching/test_response_caching.py:393 and :1074/:1089 still use bare asyncio.sleep(0.1/0.15) with the comment 'allow fire-and-forget recording'. Failed as 'expected 2 usage rows, found 1' in a slow full run (12m59s vs the usual 6m19s) on 2026-07-29; passes in isolation. Convert to tests._polling.poll_until, the same fix suite-stability M10 applied to the four usage/team_attribution sites. Owner: Tin Dang",
+      "created": "2026-07-29T16:28:55+00:00",
       "status": "open"
     }
   ]

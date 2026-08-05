@@ -535,9 +535,7 @@ def _compile_custom_patterns(
     return list(_compile_patterns_cached(items))
 
 
-def _apply_capped_pattern(
-    text: str, pattern: re.Pattern[str], literal: str
-) -> tuple[str, bool]:
+def _apply_capped_pattern(text: str, pattern: re.Pattern[str], literal: str) -> tuple[str, bool]:
     """Apply one custom pattern to `text`, scanning only the first
     `_CUSTOM_INPUT_CAP` bytes (the uncapped remainder is preserved verbatim).
     Returns (new_text, changed)."""
@@ -647,9 +645,7 @@ def _apply_custom_patterns_to_messages(
                     if isinstance(part, dict) and part.get("type") == "text":
                         text = part.get("text")
                         if isinstance(text, str) and text:
-                            full_new, part_changed = _apply_capped_pattern(
-                                text, pattern, literal
-                            )
+                            full_new, part_changed = _apply_capped_pattern(text, pattern, literal)
                             if part_changed:
                                 content_changed = True
                                 new_parts.append({**part, "text": full_new})

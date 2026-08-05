@@ -35,6 +35,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_for_count
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT / payload-capture-store precedent
@@ -283,9 +285,9 @@ async def test_non_streaming_capture_carries_latency_tokens_and_correlation_id(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await asyncio.sleep(0.3)  # allow the fire-and-forget capture + record tasks to complete
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_until(
+        lambda: _request_log_metering_rows(db_session, tenant_id), lambda v: len(v) >= 1
+    )
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     request_id, latency_ms, prompt_tokens, completion_tokens, total_tokens, *_ = rows[0]
     assert prompt_tokens == 12
@@ -337,9 +339,7 @@ async def test_streaming_clean_close_capture_carries_latency_tokens_and_correlat
     content = resp.text  # fully consume the SSE body so the generator runs to close
     assert "data:" in content
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_for_count(lambda: _request_log_metering_rows(db_session, tenant_id), 1)
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     request_id, latency_ms, prompt_tokens, completion_tokens, total_tokens, stream, *_ = rows[0]
     assert stream is True
@@ -390,9 +390,7 @@ async def test_cache_hit_capture_carries_cached_usage_tokens(
         f"expected X-Cache: hit on 2nd identical request, got {resp2.headers.get('x-cache')!r}"
     )
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_for_count(lambda: _request_log_metering_rows(db_session, tenant_id), 2)
     assert len(rows) == 2, f"expected 2 request_logs rows (miss + hit), got {len(rows)}"
     cached_rows = [r for r in rows if r.cached is True]
     assert len(cached_rows) == 1, f"expected exactly 1 cache-hit row, got {rows}"
@@ -444,9 +442,9 @@ async def test_guardrail_block_capture_has_latency_but_no_tokens(
     assert_problem(resp, 400, "ERR_GUARDRAIL_BLOCKED")
     assert upstream.calls == 0, "request must never reach upstream on a pre-call BLOCK"
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_until(
+        lambda: _request_log_metering_rows(db_session, tenant_id), lambda v: len(v) >= 1
+    )
     assert len(rows) == 1, f"expected exactly 1 request_logs row, got {len(rows)}"
     request_id, latency_ms, prompt_tokens, completion_tokens, total_tokens, *_ = rows[0]
     assert prompt_tokens is None, "BLOCK row must never report confirmed-zero tokens"
@@ -501,9 +499,9 @@ async def test_latency_ms_derived_from_start_ns_never_second_clock(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_until(
+        lambda: _request_log_metering_rows(db_session, tenant_id), lambda v: len(v) >= 1
+    )
     assert len(rows) == 1
     _request_id, latency_ms, *_ = rows[0]
     assert latency_ms == 0, (
@@ -542,9 +540,9 @@ async def test_request_id_correlates_rows_and_usage_records_has_no_new_column(
     )
     assert resp.status_code == 200
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_until(
+        lambda: _request_log_metering_rows(db_session, tenant_id), lambda v: len(v) >= 1
+    )
     assert len(rows) == 1
     request_id = rows[0].request_id
     assert request_id is not None
@@ -842,9 +840,9 @@ async def test_tokens_stored_verbatim_never_recomputed_from_response_body(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await asyncio.sleep(0.3)
-
-    rows = await _request_log_metering_rows(db_session, tenant_id)
+    rows = await poll_until(
+        lambda: _request_log_metering_rows(db_session, tenant_id), lambda v: len(v) >= 1
+    )
     assert len(rows) == 1
     _request_id, _latency_ms, prompt_tokens, completion_tokens, total_tokens, *_ = rows[0]
     # The usage dict's values, verbatim — NOT re-derived from the (much longer) response

@@ -45,6 +45,7 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -230,8 +231,9 @@ async def test_accept_happy_path(
 
     assert await _invite_status(db_session, invite["id"]) == "accepted"
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit task complete
-    audit = await _audit_event(db_session, "invite.accept")
+    audit = await poll_until(
+        lambda: _audit_event(db_session, "invite.accept"), lambda v: v is not None
+    )
     assert audit is not None, "expected an invite.accept audit event"
 
 

@@ -61,7 +61,6 @@ from gateway.core.error_catalog import (
 )
 from gateway.core.errors import ProblemError
 from gateway.credits.domain.ports import CreditGuard, PassthroughCreditGuard
-from gateway.vector_stores.application.file_search import FileSearchError, FileSearchGrounder
 from gateway.guardrail_analytics.application.verdict_recorder import record_guardrail_verdicts
 from gateway.keys.domain.entities import AuthzResult
 from gateway.keys.domain.errors import InvalidApiKeyError
@@ -148,6 +147,7 @@ from gateway.usage.domain.partial_usage import (
     partial_stream_usage,
     read_partial_usage,
 )
+from gateway.vector_stores.application.file_search import FileSearchError, FileSearchGrounder
 
 if TYPE_CHECKING:
     from gateway.observability.otel import OtelSpanEmitter

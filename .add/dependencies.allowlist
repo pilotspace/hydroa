@@ -29,9 +29,37 @@ reportlab      # invoice-generation TASK.md §3 Issue R2 — pure-Python PDF gen
                # GET /admin/invoices/{id}/export?format=pdf (M9); no system cairo/pango
                # dependency, unlike weasyprint (recommended at design, confirmed at build)
 
+dnspython     # enterprise-domain-onboarding — DNS TXT lookup for domain-ownership
+              # verification (`resolve_verified_tenant`); the auto-join ladder refuses to
+              # promote a tenant without a resolved TXT record, so this is on the trust
+              # path, not a convenience. Pure-Python, no system resolver dependency.
+pgvector      # managed-rag-finetune (R5, #89) — SQLAlchemy `Vector` column type backing
+              # the pgvector HNSW cosine index for /v1/vector_stores retrieval. Thin
+              # binding over the server-side extension; the extension itself is provisioned
+              # by migration 55dc3f920a38, not by this package.
+              # NOTE: entered the tree in #89 WITHOUT passing this gate — the allowlist
+              # check had been red-but-unobserved since that merge because CI never ran.
+              # Allowlisted retroactively by Tin (2026-07-25) as part of R6.
+
 # --- dev / test ---
 pytest
 pytest-asyncio
 pytest-cov
+pytest-rerunfailures  # flaky-quarantine for the shared-Postgres suites (todos #37/#39);
+                      # lets a known-flaky test be retried explicitly rather than deleted
+                      # or silently skipped. Test-only — never imported by src/.
+pytest-xdist          # parallel suite execution (-n 6 --dist loadscope, ~4.6x on this
+                      # host, PR #70); each worker gets a private Postgres database and
+                      # Redis logical db via tests/_redis_env.py. Test-only.
+pytest-timeout        # suite-stability M8 (R6, 2026-07-26) — hang tripwire. A leaked app
+                      # lifespan parked an xdist worker for 10h23m with no summary line and
+                      # nothing naming the test; the only diagnosis route was inspecting the
+                      # live process. This fails an overrunning test with a stack instead, so
+                      # the next hang costs minutes rather than a blind ten hours. Test-only,
+                      # never imported by src/. Chosen over rolling our own SIGALRM handler because it
+                      # already handles the xdist-worker and fixture-teardown cases correctly.
+                      # KNOWN LIMIT: it bounds a TEST, so a stall in session teardown — after
+                      # the last test — is still silent. Accepted; the observed leak stalls
+                      # inside a test.
 ruff
 pyright

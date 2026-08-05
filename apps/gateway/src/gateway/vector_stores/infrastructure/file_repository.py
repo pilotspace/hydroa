@@ -152,9 +152,7 @@ class VectorStoreFileRepository:
         # Idempotent replace: a re-run of a stranded/re-enqueued row must never
         # accumulate duplicate chunks alongside a prior partial attempt.
         await self._session.execute(
-            sa_delete(VectorStoreChunkRow).where(
-                VectorStoreChunkRow.vector_store_file_id == row_id
-            )
+            sa_delete(VectorStoreChunkRow).where(VectorStoreChunkRow.vector_store_file_id == row_id)
         )
         rows = [
             VectorStoreChunkRow(
@@ -274,4 +272,4 @@ class VectorStoreFileRepository:
         return [RetrievedChunk(content=row[0], chunk_index=row[1]) for row in result.all()]
 
 
-__all__ = ["VectorStoreFileRepository", "_TERMINAL_STATUSES"]
+__all__ = ["_TERMINAL_STATUSES", "VectorStoreFileRepository"]

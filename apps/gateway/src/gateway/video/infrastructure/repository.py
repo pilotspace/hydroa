@@ -16,7 +16,6 @@ Methods:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,8 +111,11 @@ class VideoJobRepository:
         duplicated task (the durable-worker delta) cannot clobber a terminal
         result. Legal linear transitions (queued→running→terminal) are unaffected.
         """
-        now = datetime.now(tz=UTC)
-        values["updated_at"] = now
+        # updated_at is deliberately NOT set here: the column carries
+        # onupdate=func.now(), so the DB clock that owns its server_default also
+        # owns every bump (suite-stability M9). Writing datetime.now() here made
+        # this repository MIXED-clock once increment_retry moved to func.now(),
+        # which is the exact inversion CR v3 was raised to remove.
         await self._session.execute(
             update(VideoGenerationJobRow)
             .where(
@@ -169,7 +171,6 @@ class VideoJobRepository:
             )
             .values(
                 retry_count=VideoGenerationJobRow.retry_count + 1,
-                updated_at=datetime.now(tz=UTC),
             )
             .returning(VideoGenerationJobRow.retry_count)
         )

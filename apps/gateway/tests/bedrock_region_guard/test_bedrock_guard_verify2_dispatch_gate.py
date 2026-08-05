@@ -108,7 +108,10 @@ async def test_unicode_confusable_prefix_never_reaches_bedrock_adapter() -> None
     visually identical, byte-distinct. Same catalog-gate defense applies.
     """
     dispatch, bedrock, openrouter = await _dispatch_with_catalog({_EU_PROFILE_MODEL: "bedrock"})
-    confusable = "еu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    # noqa justified: the CYRILLIC е (U+0435) IS the attack payload this test exists
+    # to prove is rejected. "Fixing" it to a Latin e would silently gut the test while
+    # leaving it green. Guarded by tests/repo_hygiene::test_bedrock_homoglyph_payload_survives.
+    confusable = "еu.anthropic.claude-3-5-sonnet-20241022-v2:0"  # noqa: RUF001
     status, body = await dispatch.complete({"model": confusable, "messages": []})
     assert len(bedrock.calls) == 0, "LEAK: unicode-confusable id reached the Bedrock adapter"
 

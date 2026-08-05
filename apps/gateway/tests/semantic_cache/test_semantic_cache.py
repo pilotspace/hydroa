@@ -103,6 +103,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_for_count
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -216,17 +217,14 @@ async def enable_semantic_cache(
     """
     body: dict[str, Any] = {"enabled": cache_enabled, "semantic_enabled": semantic_enabled}
     resp = await client.put(ADMIN_CACHE, json=body, headers=auth_jwt(jwt))
-    assert resp.status_code == 200, (
-        f"PUT /admin/cache failed ({resp.status_code}): {resp.text}"
-    )
+    assert resp.status_code == 200, f"PUT /admin/cache failed ({resp.status_code}): {resp.text}"
     resp_body = resp.json()
     # TRUE-RED: "semantic_enabled" absent from PUT /admin/cache response → AssertionError
     assert "semantic_enabled" in resp_body, (
         f"PUT /admin/cache response missing 'semantic_enabled' field: {resp_body}"
     )
     assert resp_body["semantic_enabled"] is semantic_enabled, (
-        f"expected semantic_enabled={semantic_enabled!r}, "
-        f"got {resp_body.get('semantic_enabled')!r}"
+        f"expected semantic_enabled={semantic_enabled!r}, got {resp_body.get('semantic_enabled')!r}"
     )
 
 
@@ -241,9 +239,7 @@ async def assert_semantic_enabled_in_get(
     TRUE-RED GATE: fails until semantic_enabled is added to GET /admin/cache response.
     """
     resp = await client.get(ADMIN_CACHE, headers=auth_jwt(jwt))
-    assert resp.status_code == 200, (
-        f"GET /admin/cache failed ({resp.status_code}): {resp.text}"
-    )
+    assert resp.status_code == 200, f"GET /admin/cache failed ({resp.status_code}): {resp.text}"
     body = resp.json()
     # TRUE-RED: "semantic_enabled" absent → AssertionError
     assert "semantic_enabled" in body, (
@@ -424,31 +420,40 @@ async def test_semantic_cache_normalized_variant_hits(
         "semantic hit body should be identical to original response body"
     )
 
-    # Verify usage row 2 has cached=true and cost_usd=0
-    import asyncio
-    await asyncio.sleep(0.1)
-
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT cost_usd, raw FROM usage_records"
-                " WHERE key_id = :kid ORDER BY created_at ASC"
-            ),
-            {"kid": key_info["key_id"]},
+    # Verify usage row 2 has cached=true and cost_usd=0.
+    #
+    # The usage write is FIRE-AND-FORGET, so this polls until both rows land
+    # rather than sleeping a fixed 0.1 s and hoping. A fixed sleep passes on an
+    # idle machine and fails under `-n 6` when the host is loaded — it failed
+    # exactly that way on 2026-07-26 ("expected 2 usage rows, found 1"), which
+    # is the same flake class as [[fire-and-forget-audit-test-flake]]. Polling
+    # costs nothing when the write is already there.
+    #
+    # Deliberately UNORDERED — see SC9 below: both rows share one `func.now()`
+    # transaction timestamp, so `ORDER BY created_at` cannot separate them.
+    async def _fetch() -> list[Any]:
+        return list(
+            (
+                await db_session.execute(
+                    text("SELECT cost_usd, raw FROM usage_records WHERE key_id = :kid"),
+                    {"kid": key_info["key_id"]},
+                )
+            ).fetchall()
         )
-    ).fetchall()
+
+    rows = await poll_for_count(_fetch, 2)
 
     assert len(rows) == 2, f"expected 2 usage rows, found {len(rows)}"
 
-    _first_cost, _first_raw = rows[0]
-    second_cost, second_raw = rows[1]
+    cached_rows = [r for r in rows if r.raw.get("cached") is True]
 
-    # Second row: semantic hit → cost_usd=0, cached=true
-    assert second_cost == 0, (
-        f"semantic hit usage row should have cost_usd=0, got {second_cost}"
+    # Semantic hit row: cached=true, cost_usd=0
+    assert len(cached_rows) == 1, (
+        f"expected exactly 1 usage row marked cached=true, got {len(cached_rows)}: "
+        f"{[r.raw for r in rows]}"
     )
-    assert second_raw.get("cached") is True, (
-        f"semantic hit usage row raw should have cached=true, got: {second_raw}"
+    assert cached_rows[0].cost_usd == 0, (
+        f"semantic hit usage row should have cost_usd=0, got {cached_rows[0].cost_usd}"
     )
 
 
@@ -499,8 +504,7 @@ async def test_negation_change_misses_semantic_cache(
 
     # PRECISION CONTRACT: upstream must be called for the negation variant
     assert upstream.calls == 2, (
-        f"expected upstream.calls==2 (negation must miss semantic cache), "
-        f"got {upstream.calls}"
+        f"expected upstream.calls==2 (negation must miss semantic cache), got {upstream.calls}"
     )
 
     # X-Cache must NOT be semantic_hit (it must be miss — different key)
@@ -509,8 +513,7 @@ async def test_negation_change_misses_semantic_cache(
         f"this is a FALSE HIT (correctness failure): {resp2.headers.get('x-cache')!r}"
     )
     assert resp2.headers.get("x-cache") == "miss", (
-        f"expected X-Cache: miss for negation variant, "
-        f"got: {resp2.headers.get('x-cache')!r}"
+        f"expected X-Cache: miss for negation variant, got: {resp2.headers.get('x-cache')!r}"
     )
 
 
@@ -545,24 +548,19 @@ async def test_number_change_misses_semantic_cache(
     api_headers = auth_key(key_info["key"])
 
     # Warm cache with the 1400 prompt
-    p1400 = completion_payload(
-        active_model, content="what is the capital of France in 1400?"
-    )
+    p1400 = completion_payload(active_model, content="what is the capital of France in 1400?")
     resp1 = await client.post(COMPLETIONS, json=p1400, headers=api_headers)
     assert resp1.status_code == 200
     assert upstream.calls == 1
 
     # Number-changed variant — MUST miss
-    p1300 = completion_payload(
-        active_model, content="what is the capital of France in 1300?"
-    )
+    p1300 = completion_payload(active_model, content="what is the capital of France in 1300?")
     resp2 = await client.post(COMPLETIONS, json=p1300, headers=api_headers)
     assert resp2.status_code == 200
 
     # PRECISION CONTRACT: upstream must be called for the number-changed variant
     assert upstream.calls == 2, (
-        f"expected upstream.calls==2 (number change must miss semantic cache), "
-        f"got {upstream.calls}"
+        f"expected upstream.calls==2 (number change must miss semantic cache), got {upstream.calls}"
     )
 
     # X-Cache must NOT be semantic_hit
@@ -571,8 +569,7 @@ async def test_number_change_misses_semantic_cache(
         f"this is a FALSE HIT: {resp2.headers.get('x-cache')!r}"
     )
     assert resp2.headers.get("x-cache") == "miss", (
-        f"expected X-Cache: miss for number-changed variant, "
-        f"got: {resp2.headers.get('x-cache')!r}"
+        f"expected X-Cache: miss for number-changed variant, got: {resp2.headers.get('x-cache')!r}"
     )
 
 
@@ -621,12 +618,10 @@ async def test_semantic_cache_inactive_when_disabled(
 
     # Neither response should have X-Cache: semantic_hit
     assert resp1.headers.get("x-cache") != "semantic_hit", (
-        f"unexpected semantic_hit when semantic layer is disabled: "
-        f"{resp1.headers.get('x-cache')!r}"
+        f"unexpected semantic_hit when semantic layer is disabled: {resp1.headers.get('x-cache')!r}"
     )
     assert resp2.headers.get("x-cache") != "semantic_hit", (
-        f"unexpected semantic_hit when semantic layer is disabled: "
-        f"{resp2.headers.get('x-cache')!r}"
+        f"unexpected semantic_hit when semantic layer is disabled: {resp2.headers.get('x-cache')!r}"
     )
 
 
@@ -714,18 +709,14 @@ async def test_semantic_tenant_isolation(
     # Tenant A warms cache with a prompt
     app.state.completion_upstream = upstream_a
     p_warm = completion_payload(active_model, content="  Explain machine learning  ")
-    resp_a = await client.post(
-        COMPLETIONS, json=p_warm, headers=auth_key(key_a["key"])
-    )
+    resp_a = await client.post(COMPLETIONS, json=p_warm, headers=auth_key(key_a["key"]))
     assert resp_a.status_code == 200
     assert upstream_a.calls == 1
 
     # Tenant B sends a normalized variant of the same prompt
     app.state.completion_upstream = upstream_b
     p_variant = completion_payload(active_model, content="explain machine learning")
-    resp_b = await client.post(
-        COMPLETIONS, json=p_variant, headers=auth_key(key_b["key"])
-    )
+    resp_b = await client.post(COMPLETIONS, json=p_variant, headers=auth_key(key_b["key"]))
     assert resp_b.status_code == 200
 
     # TENANT ISOLATION: Tenant B must get a miss (different tenant_id in semantic key)
@@ -770,9 +761,7 @@ async def test_semantic_model_isolation(
     )
     await db_session.commit()
 
-    jwt, _tid = await signup_and_login(
-        client, tenant_name="SemModelCo", email="owner@semmodel.io"
-    )
+    jwt, _tid = await signup_and_login(client, tenant_name="SemModelCo", email="owner@semmodel.io")
     key_info = await create_key(client, jwt, name="sem-model-key", cache_enabled=True)
     # TRUE-RED: "semantic_enabled" absent → AssertionError
     await enable_semantic_cache(client, jwt, semantic_enabled=True, cache_enabled=True)
@@ -797,15 +786,13 @@ async def test_semantic_model_isolation(
 
     # MODEL ISOLATION: different model → different key → miss
     assert upstream.calls == 2, (
-        f"expected upstream.calls==2 (model isolation prevents semantic hit), "
-        f"got {upstream.calls}"
+        f"expected upstream.calls==2 (model isolation prevents semantic hit), got {upstream.calls}"
     )
     assert resp2.headers.get("x-cache") != "semantic_hit", (
         f"MODEL ISOLATION VIOLATION: different model got X-Cache: semantic_hit"
     )
     assert resp2.headers.get("x-cache") == "miss", (
-        f"expected X-Cache: miss for different model, "
-        f"got: {resp2.headers.get('x-cache')!r}"
+        f"expected X-Cache: miss for different model, got: {resp2.headers.get('x-cache')!r}"
     )
 
 
@@ -901,41 +888,51 @@ async def test_semantic_hit_ledger_cached_true_cost_zero(
     resp2 = await client.post(COMPLETIONS, json=p_variant, headers=api_headers)
     assert resp2.status_code == 200
 
-    # Allow fire-and-forget recording to propagate
-    import asyncio
-    await asyncio.sleep(0.1)
-
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT cost_usd, raw FROM usage_records"
-                " WHERE key_id = :kid ORDER BY created_at ASC"
-            ),
-            {"kid": key_info["key_id"]},
+    # Allow fire-and-forget recording to propagate — POLL, don't sleep a fixed
+    # 0.1 s. See the same fix above: a fixed sleep passes on an idle machine and
+    # fails under `-n 6` on a loaded host.
+    #
+    # Deliberately UNORDERED. `usage_records.created_at` is `server_default=func.now()`,
+    # which is TRANSACTION-START time, and the batch flusher writes both rows in one
+    # transaction — so both carry the identical timestamp and `ORDER BY created_at`
+    # has no defined order between them. Ordering by it made rows[0] a coin flip
+    # ("first usage row cost should be > 0, got 0E-8" under `-n 6`). Identify each
+    # row by what makes it that row instead: the semantic hit is the one the gateway
+    # marked cached.
+    async def _fetch() -> list[Any]:
+        return list(
+            (
+                await db_session.execute(
+                    text("SELECT cost_usd, raw FROM usage_records WHERE key_id = :kid"),
+                    {"kid": key_info["key_id"]},
+                )
+            ).fetchall()
         )
-    ).fetchall()
+
+    rows = await poll_for_count(_fetch, 2)
 
     assert len(rows) == 2, f"expected 2 usage rows, found {len(rows)}"
 
-    first_cost, _first_raw = rows[0]
-    second_cost, second_raw = rows[1]
+    cached_rows = [r for r in rows if r.raw.get("cached") is True]
+    uncached_rows = [r for r in rows if r.raw.get("cached") is not True]
 
-    # First row: normal cost (upstream call)
-    assert first_cost > 0, (
-        f"first usage row cost should be > 0, got {first_cost}"
+    # TRUE-RED: without the semantic layer the variant goes upstream, so NEITHER row
+    # is marked cached → 0 != 1 → AssertionError.
+    assert len(cached_rows) == 1, (
+        f"expected exactly 1 usage row marked cached=true, got {len(cached_rows)}: "
+        f"{[r.raw for r in rows]}"
     )
+    (hit_cost, hit_raw) = cached_rows[0]
+    (miss_cost, _miss_raw) = uncached_rows[0]
 
-    # Second row: semantic hit → cost_usd=0, cached=true
-    # TRUE-RED: without semantic layer, second row cost == first_cost (non-zero) → AssertionError
-    assert second_cost == 0, (
-        f"semantic hit usage row should have cost_usd=0, got {second_cost}"
-    )
-    assert second_raw.get("cached") is True, (
-        f"semantic hit usage row raw should have cached=true, got: {second_raw}"
-    )
+    # Upstream call row: normal cost
+    assert miss_cost > 0, f"upstream usage row cost should be > 0, got {miss_cost}"
+
+    # Semantic hit row: cost_usd=0
+    assert hit_cost == 0, f"semantic hit usage row should have cost_usd=0, got {hit_cost}"
     # Token counts from the cached warm response
-    assert second_raw.get("usage", {}).get("prompt_tokens") == 10
-    assert second_raw.get("usage", {}).get("completion_tokens") == 5
+    assert hit_raw.get("usage", {}).get("prompt_tokens") == 10
+    assert hit_raw.get("usage", {}).get("completion_tokens") == 5
 
 
 # ===========================================================================
@@ -1017,9 +1014,7 @@ async def test_pii_remasked_on_semantic_hit(
     same contract as the v4 exact cache. This test verifies the semantic path follows
     the same PII contract.
     """
-    jwt, _tid = await signup_and_login(
-        client, tenant_name="SemPIICo", email="owner@sempii.io"
-    )
+    jwt, _tid = await signup_and_login(client, tenant_name="SemPIICo", email="owner@sempii.io")
     key_info = await create_key(client, jwt, name="sem-pii-key", cache_enabled=True)
     # TRUE-RED PRIMARY GATE: enable_semantic_cache() → "semantic_enabled" absent → AssertionError
     await enable_semantic_cache(client, jwt, semantic_enabled=True, cache_enabled=True)
@@ -1035,9 +1030,7 @@ async def test_pii_remasked_on_semantic_hit(
         json={"pii_mask": {"enabled": True, "mode": "mask"}},
         headers=auth_jwt(jwt),
     )
-    assert guardrail_resp.status_code == 200, (
-        f"PUT /admin/guardrails failed: {guardrail_resp.text}"
-    )
+    assert guardrail_resp.status_code == 200, f"PUT /admin/guardrails failed: {guardrail_resp.text}"
 
     api_headers = auth_key(key_info["key"])
 
@@ -1053,9 +1046,7 @@ async def test_pii_remasked_on_semantic_hit(
     assert resp2.status_code == 200
 
     # TRUE-RED: semantic hit absent → upstream.calls==2 → AssertionError below
-    assert upstream.calls == 1, (
-        f"expected upstream.calls==1 (semantic hit), got {upstream.calls}"
-    )
+    assert upstream.calls == 1, f"expected upstream.calls==1 (semantic hit), got {upstream.calls}"
     assert resp2.headers.get("x-cache") == "semantic_hit", (
         f"expected X-Cache: semantic_hit, got: {resp2.headers.get('x-cache')!r}"
     )
@@ -1070,8 +1061,7 @@ async def test_pii_remasked_on_semantic_hit(
     # In tests with a real guardrail evaluator fake, PII masking replaces email patterns.
     # The exact placeholder depends on the guardrail implementation; we check it's not raw.
     assert "john@example.com" not in content, (
-        f"PII should be masked on semantic hit body, "
-        f"but raw PII found in response: {content!r}"
+        f"PII should be masked on semantic hit body, but raw PII found in response: {content!r}"
     )
 
 
@@ -1107,17 +1097,13 @@ async def test_admin_toggle_semantic_enabled_roundtrip(
     # Verify DB persistence
     row = (
         await db_session.execute(
-            text(
-                "SELECT semantic_cache_enabled FROM tenants WHERE id = :tid"
-            ),
+            text("SELECT semantic_cache_enabled FROM tenants WHERE id = :tid"),
             {"tid": tenant_id},
         )
     ).fetchone()
     assert row is not None, "tenant row not found"
     # TRUE-RED: column semantic_cache_enabled does not exist → DB error or None
-    assert row[0] is True, (
-        f"DB semantic_cache_enabled should be True, got: {row[0]!r}"
-    )
+    assert row[0] is True, f"DB semantic_cache_enabled should be True, got: {row[0]!r}"
 
     # Toggle back off
     put_off = await client.put(
@@ -1212,12 +1198,8 @@ async def test_streaming_bypasses_semantic_layer(
     api_headers = auth_key(key_info["key"])
 
     # Two streaming requests with normalized-variant prompts
-    p_stream1 = completion_payload(
-        active_model, content="  Explain deep learning.  ", stream=True
-    )
-    p_stream2 = completion_payload(
-        active_model, content="explain deep learning", stream=True
-    )
+    p_stream1 = completion_payload(active_model, content="  Explain deep learning.  ", stream=True)
+    p_stream2 = completion_payload(active_model, content="explain deep learning", stream=True)
 
     resp1 = await client.post(COMPLETIONS, json=p_stream1, headers=api_headers)
     resp2 = await client.post(COMPLETIONS, json=p_stream2, headers=api_headers)
@@ -1232,12 +1214,10 @@ async def test_streaming_bypasses_semantic_layer(
 
     # No X-Cache header on streaming responses
     assert "x-cache" not in resp1.headers, (
-        f"X-Cache must not be set on streaming response: "
-        f"{resp1.headers.get('x-cache')!r}"
+        f"X-Cache must not be set on streaming response: {resp1.headers.get('x-cache')!r}"
     )
     assert "x-cache" not in resp2.headers, (
-        f"X-Cache must not be set on streaming response: "
-        f"{resp2.headers.get('x-cache')!r}"
+        f"X-Cache must not be set on streaming response: {resp2.headers.get('x-cache')!r}"
     )
     assert resp2.headers.get("x-cache") != "semantic_hit", (
         f"streaming response must never get X-Cache: semantic_hit"
@@ -1291,9 +1271,7 @@ async def test_bypass_restores_semantic_key(
     assert resp_bypass.headers.get("x-cache") == "bypass", (
         f"expected X-Cache: bypass, got: {resp_bypass.headers.get('x-cache')!r}"
     )
-    assert upstream.calls == 2, (
-        f"bypass should call upstream (calls==2), got {upstream.calls}"
-    )
+    assert upstream.calls == 2, f"bypass should call upstream (calls==2), got {upstream.calls}"
 
     # Subsequent P' request without bypass → semantic_hit (bypass re-stored semantic key)
     resp_after = await client.post(COMPLETIONS, json=p_variant, headers=api_headers)
@@ -1308,4 +1286,3 @@ async def test_bypass_restores_semantic_key(
         f"expected X-Cache: semantic_hit after bypass re-store, "
         f"got: {resp_after.headers.get('x-cache')!r}"
     )
-

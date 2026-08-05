@@ -536,7 +536,8 @@ async def test_ie_iv_regression_generations_untouched(
     """
     await seed_image_model(db_session)  # dall-e-3 — the pre-existing generations model
     fake_provider = FakeMultipartProvider()
-    fake_provider.post_json_calls  # exists on the fake — reuse for generations' JSON path
+    # exists on the fake — reuse for generations' JSON path
+    assert hasattr(fake_provider, "post_json_calls")
     inject_fake_openai_provider(app, fake_provider)
 
     spy = SpyRecorder()

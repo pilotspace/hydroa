@@ -141,11 +141,16 @@ class ConversationRepository:
     ) -> ConversationRow | None:
         """Update the title of an active conversation, scoped to tenant_id.
 
-        Bumps updated_at explicitly (raw UPDATE does not trigger ORM onupdate).
+        Does NOT name updated_at: the column carries `onupdate=func.now()`, which a
+        Core `update()` DOES apply — verified by experiment, because the previous
+        version of this docstring claimed the opposite. (It holds only for a raw
+        `text()` UPDATE, which bypasses the ORM's compilation entirely.) Naming the
+        column explicitly would put a non-evaluatable SQL function into `.values()`,
+        which forces `synchronize_session` to EXPIRE the in-session row instead of
+        updating it — see suite-stability M9.
         Returns the updated ConversationRow on success, None when the id is
         unknown, belongs to another tenant, or is soft-deleted.
         """
-        now = datetime.now(tz=UTC)
         result = await self._session.execute(
             update(ConversationRow)
             .where(
@@ -153,7 +158,7 @@ class ConversationRepository:
                 ConversationRow.tenant_id == tenant_id,
                 ConversationRow.deleted_at.is_(None),
             )
-            .values(title=title, updated_at=now)
+            .values(title=title)
             .returning(ConversationRow.id)
         )
         await self._session.flush()
@@ -208,7 +213,6 @@ class ConversationRepository:
         self._session.add(msg_row)
 
         # Bump updated_at on the conversation in the same flush
-        now = datetime.now(tz=UTC)
         await self._session.execute(
             update(ConversationRow)
             .where(
@@ -216,7 +220,7 @@ class ConversationRepository:
                 ConversationRow.tenant_id == tenant_id,
                 ConversationRow.deleted_at.is_(None),
             )
-            .values(updated_at=now)
+            .values(updated_at=func.now())
         )
 
         await self._session.flush()

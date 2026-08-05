@@ -399,9 +399,7 @@ async def create_batch_job(
     else:
         assert body.line_items is not None
         _validate_line_items(body.line_items, max_items=settings.batch_max_items_per_job)
-        line_items = [
-            {"custom_id": item.custom_id, "body": item.body} for item in body.line_items
-        ]
+        line_items = [{"custom_id": item.custom_id, "body": item.body} for item in body.line_items]
 
     row = await repo.create(
         tenant_id=authz.tenant_id,

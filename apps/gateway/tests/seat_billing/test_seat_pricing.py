@@ -9,6 +9,8 @@ DO NOT weaken these tests to make them pass; that is Build's job.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -42,6 +44,35 @@ async def _generate(app: Any, tenant_id: str, period_start: Any = JULY_START) ->
     invoice_id = await generator.generate_for_tenant(uuid.UUID(tenant_id), period_start)
     assert invoice_id is not None
     return str(invoice_id)
+
+
+@pytest.fixture(autouse=True)
+async def _drop_test_installed_triggers(db_session: AsyncSession) -> AsyncIterator[None]:
+    """suite-stability M2 — undo the DDL the helper below installs.
+
+    `create_all` does not replay the migration's triggers, so these tests install
+    them by hand. The schema is now built ONCE per xdist worker, so a trigger left
+    behind silently changes the behaviour of every later test on that worker — it
+    made tests/audit_export fail depending only on which worker ran it. DELETE
+    cannot undo DDL, so the DDL has to undo itself.
+
+    Discovered from pg_trigger rather than hand-listed, so a trigger added to the
+    helper later is still cleaned up ([[add-cross-manifest-table-drift]]).
+    """
+    yield
+    installed = (
+        await db_session.execute(
+            text(
+                "SELECT c.relname, t.tgname FROM pg_trigger t "
+                "JOIN pg_class c ON c.oid = t.tgrelid "
+                "WHERE NOT t.tgisinternal AND t.tgname LIKE '%_immutable_guard'"
+            )
+        )
+    ).all()
+    for table, trigger in installed:
+        await db_session.execute(text(f'DROP TRIGGER IF EXISTS "{trigger}" ON "{table}"'))
+    if installed:
+        await db_session.commit()
 
 
 async def _install_immutability_trigger(db_session: AsyncSession, table: str) -> None:
