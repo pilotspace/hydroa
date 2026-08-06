@@ -316,6 +316,7 @@ from gateway.vector_stores.application.ingest_worker import (
     recover_orphans as recover_vector_store_ingest_orphans,
 )
 from gateway.vector_stores.infrastructure.embedding_client import VectorStoreEmbeddingClient
+from gateway.vector_stores.infrastructure.preflight import assert_vector_extension
 from gateway.video.api.router import video_router
 from gateway.video.application.worker import (
     RedisVideoJobQueue,
@@ -570,6 +571,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _settings: Settings = app.state.settings
 
         # ── Startup ──────────────────────────────────────────────────────
+        # FAIL-CLOSED PREFLIGHT (vector-extension-preflight §3, FROZEN @ v1). A database
+        # without the pgvector `vector` extension must stop the boot here, not surface as
+        # a 500 from /v1/vector_stores the first time a tenant uses RAG. Raising out of the
+        # lifespan means the ASGI server never emits `lifespan.startup.complete`, so the
+        # process never becomes ready — which IS "refuses to boot".
+        #
+        # FIRST on purpose, ahead of the create_all below: the vector-store ORM carries a
+        # Vector(1536) column, so in dev/test that bootstrap would otherwise fail first
+        # with an opaque SQLAlchemy error instead of this one's named remedy. It is also
+        # far ahead of the vector-store ingest worker, which must never run against a
+        # database the preflight has rejected.
+        #
+        # No opt-out, by Tin's freeze decision (2026-08-05): a skip flag would restore the
+        # exact 500 this exists to remove. Guarded by tests/vector_extension_preflight/.
+        await assert_vector_extension(_engine)
+
         # Idempotent schema bootstrap for dev/test environments.
         # In production the schema is managed by Alembic migrations.
         if _settings.environment in ("dev", "test"):
