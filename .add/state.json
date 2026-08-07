@@ -1208,7 +1208,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-07T10:31:32+00:00",
+  "updated": "2026-08-07T12:53:37+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2905,6 +2905,24 @@
       "id": 90,
       "text": "atomicity: date-bomb-sweep \u2014 \u00a73 scope reads as 2 Parts (catch-all, drain); consider new-milestone + one task per Part.",
       "created": "2026-08-07T08:23:28+00:00",
+      "status": "open"
+    },
+    {
+      "id": 91,
+      "text": "breaker 4xx residue (promised by breaker-4xx-classification PLAN.md \u00a73 but never filed): objectstore/s3.py:115 calls self._breaker.on_upstream_error() BEFORE reading the status, so an S3 403 from bad/expired credentials counts toward the breaker \u2014 5 of them open the object-store breaker for 30s on a caller error. _mutate (s3.py:136) counts every ClientError the same way. email/infrastructure/smtp_email_sender.py counts every failure DELIBERATELY (comment says so) \u2014 confirm that is still wanted. Same bug class as todo #60, different subsystems, own decisions.",
+      "created": "2026-08-07T12:53:21+00:00",
+      "status": "open"
+    },
+    {
+      "id": 92,
+      "text": "Collapse the ~10 bare '>= 500' breaker literals onto status_counts_as_upstream_failure (added by breaker-4xx-classification). azure_embeddings.py:206/261/322, gemini_upstream.py:964/1126, openrouter_upstream.py:335, vertex_upstream.py:314, azure_upstream.py:238, anthropic_upstream.py:991 all gate the breaker on 'status >= 500' and call record_success() otherwise \u2014 so they treat 408 and 429 as SUCCESS while the four sites fixed in #96 count them as upstream failure. Both directions are defensible; having both in one codebase is not. The predicate's own docstring names collapsing RetryPolicy.classify_status onto it as the right end state.",
+      "created": "2026-08-07T12:53:36+00:00",
+      "status": "open"
+    },
+    {
+      "id": 93,
+      "text": "CI gateway job can NEVER go green: .github/workflows/ci.yml sets timeout-minutes: 30 but the gateway suite takes ~37min (4559 tests), so GitHub cancels every run \u2014 main has been cancelled/failed on every run since 2026-07-23. Raise to 60. Separately, kind-e2e has 0 green runs in 15 attempts since 2026-07-20 across every branch; decide whether to fix it or stop running it on every PR, because a permanently-red check trains everyone to ignore checks. Relates to #91 (no enforceable merge gate).",
+      "created": "2026-08-07T12:53:37+00:00",
       "status": "open"
     }
   ]
