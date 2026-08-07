@@ -14,6 +14,7 @@ from prometheus_client import CollectorRegistry
 from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from gateway import __version__
 from gateway.access_requests.api.access_requests_router import access_requests_router
 from gateway.access_requests.infrastructure.rate_limiter import AccessRequestIpRateLimiter
 from gateway.agent_oauth.api.agent_principal_router import agents_router
@@ -1104,7 +1105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if httpx_client is not None:
             await _bounded_final_cycle("httpx_client.aclose", httpx_client.aclose())
 
-    app = FastAPI(title="Hydroa Gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Hydroa Gateway", version=__version__, lifespan=lifespan)
 
     # Per-app Prometheus registry — prevents Duplicated timeseries errors when
     # multiple create_app() calls exist in a single pytest run.
