@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "vector-extension-preflight",
+  "active_task": "suite-infra-tripwire",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -870,6 +870,53 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "suite-infra-tripwire": {
+      "title": "Fail fast when test infrastructure is absent, and abort when it dies mid-run",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-06T06:59:04+00:00",
+      "updated": "2026-08-07T03:14:08+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-08-06T07:12:02+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "686271b68d895bb13036a1d3fc4546d1",
+        "tests": {
+          "apps/gateway/tests/suite_infra_tripwire/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/suite_infra_tripwire/test_infra_guard.py": "2605238a9bab7da8f7d8def7e65e7d6d"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/_infra_guard.py",
+          "apps/gateway/tests/conftest.py",
+          "apps/gateway/tests/_redis_env.py",
+          "apps/gateway/tests/suite_infra_tripwire/",
+          "Makefile"
+        ],
+        "snapshot_md5": "c498299aef035055fadabfc3e83221f0"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -945,7 +992,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-06T03:51:33+00:00",
+  "updated": "2026-08-07T03:14:18+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2101,7 +2148,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "vector-extension-preflight"
+    "release-integrity": "suite-infra-tripwire"
   },
   "todos": [
     {
@@ -2600,7 +2647,7 @@
       "id": 83,
       "text": "make ci has no precondition check: if the dev Postgres/Redis dies mid-run the suite emits thousands of 'Connect call failed (127.0.0.1, 5433)' errors 40min in, indistinguishable from a real regression (hit for real 2026-08-05: 131 failed/2130 errors, all infra). Add a fail-fast preflight to the make test/ci target \u2014 Postgres reachable, gateway_test present, Redis PING \u2014 that aborts at second zero with a named error.",
       "created": "2026-08-05T05:10:29+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 84,
