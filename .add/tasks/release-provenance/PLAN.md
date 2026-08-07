@@ -2,8 +2,8 @@
 
 slug: release-provenance · created: 2026-08-07 · stage: production
 milestone: release-integrity
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: auto
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -69,8 +69,6 @@ the tag form (`v0.13.0`) appear, and the guard must speak both.
   including it. If you want one repo-wide version, say so at the freeze — it changes M2
   from "one source" to "one source, two consumers".
 </assumptions>
-
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
 
 ---
 
@@ -144,11 +142,7 @@ record. Tag creation is LAST and separate — it is the only step that touches p
 history, so it happens after everything else is green and only with Tin's confirmed mapping.
 
 Scope (may touch): `apps/gateway/src/gateway/__init__.py` · `apps/gateway/src/gateway/main.py` · `apps/gateway/pyproject.toml` · `apps/gateway/tests/release_provenance/` · `./../../../RELEASES.md` · `apps/gateway/uv.lock`
-<!-- uv.lock added 2026-08-07 DURING build, declared rather than quietly committed: it is
-     a DERIVED artifact of the in-scope pyproject.toml bump (one line, hydroa-gateway
-     0.7.0 -> 0.13.0). Omitting it would leave the lockfile disagreeing with the manifest,
-     which is worse than the scope note. No dependency drift; make ci's allowlist gate is
-     green. -->
+
 Regression floor: full `make ci`. Note `pyproject.toml` moving 0.7.0 -> 0.13.0 is a real
 version bump on an installed package; the floor is what proves nothing pinned the old one.
 Persona (optional): `appsec-engineer` — "if you cannot evidence which artifact ran, you
@@ -173,8 +167,6 @@ this is a release-convention call that is yours, not mine.
 - [ ] §3 Contract shape is concrete (no template placeholder text remains)
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
-
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
 
 ---
 
@@ -239,8 +231,6 @@ ruff format + check: clean. pyright: clean.
 Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cases — is the gated floor. Minor/secondary behaviors are DESCRIBED in prose below as build-guidance — no `covers:` tag, no red test, not gated. Add a Given/When/Then line inline ONLY when a human stakeholder needs a readable case — never as ceremony; the test_plan is the canonical encoding of every scenario.
 
 Tests live in: `apps/gateway/tests/release_provenance/` · MUST run red (missing implementation) before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0. The test_plan bullets' `covers:` tails are machine-read too: `add.py locate path::test_name` resolves a failing test to the frozen §3 clause it proves -->
-<!-- NON-CODING task (kind: docs · release · infra, or a non-coding project)? §4 is a failing-first ACCEPTANCE CHECK, not a script — verifiable pass/fail evidence (mkdocs build succeeds · §X covers A/B/C · every internal link resolves), red before the artifact exists and green after. Set `Tests live in: evidence` (no `./tests/`). The red→green discipline holds; only the must-be-executable-code requirement is lifted. -->
 
 ---
 
@@ -337,14 +327,15 @@ Reported: yes
 Outcome: PASS
 Reviewed by: Tin Dang · date: 2026-08-07
 
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
-
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: as planned — guard first, then the single source, then the record, with tag creation held back as a separate step because it is the only part that touches published history.
+- [AI] verify — gate PASS (reviewed by Tin Dang)
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).

@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "suite-infra-tripwire",
+  "active_task": "release-provenance",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -917,6 +917,222 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "breaker-4xx-classification": {
+      "title": "A 4xx never trips the circuit breaker \u2014 collapse the stragglers onto RetryPolicy",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-07T04:23:23+00:00",
+      "updated": "2026-08-07T10:26:26+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-08-07T08:15:00+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "d0cb6d80efb37a077cd7b88154e9eb7b",
+        "tests": {
+          "apps/gateway/tests/breaker_4xx_classification/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/breaker_4xx_classification/test_breaker_4xx_classification.py": "7993fd2f5f1e8a99a8a6b46ed0b9ef11"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/proxy/infrastructure/circuit_breaker.py",
+          "apps/gateway/src/gateway/finetune/infrastructure/openai_client.py",
+          "apps/gateway/src/gateway/vector_stores/infrastructure/embedding_client.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_embeddings.py",
+          "apps/gateway/src/gateway/proxy/infrastructure/bedrock_upstream.py",
+          "apps/gateway/tests/breaker_4xx_classification/"
+        ],
+        "snapshot_md5": "248cdd552743b7480666e063340cc8b5"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "reason": "scope_violation: task 'breaker-4xx-classification' touched outside its declared \u00a75 Scope \u2014 RELEASES.md \u00b7 apps/gateway/pyproject.toml \u00b7 apps/gateway/src/gateway/__init__.py \u00b7 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/tests/date_bomb_sweep/fixtures/clean_prose_only.py (14 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "source": "scope",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-08-07T10:26:21+00:00",
+        "from_phase": "build"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "date-bomb-sweep": {
+      "title": "Sweep the absolute-seed/relative-window date bombs before 1 September",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-07T04:23:23+00:00",
+      "updated": "2026-08-07T10:26:26+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-08-07T08:23:28+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "15ccbf88eb2719aff6cde7756e06e875",
+        "tests": {
+          "apps/gateway/tests/date_bomb_sweep/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/date_bomb_sweep/test_date_bomb_guard.py": "74a959e4518a5365f1ae2a212a9c3b52"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/repo_hygiene/",
+          "apps/gateway/tests/date_bomb_sweep/",
+          "apps/gateway/tests/margin_dashboard/"
+        ],
+        "snapshot_md5": "248cdd552743b7480666e063340cc8b5"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "reason": "scope_violation: task 'date-bomb-sweep' touched outside its declared \u00a75 Scope \u2014 RELEASES.md \u00b7 apps/gateway/pyproject.toml \u00b7 apps/gateway/src/gateway/__init__.py \u00b7 apps/gateway/src/gateway/main.py \u00b7 apps/gateway/uv.lock (8 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "source": "scope",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-08-07T10:26:22+00:00",
+        "from_phase": "build"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "release-provenance": {
+      "title": "Single-source the version, backfill tags, guard the drift",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-07T04:23:23+00:00",
+      "updated": "2026-08-07T10:26:26+00:00",
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-08-07T08:23:32+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "cdb86d30c637d686796971066c50c14c",
+        "tests": {
+          "apps/gateway/tests/release_provenance/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/release_provenance/test_release_provenance.py": "d517a4290d880947e87ab901990741ca"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/__init__.py",
+          "apps/gateway/src/gateway/main.py",
+          "apps/gateway/pyproject.toml",
+          "apps/gateway/tests/release_provenance/",
+          "RELEASES.md",
+          "apps/gateway/uv.lock"
+        ],
+        "snapshot_md5": "248cdd552743b7480666e063340cc8b5"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "reason": "scope_violation: task 'release-provenance' touched outside its declared \u00a75 Scope \u2014 apps/gateway/uv.lock \u00b7 tmp/breaker-4xx-classification.txt \u00b7 tmp/date-bomb-sweep.txt \u00b7 tmp/release-provenance.txt (4 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-08-07T10:24:36+00:00",
+            "source": "scope",
+            "note": null
+          }
+        ]
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-08-07T10:26:22+00:00",
+        "from_phase": "build"
+      },
+      "target_hit": "yes",
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -992,7 +1208,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-07T03:14:18+00:00",
+  "updated": "2026-08-07T10:26:26+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2148,7 +2364,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "suite-infra-tripwire"
+    "release-integrity": "release-provenance"
   },
   "todos": [
     {
@@ -2659,12 +2875,36 @@
       "id": 85,
       "text": "release-integrity exit criterion 4 NOT DELIVERED and unowned: a gateway started against a Postgres lacking the vector extension still boots and serves /v1/vector_stores. scripts/pg_preflight.py is a COLLATION preflight (todo #66); the boot-time EXTENSION preflight (todo #67 second half, milestone 'the preflight fails CLOSED') was never built, and the pgvector-deploy-runbook RISK-ACCEPTED note covers M6 + the unwalked runbook, not this. Needs a lifespan check before the ingest worker starts.",
       "created": "2026-08-05T05:10:29+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 86,
       "text": "Release provenance is broken across 4 sources: git tags stop at v0.11.0 (0.9.0, 0.10.0, 0.12.0, 0.13.0 untagged); RELEASES.md has no 0.13.0 entry though #89 merged; apps/gateway/pyproject.toml says 0.7.0; main.py hardcodes FastAPI(version='0.1.0') which is what /openapi.json advertises to every API consumer; dashboard package.json 0.1.0. Under SOC 2 CC8.1 'what version is in production' has no defensible answer. Single-source the version + backfill tags + add a drift guard test.",
       "created": "2026-08-05T05:10:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 87,
+      "text": "Dev-stack port 5433 is contended with the real-estate-management repo's infra project (which also holds 5432 and 5434). Only one of the two stacks can run at a time, and Docker will NOT re-publish a port after a failed bind \u2014 the loser comes back healthy with an EMPTY Ports column (docker port returns nothing, NetworkSettings.Ports is {}), which reads as working and is unreachable. Only fix is docker compose up -d --force-recreate from that project. Make hydroa's host port configurable (POSTGRES_PORT:-5433 in infra/docker-compose.dev.yml + GATEWAY_TEST_DATABASE_URL) so the two stacks can coexist. NOTE retargeting via env alone does NOT work: tests/ops/test_probes.py builds a bare Settings() hardcoded to localhost:5433, and adding GATEWAY_DATABASE_URL breaks 42 migration tests with DuplicateTableError.",
+      "created": "2026-08-07T04:01:12+00:00",
+      "status": "open"
+    },
+    {
+      "id": 88,
+      "text": "release-integrity exit #6 (three CONSECUTIVE green make ci) BROKEN at run 3 of 3, 2026-08-07. Runs 1+2 were clean (4531 passed); run 3 = 4530 passed + 1 ERROR at setup of tests/per_key_guardrail_policies::test_put_rejects_invalid_mode \u2014 asyncio.exceptions.CancelledError inside asyncpg.connect (connect_utils.py:977), i.e. pytest-timeout's 300s signal fired while the fixture was still WAITING FOR A CONNECTION. NOT an infra dropout: 0 'Connect call failed', 0 tripwire fires, and the other 4530 tests passed either side of it. Same family as todo #81 (catalog_refresh_scheduler stalled 300s once under -n 6, never reproduced) \u2014 a startup/fixture DB connect queued behind per-test DDL. Note the host was running FOUR postgres containers at the time (hydroa + three from the real-estate repo, see todo #87), so contention is a live hypothesis. Next: decide whether #6 is re-run until 3 consecutive greens land, or whether this stall class is fixed first \u2014 it is the thing actually blocking the criterion.",
+      "created": "2026-08-07T05:39:32+00:00",
+      "status": "done"
+    },
+    {
+      "id": 89,
+      "text": "release-integrity exit #6 (three CONSECUTIVE green make ci) BROKEN at run 3, 2026-08-07. Runs 1+2 clean (4531 passed); run 3 = 4530 passed + 1 ERROR at setup of tests/per_key_guardrail_policies::test_put_rejects_invalid_mode. SUPERSEDES todo #88, whose diagnosis (pytest-timeout's 300s signal) was WRONG \u2014 the log contains ZERO pytest-timeout reports. VERIFIED mechanism: the top frame is asyncpg connection.py:2443 'async with compat.timeout(timeout)' = asyncpg's own DEFAULT 60s CONNECT timeout, not 300s. It fired at connect_utils.py:977, inside _create_ssl_connection, on 'await pr.on_data' \u2014 i.e. TCP was ESTABLISHED and the SSLRequest byte was written, and Postgres never answered the SSL probe within 60s (asyncpg sslmode defaults to 'prefer', so SSL is always attempted first). It surfaced as a raw CancelledError instead of TimeoutError because SQLAlchemy's greenlet bridge (_concurrency_py3k.py:201) re-raised it across the boundary. Caller is tests/conftest.py:331 \u2014 the app fixture's per-test DELETE reset opening a pooled connection. Server side shows NO trace: no 'too many clients', no fork failure, max_connections=100 with 6 in use; the only FATALs in the postgres log are the vector_extension_preflight fixture's own deliberate absent-DB probe and its DROP DATABASE WITH FORCE teardown. So: a backend that accepted the socket but never got scheduled to reply. Contention is the live hypothesis (four postgres containers on the host, todo #87). Same family as todo #81. NOT an infra dropout \u2014 0 'Connect call failed', 0 tripwire fires.",
+      "created": "2026-08-07T07:49:18+00:00",
+      "status": "open"
+    },
+    {
+      "id": 90,
+      "text": "atomicity: date-bomb-sweep \u2014 \u00a73 scope reads as 2 Parts (catch-all, drain); consider new-milestone + one task per Part.",
+      "created": "2026-08-07T08:23:28+00:00",
       "status": "open"
     }
   ]
