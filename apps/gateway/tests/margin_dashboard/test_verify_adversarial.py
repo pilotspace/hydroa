@@ -23,7 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.usage.application.reconciliation import reconcile_window
 
-from .conftest import INSIDE, WINDOW_FROM, WINDOW_TO, seed_invoice, seed_row, seed_tenant
+from .conftest import (
+    INSIDE,
+    INSIDE_CURRENT_MONTH,
+    WINDOW_FROM,
+    WINDOW_TO,
+    seed_invoice,
+    seed_row,
+    seed_tenant,
+)
 
 MARGIN_SUMMARY = "/admin/platform/margin/summary"
 MARGIN_BY_TENANT_MODEL = "/admin/platform/margin/by-tenant-model"
@@ -400,14 +408,14 @@ async def test_verify_tenant_id_filter_isolates_by_tenant_model(
         tenant_id=tid_a,
         cost_usd=Decimal("5.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
     await seed_row(
         db_session,
         tenant_id=tid_b,
         cost_usd=Decimal("9.00"),
         cost_basis="catalog",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     resp = await client.get(
