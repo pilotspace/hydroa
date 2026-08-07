@@ -1,5 +1,12 @@
 # Releases
 
+## 0.13.0 — 2026-07-25
+milestones: managed-rag-finetune
+loose tasks: none
+waivers: pgvector-deploy-runbook — RISK-ACCEPTED @ v3, owner Tin Dang, expires 2026-09-30 (nobody has WALKED the runbook on a real target; 0.13.0 stays undeployable to an existing volume until someone does)
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: R5 "managed RAG + fine-tune BYOK brokering" (6/6 tasks gated, PR #89 merged to main `4a351bd`). pgvector-backed managed RAG (vector stores, files, chunking, embeddings cache) + fine-tune job brokering on tenant-supplied provider keys. PR review found a THIRD ZDR TOCTOU (HARD-STOP) — healed in-branch `3e041e0`, dual adversarial refute NOT-REFUTED, and all three `FOR UPDATE` copies collapsed onto one shared primitive. 6 medium findings deferred to R7 (todos #59–#65). Recorded retroactively by task `release-provenance` on 2026-08-07: this release shipped without a RELEASES.md row, which is the gap that task exists to close.
+
 ## 0.12.0 — 2026-07-24
 milestones: api-surface-parity
 loose tasks: none

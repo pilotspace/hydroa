@@ -128,7 +128,7 @@ async def test_m1_summary_via_ops_router_matches_margin_summary(
         cost_usd=Decimal("5.00"),
         provider_cost=Decimal("3.00"),
         cost_basis="provider",
-        created_at=INSIDE,
+        created_at=INSIDE_CURRENT_MONTH,
     )
 
     calls: list[str] = []
@@ -510,7 +510,9 @@ async def test_m8_query_timeout_maps_to_504(
     from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
 
     tid = await seed_tenant(db_session, name="Margin M8")
-    await seed_row(db_session, tenant_id=tid, cost_usd=Decimal("1.00"), created_at=INSIDE)
+    await seed_row(
+        db_session, tenant_id=tid, cost_usd=Decimal("1.00"), created_at=INSIDE_CURRENT_MONTH
+    )
 
     orig_execute = _AsyncSession.execute
 

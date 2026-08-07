@@ -20,7 +20,10 @@ from typing import Any
 import httpx
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.circuit_breaker import (
+    CircuitBreaker,
+    status_counts_as_upstream_failure,
+)
 
 _DEFAULT_CONNECT_TIMEOUT_S = 5.0
 _DEFAULT_READ_TIMEOUT_S = 30.0
@@ -104,8 +107,16 @@ class VectorStoreEmbeddingClient:
                     usage = body.get("usage")
                     return vectors, usage
                 except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-                    breaker.on_upstream_error()
                     last_exc = exc
+                    if isinstance(exc, httpx.HTTPStatusError) and (
+                        not status_counts_as_upstream_failure(exc.response.status_code)
+                    ):
+                        # Terminal 4xx: the upstream answered correctly. A revoked key is
+                        # not going to become valid between attempts, and counting it
+                        # would open THIS tenant's breaker over their own credential.
+                        breaker.record_success()
+                        break
+                    breaker.on_upstream_error()
         assert last_exc is not None
         raise UpstreamUnavailableError(str(last_exc)) from last_exc
 

@@ -54,8 +54,12 @@ test-parallel:
 
 # Fast per-change gate: no-DB blast-radius suites (translation + dispatch + provider).
 # MockTransport / pure-unit — runs without Postgres/Redis, no coverage gating.
+# GATEWAY_TEST_SKIP_INFRA_CHECK=1 (suite-infra-tripwire M4): this target is the ONE entry
+# point that is meant to run with the dev stack down, so it opts out of the sessionstart
+# infrastructure preflight in tests/conftest.py. Every other entry point — `make test`,
+# `make test-parallel`, and a bare `uv run pytest` — stays guarded.
 test-fast:
-	cd $(GATEWAY) && uv run pytest -p no:cacheprovider --no-cov -q \
+	cd $(GATEWAY) && GATEWAY_TEST_SKIP_INFRA_CHECK=1 uv run pytest -p no:cacheprovider --no-cov -q \
 	  tests/tool_translation tests/response_format_translation \
 	  tests/provider_chat_dispatch tests/anthropic_provider tests/gemini_provider \
 	  tests/anthropic_tool_use tests/gemini_tool_use \

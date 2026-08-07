@@ -32,7 +32,10 @@ import httpx
 
 from gateway.proxy.domain.errors import CircuitOpenError
 from gateway.proxy.domain.provider_credentials import BearerCredential
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.circuit_breaker import (
+    CircuitBreaker,
+    status_counts_as_upstream_failure,
+)
 
 _DEFAULT_CONNECT_TIMEOUT_S = 5.0
 _DEFAULT_READ_TIMEOUT_S = 30.0
@@ -108,6 +111,26 @@ class OpenAIFinetuneClient:
         )
         return {"Authorization": f"Bearer {secret}"}
 
+    @staticmethod
+    def _account(breaker: CircuitBreaker, exc: Exception) -> bool:
+        """Account one failed attempt; True if it was UPSTREAM trouble.
+
+        A terminal 4xx (401 revoked key, 404 unknown job, 409 already-finished) means the
+        upstream answered correctly — it is a successful round trip with an unwelcome
+        answer, so it records SUCCESS. Only 408/429/5xx and transport failures move the
+        breaker toward open.
+
+        The return value doubles as the retry decision: retrying a terminal 4xx cannot
+        change it, so the caller breaks out instead of spending an attempt.
+        """
+        if isinstance(exc, httpx.HTTPStatusError) and not status_counts_as_upstream_failure(
+            exc.response.status_code
+        ):
+            breaker.record_success()
+            return False
+        breaker.on_upstream_error()
+        return True
+
     async def submit(
         self, tenant_id: uuid.UUID | str, credential: Any, request: dict[str, Any]
     ) -> str:
@@ -123,8 +146,8 @@ class OpenAIFinetuneClient:
                 )
                 resp.raise_for_status()
                 body = resp.json()
-        except (httpx.TransportError, httpx.HTTPStatusError):
-            breaker.on_upstream_error()
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            self._account(breaker, exc)
             raise
         breaker.record_success()
         return str(body["id"])
@@ -151,8 +174,9 @@ class OpenAIFinetuneClient:
                         "fine_tuned_model": body.get("fine_tuned_model"),
                     }
                 except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-                    breaker.on_upstream_error()
                     last_exc = exc
+                    if not self._account(breaker, exc):
+                        break  # terminal 4xx — a missing job will not appear on retry
         assert last_exc is not None
         raise last_exc
 
@@ -174,8 +198,9 @@ class OpenAIFinetuneClient:
                     breaker.record_success()
                     return
                 except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-                    breaker.on_upstream_error()
                     last_exc = exc
+                    if not self._account(breaker, exc):
+                        break  # terminal 4xx — an already-finished job stays finished
         assert last_exc is not None
         raise last_exc
 

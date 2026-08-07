@@ -42,7 +42,10 @@ from gateway.proxy.domain.tool_translation import (
 )
 from gateway.proxy.infrastructure.bedrock_eventstream import aiter_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.circuit_breaker import (
+    CircuitBreaker,
+    status_counts_as_upstream_failure,
+)
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
 
@@ -754,7 +757,14 @@ class BedrockCompletionUpstream:
                     "POST", url, content=body_bytes, headers=headers
                 ) as resp:
                     if resp.status_code >= 400:
-                        self._breaker.on_upstream_error()
+                        # This block's docstring claims to mirror AnthropicCompletionUpstream
+                        # — which gates on >= 500. The drift was never deliberate (checked
+                        # via git log -L, 2026-08-07). The RESPONSE is unchanged; only the
+                        # breaker accounting is corrected.
+                        if status_counts_as_upstream_failure(resp.status_code):
+                            self._breaker.on_upstream_error()
+                        else:
+                            self._breaker.record_success()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {resp.status_code} on stream"
                         )

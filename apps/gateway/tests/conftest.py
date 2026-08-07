@@ -26,7 +26,71 @@ from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
-from tests import _redis_env
+from tests import _infra_guard, _redis_env
+
+# ---------------------------------------------------------------------------
+# suite-infra-tripwire §3 — infrastructure guards (todo #83).
+# ---------------------------------------------------------------------------
+# Both hooks are THIN on purpose: every decision lives in tests/_infra_guard.py, which is
+# pure and directly unit-tested (tests/suite_infra_tripwire). A hook body cannot be tested,
+# so nothing is decided in one.
+#
+# Why they exist: on 2026-08-05 `make ci` ran 2265 tests green, then the dev Postgres
+# container exited, and the run finished `131 failed, 2130 errors` after 43 minutes — a
+# result indistinguishable from a catastrophic code regression. `pytest_sessionstart`
+# closes the stack-absent-at-start case; `pytest_runtest_logreport` closes the
+# stack-died-mid-run case, which is the one that actually happened.
+_INFRA_TRIPWIRE = _infra_guard.InfraTripwire()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Refuse to start when the test stack is absent (M1).
+
+    Controller-only (M5) — xdist runs this in every worker too, and 12 duplicate probes
+    plus 12 copies of the message help nobody. Opt-out via the env var for `make
+    test-fast`, whose suites are deliberately DB-free (M4); every other entry point,
+    including a bare `uv run pytest`, is guarded — that is the path the incident took.
+    """
+    if os.environ.get(_infra_guard.SKIP_ENV_VAR):
+        return
+    if not _infra_guard.is_controller(session.config):
+        return
+    problems = _infra_guard.check_infra(
+        database_url=_redis_env.TEST_DATABASE_URL,
+        redis_hostport=_infra_guard.redis_hostport(_redis_env.TEST_REDIS_URL),
+        timeout=_infra_guard.DEFAULT_TIMEOUT_SECONDS,
+    )
+    if problems:
+        pytest.exit(
+            "\nTEST INFRASTRUCTURE IS NOT AVAILABLE — no tests were run.\n"
+            + "\n".join(f"  - {problem}" for problem in problems)
+            + f"\nSet {_infra_guard.SKIP_ENV_VAR}=1 to bypass (only correct for the "
+            "deliberately DB-free suites in `make test-fast`).\n",
+            returncode=4,
+        )
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Abort once the infrastructure is confirmed lost mid-run (M2/M3).
+
+    Fed from `setup` and `call`, never `teardown`. That is not arbitrary: the 2026-08-05
+    incident produced 2130 ERRORS, not failures — a dead Postgres breaks the `app` /
+    `_schema` fixtures, which pytest reports at `setup`. A call-only hook would have
+    watched the entire incident go by. Exactly one of setup/call reports per test (a
+    failed setup means no call runs), so the consecutive counter stays one-per-test;
+    teardown is excluded because it can add a second report for the same test.
+
+    The controller receives every worker's reports under xdist, so this sees the whole run
+    from one place. No opt-out: it can only fire on failures that are already happening.
+    """
+    if report.when not in ("setup", "call"):
+        return
+    if report.when == "setup" and not report.failed:
+        return  # the `call` report for this test carries its verdict
+    _INFRA_TRIPWIRE.record(failed=report.failed, text=str(report.longrepr or ""))
+    if _INFRA_TRIPWIRE.tripped:
+        pytest.exit(_INFRA_TRIPWIRE.reason, returncode=4)
+
 
 # Per-xdist-worker isolation lives in tests/_redis_env.py (the single source of truth):
 # under `pytest -n N` each worker gets a private Postgres database + Redis logical db, so
