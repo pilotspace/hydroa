@@ -25,6 +25,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+KIND_E2E_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "kind-e2e.yml"
 COMPOSE_DEV = REPO_ROOT / "infra" / "docker-compose.dev.yml"
 CHART_VALUES = REPO_ROOT / "charts" / "ai-proxy" / "values.yaml"
 MAKEFILE = REPO_ROOT / "Makefile"
@@ -33,9 +34,34 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # this line AND all four manifests together — which is the whole point.
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 
+# The gateway job's wall-clock floor. The suite alone runs ~37 min for 4531 tests
+# on a 12-core dev host; `ubuntu-latest` has 4 cores, so pytest-xdist gets roughly
+# a third of the workers — and the job additionally pays for install, lint,
+# typecheck, two allow-list gates and the migration-parity step. At the previous
+# 30 the runner cancelled EVERY run on main from 2026-07-23 onward: the check
+# reported `cancelled`, never a verdict, so nothing it "gated" was ever proven.
+# Biased high on purpose — a first real measurement is worth more than a tight
+# guess. Tighten only against an observed green run's wall-clock.
+MIN_GATEWAY_TIMEOUT_MINUTES = 75
+
 
 def _load(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], yaml.safe_load(path.read_text()))
+
+
+def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
+    """The workflow's `on:` block, keyed the way the YAML loader actually returns it.
+
+    `on` is a YAML 1.1 boolean, so `yaml.safe_load` parses the key as `True` —
+    NOT the string `"on"`. A guard written as `workflow["on"]` raises `KeyError`
+    and is one lazy "fix" away from being vacuously green, so read the boolean
+    key first and accept the string only as a forward-compatible fallback (a
+    future YAML-1.2 loader would yield `"on"` and must not silently blind this).
+    """
+    for key in (True, "on"):
+        if key in workflow:
+            return cast(dict[str, Any], workflow[key])
+    raise AssertionError(f"workflow has no `on:` trigger block; keys={list(workflow)}")
 
 
 def _ci_postgres_image() -> str:
@@ -141,4 +167,50 @@ def test_ci_enforces_every_make_ci_gate() -> None:
     assert not missing, (
         f"`make ci` runs {missing} but the gateway job never invokes them as an "
         "unconditional step — these gates are unenforced in CI"
+    )
+
+
+def test_gateway_timeout_outlasts_the_suite() -> None:
+    """The gateway job must be allowed to finish the suite it runs.
+
+    A `timeout-minutes` below the suite's own wall-clock is not a safety bound,
+    it is a guaranteed `cancelled`: the runner kills the job mid-suite and the
+    check reports neither pass nor fail. Every run on `main` from 2026-07-23
+    onward died exactly that way at ~30m20s against a 30-minute cap.
+
+    This is the same family as the other guards in this module — a gate that
+    looks enforced and enforces nothing — so it is asserted here rather than
+    left to a comment someone tunes away to save metered minutes.
+    """
+    timeout = _load(CI_WORKFLOW)["jobs"]["gateway"].get("timeout-minutes")
+    assert isinstance(timeout, int), (
+        f"ci.yml gateway job has no integer `timeout-minutes` (got {timeout!r}). "
+        "An unbounded job can wedge a runner; an unparseable one cannot be checked."
+    )
+    assert timeout >= MIN_GATEWAY_TIMEOUT_MINUTES, (
+        f"ci.yml gateway `timeout-minutes` is {timeout}, below the "
+        f"{MIN_GATEWAY_TIMEOUT_MINUTES}-minute floor. The suite alone runs ~37 min "
+        "on a 12-core host and the runner has 4 cores — at this budget the job is "
+        "cancelled mid-suite and the check never reaches a verdict."
+    )
+
+
+def test_kind_e2e_is_dispatch_only() -> None:
+    """`kind-e2e` must not report a status on pull requests.
+
+    `ci-restoration` CR v2 (Tin-approved) settled this: kind-e2e "stays opt-in
+    (`workflow_dispatch`) and runs before a release cut". It is a 45-minute job
+    against the metered-minutes budget with 0 green runs in 15 attempts, and its
+    own header comment already calls it "opt-in by design" — but its `on:` block
+    still carried `pull_request` with an `apps/**` path filter, which matches
+    essentially every PR in this repo.
+
+    A permanently-red check on every PR is worse than no check: it trains every
+    reviewer to ignore the checks that DO mean something.
+    """
+    triggers = _triggers(_load(KIND_E2E_WORKFLOW))
+    assert set(triggers) == {"workflow_dispatch"}, (
+        f"kind-e2e triggers on {sorted(map(str, triggers))}, expected only "
+        "['workflow_dispatch']. Per ci-restoration CR v2 it is opt-in and runs "
+        "before a release cut — a PR trigger makes it a permanently-red gate."
     )

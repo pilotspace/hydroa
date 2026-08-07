@@ -11,7 +11,13 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The suite alone is ~37 min for 4531 tests on a 12-core dev host; this runner
+    # has 4 cores, so xdist gets ~a third of the workers — and the job also pays
+    # for install, lint, typecheck, two allow-list gates and the migration-parity
+    # step. At the previous 30 the runner cancelled EVERY run on main from
+    # 2026-07-23 on: the check reported `cancelled`, never a verdict.
+    # Floor guarded by tests/migrations/test_ci_workflow_parity.py.
+    timeout-minutes: 75
     services:
       postgres:
         # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
