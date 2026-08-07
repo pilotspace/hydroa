@@ -1274,7 +1274,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-07T16:16:04+00:00",
+  "updated": "2026-08-07T16:22:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2989,6 +2989,12 @@
       "id": 93,
       "text": "CI gateway job can NEVER go green: .github/workflows/ci.yml sets timeout-minutes: 30 but the gateway suite takes ~37min (4559 tests), so GitHub cancels every run \u2014 main has been cancelled/failed on every run since 2026-07-23. Raise to 60. Separately, kind-e2e has 0 green runs in 15 attempts since 2026-07-20 across every branch; decide whether to fix it or stop running it on every PR, because a permanently-red check trains everyone to ignore checks. Relates to #91 (no enforceable merge gate).",
       "created": "2026-08-07T12:53:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 94,
+      "text": "kind-e2e is now workflow_dispatch-only (PR #98), honoring ci-restoration CR v2 \u2014 but NOTHING enforces the other half of that decision, 'runs before a release cut'. It is a manual step with no reminder and no entry in any release checklist, and it has 0 green runs in 15 attempts, so its first on-demand run should be expected to need debugging rather than to yield a verdict. Either add it to the milestone Release steps checklist or give it a tag/schedule trigger. Filed during the #98 self-review.",
+      "created": "2026-08-07T16:22:08+00:00",
       "status": "open"
     }
   ]
