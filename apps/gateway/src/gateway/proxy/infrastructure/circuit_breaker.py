@@ -26,6 +26,27 @@ _FAILURE_THRESHOLD = 5
 _COOLDOWN_SECONDS = 30.0
 
 
+def status_counts_as_upstream_failure(status: int) -> bool:
+    """Does this HTTP status mean the UPSTREAM is in trouble?
+
+    True for 408, 429, and every status >= 500. False for everything else — including
+    every other 4xx, which is a terminal-but-successful round trip: the upstream answered,
+    correctly, that the CALLER got something wrong.
+
+    Feeding a 401/403/404/409 to `on_upstream_error()` is a live availability bug, not a
+    style question. A tenant whose BYOK key is revoked gets five 401s, their own breaker
+    opens, and their CORRECTED traffic then 502s for the whole cooldown — the gateway
+    punishes the fix.
+
+    This is the bool twin of `RetryPolicy.classify_status(status) is not None` in
+    `upstream_retry.py`. It cannot import that module (upstream_retry imports THIS one),
+    so the two are kept honest by a test that walks every status in 100..599 and asserts
+    they agree — see tests/breaker_4xx_classification. Collapsing classify_status onto
+    this predicate is the right end state; it was out of this task's frozen scope.
+    """
+    return status in (408, 429) or status >= 500
+
+
 class _State(Enum):
     CLOSED = "closed"
     OPEN = "open"

@@ -43,7 +43,10 @@ from gateway.proxy.infrastructure.bedrock_upstream import (
     _assert_region_consistent,  # pyright: ignore[reportPrivateUsage]
     _bedrock_error_to_openai,  # pyright: ignore[reportPrivateUsage]
 )
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.circuit_breaker import (
+    CircuitBreaker,
+    status_counts_as_upstream_failure,
+)
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -227,8 +230,16 @@ class BedrockEmbeddingsProvider:
                 raise UpstreamUnavailableError(str(exc)) from None
 
             if resp.status_code >= 400:
-                # Fail-fast: return immediately on the first non-2xx invoke call.
-                self._breaker.on_upstream_error()
+                # Fail-fast: return immediately on the first non-2xx invoke call. The
+                # fail-fast is about the N-call fan-out (don't keep invoking once one
+                # chunk has failed) and is unchanged; only the BREAKER accounting moved.
+                # A ValidationException on a malformed request is the caller's mistake,
+                # not an outage, and this breaker is per-INSTANCE — counting it would take
+                # Titan embeddings down for every other caller on this replica.
+                if status_counts_as_upstream_failure(resp.status_code):
+                    self._breaker.on_upstream_error()
+                else:
+                    self._breaker.record_success()
                 return resp.status_code, _bedrock_error_to_openai(resp.json(), resp.status_code)
 
             self._breaker.record_success()
