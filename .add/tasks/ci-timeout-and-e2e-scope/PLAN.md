@@ -60,6 +60,28 @@ Guard: apps/gateway/tests/migrations/test_ci_workflow_parity.py
   existing _load / REPO_ROOT helpers reused verbatim; no existing test touched.
 ```
 
+<!-- AMENDED 2026-08-07 by CR v2 (Tin-approved, after the first real runner measurement).
+     The frozen line above reads `timeout-minutes -> int >= 75`. That number was the §1
+     ⚠ assumption and it was WRONG: run 31197251730 was cancelled at 74m17s with the
+     SERIAL suite still running (steps 1-9 cost 32s combined, so the budget is all test
+     time). The frozen line is left untouched per the supersession pattern; what actually
+     ships is:
+       - `make ci` now runs a new `make test-ci` = `pytest -n 4 --dist loadscope`, NO
+         --reruns. Same tests, same strictness, sized to ubuntu-latest's 4 cores.
+         `-n 4` is explicit, never `-n auto`, which would resolve to the HOST's core
+         count and blow past the 1..12 Redis db mapping in tests/_redis_env.py.
+       - `jobs.gateway.timeout-minutes -> int >= 60` (MIN_GATEWAY_TIMEOUT_MINUTES = 60),
+         ~2.4x headroom over the ~20-25 min the parallel run is expected to take.
+       - `jobs.gateway.steps[Tests].run -> "make test-ci"`, so CI still runs exactly
+         `make ci` and nothing divergent (the release-integrity anchor); the existing
+         test_ci_enforces_every_make_ci_gate guard checks this automatically because it
+         reads `make ci`'s prerequisites rather than a hardcoded list.
+     Scope grows by `Makefile`. Rejected alternative: raise the cap to 150 and keep the
+     suite serial — it preserves strict-serial semantics but bills ~2.5h of metered
+     minutes per PR and makes the feedback loop unusable. Rejected alternative: matrix
+     sharding — better feedback still, but real workflow surgery and shard-balancing,
+     disproportionate to a task scoped as a timeout fix. -->
+
 Grounding (real symbols, verified in-context):
 - `jobs.gateway.timeout-minutes: 30` at `.github/workflows/ci.yml` — last 5 `main` runs all `completed / cancelled` at ~30m20s (`gh run list --branch main`), i.e. the runner kills it, the suite never reports.
 - `.github/workflows/kind-e2e.yml`'s `on:` carries `pull_request.paths` including `"apps/**"` — which matches essentially every PR in this repo, contradicting the file's OWN header comment ("Heavy + opt-in by design… NOT in the fast `ci.yml` lane") and `ci-restoration` CR v2. History: **0 green in 15 attempts** since 2026-07-20.

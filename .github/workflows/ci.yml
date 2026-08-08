@@ -11,13 +11,14 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    # The suite alone is ~37 min for 4531 tests on a 12-core dev host; this runner
-    # has 4 cores, so xdist gets ~a third of the workers — and the job also pays
-    # for install, lint, typecheck, two allow-list gates and the migration-parity
-    # step. At the previous 30 the runner cancelled EVERY run on main from
-    # 2026-07-23 on: the check reported `cancelled`, never a verdict.
+    # MEASURED, not guessed. Run 31197251730 (2026-08-07) cancelled at 74m17s with
+    # the SERIAL suite still running; steps 1-9 (install, lint, typecheck, both
+    # allow-list gates) cost only 32s combined, so the budget is essentially all
+    # test time. `make test-ci` now fans that across 4 workers, so the expected
+    # wall-clock is ~20-25 min; 60 leaves ~2.4x headroom for a slow runner without
+    # licensing another 75-minute cancellation.
     # Floor guarded by tests/migrations/test_ci_workflow_parity.py.
-    timeout-minutes: 75
+    timeout-minutes: 60
     services:
       postgres:
         # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
@@ -61,7 +62,11 @@ jobs:
         # tests/migrations/test_ci_workflow_parity.py::test_ci_enforces_every_make_ci_gate.
         run: make allowlist-node
       - name: Tests
-        run: make test
+        # `make test-ci` — the same suite as `make test`, fanned across 4 xdist
+        # workers to match this runner's cores, with no --reruns so the gate stays
+        # strict. Serial needed >74 min here and was cancelled mid-run. See the
+        # Makefile's test-ci comment for the full reasoning.
+        run: make test-ci
       - name: Migration parity gate
         # alembic check is only valid on a DB at head (contract §1) — use a fresh
         # scratch DB, never gateway_test (the test run leaves an unstamped

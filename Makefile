@@ -36,6 +36,31 @@ allowlist-node:
 test:
 	cd $(GATEWAY) && uv run pytest
 
+# The suite as CI runs it. Same tests as `test`, same strictness — fanned across
+# xdist workers sized to the runner instead of run serially.
+#
+# WHY THIS EXISTS: serial `make test` needs >74 min on `ubuntu-latest` (measured
+# 2026-08-07, run 31197251730 — cancelled at 74m17s still running, vs ~37 min on a
+# 12-core dev host). A gate that cannot finish reports `cancelled` and proves
+# nothing, which is the whole fault R6 exists to close.
+#
+# `-n 4` matches ubuntu-latest's core count and is stated explicitly rather than
+# `-n auto`, which would resolve to the HOST's core count — the hazard the
+# `test-parallel` comment below already names (Redis logical dbs only map 1..12 in
+# tests/_redis_env.py). A fixed 4 behaves identically on a runner and on any dev
+# machine, which is what makes a CI gate reproducible.
+#
+# NO `--reruns`, deliberately, unlike `test-parallel`. An auto-retrying gate is a
+# gate that hides the flake tail (todos #74/#79/#89), and R6's whole product is a
+# check whose green MEANS something. If 4-way contention surfaces flakes, that is
+# information to act on, not noise to suppress.
+#
+# `make ci` uses THIS target, so CI runs exactly `make ci` and nothing divergent
+# (the release-integrity anchor); guarded by
+# tests/migrations/test_ci_workflow_parity.py::test_ci_enforces_every_make_ci_gate.
+test-ci:
+	cd $(GATEWAY) && uv run pytest -n 4 --dist loadscope
+
 # Parallel full suite — same tests as `test`, fanned across xdist workers.
 # Isolation: tests/_redis_env.py gives each worker a private Postgres database
 # (gateway_test_gwN, auto-created/dropped by conftest) + a private Redis logical db
@@ -87,7 +112,7 @@ pg-preflight:
 	@test -n "$(DATABASE_URL)" || { echo "usage: make pg-preflight DATABASE_URL='postgresql://...'"; exit 2; }
 	cd $(GATEWAY) && uv run python ../../scripts/pg_preflight.py --database-url '$(DATABASE_URL)'
 
-ci: lint typecheck allowlist allowlist-node test
+ci: lint typecheck allowlist allowlist-node test-ci
 	@echo "✅ pipeline green"
 
 # === Full Docker + Envoy edge stack =========================================

@@ -34,15 +34,18 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # this line AND all four manifests together — which is the whole point.
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 
-# The gateway job's wall-clock floor. The suite alone runs ~37 min for 4531 tests
-# on a 12-core dev host; `ubuntu-latest` has 4 cores, so pytest-xdist gets roughly
-# a third of the workers — and the job additionally pays for install, lint,
-# typecheck, two allow-list gates and the migration-parity step. At the previous
-# 30 the runner cancelled EVERY run on main from 2026-07-23 onward: the check
-# reported `cancelled`, never a verdict, so nothing it "gated" was ever proven.
-# Biased high on purpose — a first real measurement is worth more than a tight
-# guess. Tighten only against an observed green run's wall-clock.
-MIN_GATEWAY_TIMEOUT_MINUTES = 75
+# The gateway job's wall-clock floor, set from a MEASUREMENT rather than an
+# extrapolation. Two runs were cancelled proving the point: at 30 min (every run on
+# main from 2026-07-23) and again at 75 (run 31197251730, 2026-08-07 — 74m17s with
+# the serial suite still going). Steps 1-9 cost 32s combined, so the budget is
+# essentially all test time.
+#
+# `make ci` now runs `make test-ci` (4 xdist workers, no --reruns), putting the
+# expected wall-clock at ~20-25 min. 60 keeps ~2.4x headroom without licensing
+# another hour-plus cancellation. A cap below the suite's own runtime is not a
+# safety bound — it is a guaranteed `cancelled`, a check that never reaches a
+# verdict, and therefore a gate that proves nothing.
+MIN_GATEWAY_TIMEOUT_MINUTES = 60
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -175,12 +178,16 @@ def test_gateway_timeout_outlasts_the_suite() -> None:
 
     A `timeout-minutes` below the suite's own wall-clock is not a safety bound,
     it is a guaranteed `cancelled`: the runner kills the job mid-suite and the
-    check reports neither pass nor fail. Every run on `main` from 2026-07-23
-    onward died exactly that way at ~30m20s against a 30-minute cap.
+    check reports neither pass nor fail. This repo has now proven that twice —
+    at 30 min (every run on `main` from 2026-07-23) and again at 75.
 
     This is the same family as the other guards in this module — a gate that
     looks enforced and enforces nothing — so it is asserted here rather than
     left to a comment someone tunes away to save metered minutes.
+
+    `isinstance(True, int)` is True in Python, so a `timeout-minutes: true`
+    typo passes the type check and is caught by the floor comparison below
+    (`True >= 60` is False) — wrong message, right outcome: still fails closed.
     """
     timeout = _load(CI_WORKFLOW)["jobs"]["gateway"].get("timeout-minutes")
     assert isinstance(timeout, int), (
@@ -189,8 +196,8 @@ def test_gateway_timeout_outlasts_the_suite() -> None:
     )
     assert timeout >= MIN_GATEWAY_TIMEOUT_MINUTES, (
         f"ci.yml gateway `timeout-minutes` is {timeout}, below the "
-        f"{MIN_GATEWAY_TIMEOUT_MINUTES}-minute floor. The suite alone runs ~37 min "
-        "on a 12-core host and the runner has 4 cores — at this budget the job is "
+        f"{MIN_GATEWAY_TIMEOUT_MINUTES}-minute floor. Measured: the serial suite "
+        "was still running at 74m17s on this runner. At this budget the job is "
         "cancelled mid-suite and the check never reaches a verdict."
     )
 
