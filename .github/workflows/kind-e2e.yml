@@ -5,24 +5,24 @@
 # automated proof of the milestone's e2e exit criterion on a runner.
 #
 # Heavy + opt-in by design: it is NOT in the fast `ci.yml` lane (which keeps lint/typecheck/unit
-# fast). It triggers on-demand (workflow_dispatch) or only when deploy-shaped paths change.
+# fast). It triggers ON DEMAND ONLY (workflow_dispatch) — see the trigger block below for why the
+# path-filtered pull_request trigger was removed.
 #
-# NOTE (operational): the org's GitHub Actions billing is currently blocked, so this workflow is
-# authored + committed but cannot be observed green on a hosted runner until billing is restored.
-# The local `make ci-e2e` is the contemporaneous proof surface (see the task's freeze flag). The
-# runner specifics (image build time, disk, the 45-min budget) are best-effort and may need tuning.
+# NOTE (operational): this workflow has NEVER been observed green on a hosted runner — 0 green in
+# 15 attempts. It was authored while the org's Actions billing was blocked (since resolved by
+# `ci-restoration`), so its runner specifics — image build time, disk, the 45-min budget — remain
+# best-effort and unproven. The local `make ci-e2e` is still the real proof surface. Whoever next
+# runs this on demand should expect to debug it, not to read a verdict from it.
 name: kind-e2e
 
+# OPT-IN ONLY. The `pull_request` trigger this block used to carry was path-filtered
+# on `apps/**`, which matches essentially every PR in this repo — so a 45-minute job
+# with 0 green runs in 15 attempts reported red on nearly every PR, which trains
+# reviewers to ignore the checks that DO mean something. `ci-restoration` CR v2
+# (Tin-approved) settled the posture: opt-in, and run before a release cut.
+# Guarded by tests/migrations/test_ci_workflow_parity.py::test_kind_e2e_is_dispatch_only.
 on:
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - "charts/**"
-      - "infra/kind/**"
-      - "scripts/e2e_kind*.sh"
-      - "apps/**"
-      - "Makefile"
-      - ".github/workflows/kind-e2e.yml"
 
 permissions:
   contents: read

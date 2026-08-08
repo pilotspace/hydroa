@@ -11,7 +11,22 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # MEASURED. Run 31243949907 (2026-08-08) is the first gateway run that ever
+    # FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
+    # 120 is that number x ~1.5. History, all lower bounds because none completed:
+    #   30 cap -> cancelled ~30m     (serial; every run on main from 2026-07-23)
+    #   75 cap -> cancelled 74m17s   (serial; run 31197251730)
+    #   60 cap -> cancelled 59m27s   (-n 4;   run 31241464171)
+    # Steps 1-9 cost 32s combined, so the budget is essentially all test time.
+    #
+    # Do NOT try to win time back by raising -n. Measured: -n 4 bought almost
+    # nothing over serial, because this runner's 4 vCPUs are shared with the
+    # Postgres and Redis service containers, every worker carries coverage
+    # instrumentation (+64% wall / +72% CPU), and all four contend on ONE database.
+    # More workers on one box is a dead end; more BOXES (matrix shards with a DB
+    # each) or a bigger runner is the real lever. See todo #96.
+    # Floor guarded by tests/migrations/test_ci_workflow_parity.py.
+    timeout-minutes: 120
     services:
       postgres:
         # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
@@ -55,7 +70,11 @@ jobs:
         # tests/migrations/test_ci_workflow_parity.py::test_ci_enforces_every_make_ci_gate.
         run: make allowlist-node
       - name: Tests
-        run: make test
+        # `make test-ci` — the same suite as `make test`, fanned across 4 xdist
+        # workers to match this runner's cores, with no --reruns so the gate stays
+        # strict. Serial needed >74 min here and was cancelled mid-run. See the
+        # Makefile's test-ci comment for the full reasoning.
+        run: make test-ci
       - name: Migration parity gate
         # alembic check is only valid on a DB at head (contract §1) — use a fresh
         # scratch DB, never gateway_test (the test run leaves an unstamped
