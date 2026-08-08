@@ -40,21 +40,19 @@ PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 # the serial suite still going). Steps 1-9 cost 32s combined, so the budget is
 # essentially all test time.
 #
-# ⚠ THIS FLOOR IS KNOWN TO BE TOO LOW and is deliberately left that way for now.
-# A third run then cancelled at 59m27s under `make test-ci` (-n 4), so the real
-# runtime exceeds 60 — but no run has EVER finished, so the true number is still
-# unknown and inventing a fourth guess here would repeat the mistake. The workflow
-# currently carries 180 as a measuring instrument (todo #95); once one run
-# completes, this constant moves to ~1.5x the observed wall-clock and the workflow
-# drops to the same figure.
+# MEASURED, at last. Run 31243949907 (2026-08-08) is the first gateway run that
+# ever FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
+# This floor is that number x ~1.5. Three earlier caps were guessed and all three
+# were cancelled mid-suite (30 -> ~30m, 75 -> 74m17s serial, 60 -> 59m27s at -n 4),
+# so every figure before this one was a lower bound, never a runtime.
 #
-# The guard still earns its place at 60: it catches a revert to the old 30, which
-# is the regression that actually happened. It simply cannot yet assert the right
-# number, and saying so in the open beats a confident wrong constant.
+# Re-derive this constant from an observed run, never from an extrapolation: the
+# 75 came from scaling a 12-core dev-host number to a 4-core runner and was wrong,
+# and the 60 that replaced it was wrong too. Both mistakes cost a cancelled run.
 #
 # A cap below the suite's own runtime is not a safety bound — it is a guaranteed
 # `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
-MIN_GATEWAY_TIMEOUT_MINUTES = 60
+MIN_GATEWAY_TIMEOUT_MINUTES = 120
 
 
 def _load(path: Path) -> dict[str, Any]:

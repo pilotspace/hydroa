@@ -1274,7 +1274,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-08T06:25:56+00:00",
+  "updated": "2026-08-08T07:53:43+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3001,6 +3001,12 @@
       "id": 95,
       "text": "CI gateway timeout is temporarily 180 min as a MEASURING INSTRUMENT, not a target (PR #98). Three caps were guessed and all three cancelled without the suite finishing: 30 -> ~30m, 75 -> 74m17s serial (run 31197251730), 60 -> 59m27s at -n 4 (run 31241464171). Once ONE run completes, set timeout-minutes to ~1.5x the observed wall-clock and raise MIN_GATEWAY_TIMEOUT_MINUTES in tests/migrations/test_ci_workflow_parity.py to match \u2014 today's floor of 60 is now known to be BELOW the real runtime, so the guard is currently under-protecting. If the measured number is still large, the structural fix is matrix-sharding (needs per-shard coverage artifacts combined in a final job, or the 80% floor is silently weakened) or a bigger runner. Measured context: coverage instrumentation costs +64% wall / +72% CPU, ~39% of runtime; ubuntu-latest's 4 vCPUs are shared with the Postgres and Redis service containers, so -n 4 oversubscribes the box.",
       "created": "2026-08-08T06:25:56+00:00",
+      "status": "done"
+    },
+    {
+      "id": 96,
+      "text": "MEASURED 2026-08-08, run 31243949907 \u2014 the gateway suite's first EVER completed CI run: 8 failed, 4553 passed, 7 skipped, 1 xfailed in 4935s (1h22m15s) at -n 4 with coverage. Key numbers: (a) set timeout-minutes to ~120 (82m * 1.5) and raise MIN_GATEWAY_TIMEOUT_MINUTES to match \u2014 supersedes the 180 instrument in todo #95; (b) -n 4 bought almost NOTHING vs serial (serial was cancelled at 74m17s still running; -n 4 completed at 82m25s), because ubuntu-latest's 4 vCPUs are shared with the Postgres+Redis service containers and every worker carries 39% coverage overhead while contending on ONE database. Adding workers to this runner is a dead end; the only real fixes are matrix-sharding with a DB per shard, or a bigger runner. All 8 failures are PRE-EXISTING (PR #98 touches zero production source): 5 map to already-filed issues (#74 names guardrails/test_guardrails_core and request_log_metering_fields; the Makefile test-parallel comment names the realtime DDL deadlock; v58 flags the batch claim/drain lifecycle). The other 3 (agent_identity_governance kill-race, s3_egress_policy IPv6-mapped literal, tool_call_metering/test_di_wiring) all pass locally in isolation and need classification.",
+      "created": "2026-08-08T07:52:35+00:00",
       "status": "open"
     }
   ]

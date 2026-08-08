@@ -11,21 +11,22 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    # ⚠ 180 is an INSTRUMENT, not a target. Do not read it as the intended budget.
-    #
-    # Three runs have been cancelled without the suite ever finishing, so its true
-    # wall-clock is still unknown — every figure below is a LOWER bound:
-    #   30  cap -> cancelled ~30m      (serial;  every run on main from 2026-07-23)
-    #   75  cap -> cancelled 74m17s    (serial;  run 31197251730)
-    #   60  cap -> cancelled 59m27s    (-n 4;    run 31241464171)
+    # MEASURED. Run 31243949907 (2026-08-08) is the first gateway run that ever
+    # FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
+    # 120 is that number x ~1.5. History, all lower bounds because none completed:
+    #   30 cap -> cancelled ~30m     (serial; every run on main from 2026-07-23)
+    #   75 cap -> cancelled 74m17s   (serial; run 31197251730)
+    #   60 cap -> cancelled 59m27s   (-n 4;   run 31241464171)
     # Steps 1-9 cost 32s combined, so the budget is essentially all test time.
     #
-    # Guessing the cap three times cost ~3.5h of metered minutes and taught nothing.
-    # This run exists to MEASURE: let it finish once, then set the real cap from the
-    # observed number (~1.5x) and raise MIN_GATEWAY_TIMEOUT_MINUTES to match.
-    # Tracked by todo #95 — 180 must not survive as the standing value.
+    # Do NOT try to win time back by raising -n. Measured: -n 4 bought almost
+    # nothing over serial, because this runner's 4 vCPUs are shared with the
+    # Postgres and Redis service containers, every worker carries coverage
+    # instrumentation (+64% wall / +72% CPU), and all four contend on ONE database.
+    # More workers on one box is a dead end; more BOXES (matrix shards with a DB
+    # each) or a bigger runner is the real lever. See todo #96.
     # Floor guarded by tests/migrations/test_ci_workflow_parity.py.
-    timeout-minutes: 180
+    timeout-minutes: 120
     services:
       postgres:
         # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
