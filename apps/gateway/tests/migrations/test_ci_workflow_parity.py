@@ -40,11 +40,20 @@ PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 # the serial suite still going). Steps 1-9 cost 32s combined, so the budget is
 # essentially all test time.
 #
-# `make ci` now runs `make test-ci` (4 xdist workers, no --reruns), putting the
-# expected wall-clock at ~20-25 min. 60 keeps ~2.4x headroom without licensing
-# another hour-plus cancellation. A cap below the suite's own runtime is not a
-# safety bound — it is a guaranteed `cancelled`, a check that never reaches a
-# verdict, and therefore a gate that proves nothing.
+# ⚠ THIS FLOOR IS KNOWN TO BE TOO LOW and is deliberately left that way for now.
+# A third run then cancelled at 59m27s under `make test-ci` (-n 4), so the real
+# runtime exceeds 60 — but no run has EVER finished, so the true number is still
+# unknown and inventing a fourth guess here would repeat the mistake. The workflow
+# currently carries 180 as a measuring instrument (todo #95); once one run
+# completes, this constant moves to ~1.5x the observed wall-clock and the workflow
+# drops to the same figure.
+#
+# The guard still earns its place at 60: it catches a revert to the old 30, which
+# is the regression that actually happened. It simply cannot yet assert the right
+# number, and saying so in the open beats a confident wrong constant.
+#
+# A cap below the suite's own runtime is not a safety bound — it is a guaranteed
+# `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
 MIN_GATEWAY_TIMEOUT_MINUTES = 60
 
 

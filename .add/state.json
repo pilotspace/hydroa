@@ -1274,7 +1274,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-07T16:22:08+00:00",
+  "updated": "2026-08-08T06:25:56+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2995,6 +2995,12 @@
       "id": 94,
       "text": "kind-e2e is now workflow_dispatch-only (PR #98), honoring ci-restoration CR v2 \u2014 but NOTHING enforces the other half of that decision, 'runs before a release cut'. It is a manual step with no reminder and no entry in any release checklist, and it has 0 green runs in 15 attempts, so its first on-demand run should be expected to need debugging rather than to yield a verdict. Either add it to the milestone Release steps checklist or give it a tag/schedule trigger. Filed during the #98 self-review.",
       "created": "2026-08-07T16:22:08+00:00",
+      "status": "open"
+    },
+    {
+      "id": 95,
+      "text": "CI gateway timeout is temporarily 180 min as a MEASURING INSTRUMENT, not a target (PR #98). Three caps were guessed and all three cancelled without the suite finishing: 30 -> ~30m, 75 -> 74m17s serial (run 31197251730), 60 -> 59m27s at -n 4 (run 31241464171). Once ONE run completes, set timeout-minutes to ~1.5x the observed wall-clock and raise MIN_GATEWAY_TIMEOUT_MINUTES in tests/migrations/test_ci_workflow_parity.py to match \u2014 today's floor of 60 is now known to be BELOW the real runtime, so the guard is currently under-protecting. If the measured number is still large, the structural fix is matrix-sharding (needs per-shard coverage artifacts combined in a final job, or the 80% floor is silently weakened) or a bigger runner. Measured context: coverage instrumentation costs +64% wall / +72% CPU, ~39% of runtime; ubuntu-latest's 4 vCPUs are shared with the Postgres and Redis service containers, so -n 4 oversubscribes the box.",
+      "created": "2026-08-08T06:25:56+00:00",
       "status": "open"
     }
   ]

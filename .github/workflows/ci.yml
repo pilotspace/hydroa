@@ -11,14 +11,21 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    # MEASURED, not guessed. Run 31197251730 (2026-08-07) cancelled at 74m17s with
-    # the SERIAL suite still running; steps 1-9 (install, lint, typecheck, both
-    # allow-list gates) cost only 32s combined, so the budget is essentially all
-    # test time. `make test-ci` now fans that across 4 workers, so the expected
-    # wall-clock is ~20-25 min; 60 leaves ~2.4x headroom for a slow runner without
-    # licensing another 75-minute cancellation.
+    # ⚠ 180 is an INSTRUMENT, not a target. Do not read it as the intended budget.
+    #
+    # Three runs have been cancelled without the suite ever finishing, so its true
+    # wall-clock is still unknown — every figure below is a LOWER bound:
+    #   30  cap -> cancelled ~30m      (serial;  every run on main from 2026-07-23)
+    #   75  cap -> cancelled 74m17s    (serial;  run 31197251730)
+    #   60  cap -> cancelled 59m27s    (-n 4;    run 31241464171)
+    # Steps 1-9 cost 32s combined, so the budget is essentially all test time.
+    #
+    # Guessing the cap three times cost ~3.5h of metered minutes and taught nothing.
+    # This run exists to MEASURE: let it finish once, then set the real cap from the
+    # observed number (~1.5x) and raise MIN_GATEWAY_TIMEOUT_MINUTES to match.
+    # Tracked by todo #95 — 180 must not survive as the standing value.
     # Floor guarded by tests/migrations/test_ci_workflow_parity.py.
-    timeout-minutes: 60
+    timeout-minutes: 180
     services:
       postgres:
         # MUST match infra/docker-compose.{dev,e2e,prod}.yml and
