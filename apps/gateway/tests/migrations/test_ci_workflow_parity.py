@@ -209,6 +209,39 @@ def test_gateway_timeout_outlasts_the_suite() -> None:
     )
 
 
+def test_ci_python_version_is_patch_pinned_and_matches_dev() -> None:
+    """CI and dev must run the SAME Python, down to the patch.
+
+    Not hygiene — a correctness gate. `ipaddress` special-purpose network lists
+    changed in a 3.12 PATCH release (CVE-2024-4032 / gh-113171), and the egress
+    SSRF policy reads those predicates:
+
+        ipaddress.ip_address("::ffff:10.20.30.40").is_reserved
+            3.12.3  -> True      (denied before the RFC1918 allow-list rescue runs)
+            3.12.13 -> False     (reaches the rescue, allowed)
+
+    CI pinned only "3.12", resolved 3.12.3, and failed
+    test_write_time_opt_in_relaxes_only_private_class in run 31243949907 while the
+    same code passed on a dev box. A security control whose verdict depends on the
+    interpreter's patch version is not reproducible, so both ends are pinned and
+    checked against each other here. See todo #97.
+    """
+    pinned = (REPO_ROOT / "apps" / "gateway" / ".python-version").read_text().strip()
+    assert re.fullmatch(r"\d+\.\d+\.\d+", pinned), (
+        f".python-version is {pinned!r}; it must name an exact patch version "
+        "(e.g. 3.12.13), not a minor series — a minor series is what let CI drift "
+        "to 3.12.3 while dev ran 3.12.13."
+    )
+    ci_version = str(
+        _load(CI_WORKFLOW)["jobs"]["gateway"]["steps"][1]["with"]["python-version"]
+    )
+    assert ci_version == pinned, (
+        f"ci.yml pins Python {ci_version!r} but .python-version says {pinned!r}. "
+        "These must agree exactly — `ipaddress` predicates the egress policy relies "
+        "on differ across 3.12 patch releases."
+    )
+
+
 def test_kind_e2e_is_dispatch_only() -> None:
     """`kind-e2e` must not report a status on pull requests.
 

@@ -26,6 +26,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
 from tests.agent_token_authn_seam.conftest import mint_agent_token
 from tests.mcp_connector.conftest import (
     MCP_CALL,
@@ -70,20 +71,27 @@ async def test_successful_call_produces_one_usage_records_row_via_real_di_wiring
     )
     assert resp.status_code == 200, resp.text
 
-    await asyncio.sleep(0.3)  # fire-and-forget observer call settles
     from gateway.usage.application.flusher import UsageLedgerFlusher
 
     flusher = UsageLedgerFlusher(redis=app.state.redis_client, session_factory=app.state.sessionmaker)
-    await flusher.flush_once()
 
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT * FROM usage_records WHERE tenant_id = :tid AND model_id = :m"
-            ),
-            {"tid": owner["tenant_id"], "m": MCP_TOOL_CALL_MODEL_ID},
-        )
-    ).fetchall()
+    # POSITIVE wait: the observer call is fire-and-forget, so the row appears at an
+    # unpredictable moment. A fixed 0.3s passed on an idle laptop and failed in CI run
+    # 31243949907 under 4-way contention. Flush inside the poll — the record only
+    # reaches Postgres when the flusher runs, so re-fetching without re-flushing would
+    # spin forever. See tests/_polling.py; same conversion as suite-stability M10.
+    async def _flush_and_fetch() -> list[Any]:
+        await flusher.flush_once()
+        return (
+            await db_session.execute(
+                text(
+                    "SELECT * FROM usage_records WHERE tenant_id = :tid AND model_id = :m"
+                ),
+                {"tid": owner["tenant_id"], "m": MCP_TOOL_CALL_MODEL_ID},
+            )
+        ).fetchall()
+
+    rows = await poll_until(_flush_and_fetch, lambda r: len(r) == 1)
     assert len(rows) == 1
     row = rows[0]._mapping  # type: ignore[union-attr]
     assert row["pricing_unit"] == "per_tool_call"
@@ -109,6 +117,11 @@ async def test_refused_call_never_produces_a_usage_records_row(
     )
     assert resp.status_code == 403
 
+    # NEGATIVE wait — do NOT convert this to poll_until. The assertion below is
+    # `rows == []`: this test proves a 403 writes NO usage record. Polling would
+    # return the empty list on its first iteration and never give an erroneous write
+    # a chance to appear, turning a real assertion into a vacuous one. The sleep IS
+    # the test here. tests/_polling.py's own docstring names this exact case.
     await asyncio.sleep(0.3)
     from gateway.usage.application.flusher import UsageLedgerFlusher
 
@@ -226,13 +239,15 @@ async def test_successful_agent_principal_call_funds_agent_spend_counter(
     )
     assert resp.status_code == 200, resp.text
 
-    await asyncio.sleep(0.3)  # fire-and-forget observer call settles
     from gateway.usage.application.flusher import UsageLedgerFlusher
 
     flusher = UsageLedgerFlusher(redis=app.state.redis_client, session_factory=app.state.sessionmaker)
     await flusher.flush_once()
 
-    raw = await redis_client.get(spend_key)
+    # POSITIVE wait on the fire-and-forget spend increment (see the note at the first
+    # conversion in this file). The counter lives in Redis and is written by the
+    # observer, not by the flusher, so poll Redis directly.
+    raw = await poll_until(lambda: redis_client.get(spend_key), lambda v: v is not None)
     assert raw is not None, (
         "agent-principal spend counter must be funded after a successful MCP tool "
         "call made under that principal's agent token — it was never incremented "
