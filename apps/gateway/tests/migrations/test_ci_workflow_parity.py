@@ -34,21 +34,20 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # this line AND all four manifests together — which is the whole point.
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 
-# The gateway job's wall-clock floor, set from a MEASUREMENT rather than an
-# extrapolation. Two runs were cancelled proving the point: at 30 min (every run on
-# main from 2026-07-23) and again at 75 (run 31197251730, 2026-08-07 — 74m17s with
-# the serial suite still going). Steps 1-9 cost 32s combined, so the budget is
-# essentially all test time.
+# The gateway job's wall-clock floor, set from a MEASUREMENT. Run 31243949907
+# (2026-08-08) is the first gateway run that ever FINISHED: 4553 passed / 8 failed
+# in 4935s = 1h22m15s, at -n 4 with coverage. This floor is that number x ~1.5.
 #
-# MEASURED, at last. Run 31243949907 (2026-08-08) is the first gateway run that
-# ever FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
-# This floor is that number x ~1.5. Three earlier caps were guessed and all three
-# were cancelled mid-suite (30 -> ~30m, 75 -> 74m17s serial, 60 -> 59m27s at -n 4),
-# so every figure before this one was a lower bound, never a runtime.
+# Three earlier caps were GUESSED and all three were cancelled mid-suite, so every
+# figure before the measurement was a lower bound and never a runtime:
+#   30 -> ~30m       serial, every run on main from 2026-07-23
+#   75 -> 74m17s     serial, run 31197251730
+#   60 -> 59m27s     -n 4,   run 31241464171
+# Steps 1-9 cost 32s combined, so the budget is essentially all test time.
 #
-# Re-derive this constant from an observed run, never from an extrapolation: the
-# 75 came from scaling a 12-core dev-host number to a 4-core runner and was wrong,
-# and the 60 that replaced it was wrong too. Both mistakes cost a cancelled run.
+# Re-derive this constant from an observed run, never from an extrapolation: the 75
+# came from scaling a 12-core dev-host number to a 4-core runner and was wrong, and
+# the 60 that replaced it was wrong too. Each mistake cost a cancelled run.
 #
 # A cap below the suite's own runtime is not a safety bound — it is a guaranteed
 # `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
@@ -232,9 +231,7 @@ def test_ci_python_version_is_patch_pinned_and_matches_dev() -> None:
         "(e.g. 3.12.13), not a minor series — a minor series is what let CI drift "
         "to 3.12.3 while dev ran 3.12.13."
     )
-    ci_version = str(
-        _load(CI_WORKFLOW)["jobs"]["gateway"]["steps"][1]["with"]["python-version"]
-    )
+    ci_version = str(_load(CI_WORKFLOW)["jobs"]["gateway"]["steps"][1]["with"]["python-version"])
     assert ci_version == pinned, (
         f"ci.yml pins Python {ci_version!r} but .python-version says {pinned!r}. "
         "These must agree exactly — `ipaddress` predicates the egress policy relies "
