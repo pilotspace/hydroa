@@ -1202,15 +1202,41 @@
     },
     "ci-flake-classification": {
       "title": "Classify the 8 failures the first completed CI run exposed, starting with the egress security control",
-      "phase": "direction",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "release-integrity",
       "depends_on": [],
       "created": "2026-08-08T15:25:39+00:00",
-      "updated": "2026-08-08T15:25:39+00:00",
+      "updated": "2026-08-09T09:21:34+00:00",
       "relates_to": [
         "ci-timeout-and-e2e-scope"
-      ]
+      ],
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "8af900db36c09d0d26083931a1cf8383",
+        "tests": {
+          "apps/gateway/tests/migrations/test_ci_workflow_parity.py": "7cd3127d2796d42c9f829cb1f08da849"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/tool_call_metering/test_di_wiring.py",
+          "apps/gateway/tests/agent_identity_governance/test_agent_identity_governance.py",
+          "apps/gateway/tests/migrations/test_ci_workflow_parity.py",
+          "apps/gateway/.python-version",
+          ".github/workflows/ci.yml"
+        ],
+        "snapshot_md5": "3ba1940fd8d48de3fa0ae3dc66788c04"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1286,7 +1312,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-09T09:19:19+00:00",
+  "updated": "2026-08-09T09:21:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
