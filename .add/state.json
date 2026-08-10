@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ci-flake-classification",
+  "active_task": "flake-tail-burndown",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1237,6 +1237,55 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "flake-tail-burndown": {
+      "title": "Kill the test-suite flake tail: 4 CI-red sites, a drop_all-after-lifespan guard, and the 89 unclassified fixed sleeps",
+      "phase": "build",
+      "gate": "none",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-10T07:13:58+00:00",
+      "updated": "2026-08-10T08:15:57+00:00",
+      "relates_to": [
+        "ci-flake-classification"
+      ],
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-08-10T07:22:13+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "e0a07aaf8776468610a2bf781d99b5aa",
+        "tests": {
+          "apps/gateway/tests/repo_hygiene/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
+          "apps/gateway/tests/repo_hygiene/_date_bomb.py": "66397caff59c5bc91aa2ec24287a6068",
+          "apps/gateway/tests/repo_hygiene/test_no_ddl_after_lifespan.py": "c9f36200443cdccb3a13b889ee27cbda",
+          "apps/gateway/tests/repo_hygiene/test_no_unbounded_positive_wait.py": "0e5c1e213cdc2c46286df16c4bd32bea",
+          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "4522642e40e586c2655b812c5f50b039"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/",
+          ".add/tasks/flake-tail-burndown/"
+        ],
+        "snapshot_md5": "2b7befdc0187273513fc016cbd944c5e"
+      },
+      "recross": {
+        "by": "Tin Dang",
+        "at": "2026-08-10T08:15:57+00:00",
+        "from_phase": "build"
+      }
     }
   },
   "milestones": {
@@ -1312,7 +1361,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-09T10:43:34+00:00",
+  "updated": "2026-08-10T08:15:57+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2468,7 +2517,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "ci-flake-classification"
+    "release-integrity": "flake-tail-burndown"
   },
   "todos": [
     {
@@ -2703,7 +2752,7 @@
       "id": 39,
       "text": "test-parallel -n 12 can stall near completion on shared-Postgres DDL contention (12-way per-test drop_all/create_all + pg_catalog autovacuum, all workers wait_event_type=IO). 2/4 full runs finished 5:37-6:19, 2 stalled. Follow-up: replace per-test drop_all/create_all with a template-DB clone (CREATE DATABASE ... TEMPLATE) or transaction-rollback isolation, or cap -n to ~8, to remove the DDL-per-test cost.",
       "created": "2026-07-14T03:02:29+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 40,
@@ -3063,6 +3112,18 @@
       "id": 99,
       "text": "tests/routing_admin (ra1/ra2/ra3/ra4/ra7) failed 5-of-8 in CI run 31306357309 with cross-test state leakage \u2014 'model_groups mismatch: {gpt: [a]}' and KeyError on expected candidates, i.e. it saw ANOTHER suite's routing config. This is the same suite the 0.9.0 release notes already call out as an xdist flake ('routing_admin xdist flakes green in isolation'), so it is recurring, not new. NOT reproduced locally after four probes: passes 3/3 in isolation WITH random ordering enabled (so not intra-file order dependence), and passes when run in one process directly after tests/routing_config_write + tests/routing_config_store, which are the only two suites that set the exact leaked value gpt->['a']. Its conftest builds an app with 'no DB schema needed', so the leak is app.state/Settings-level rather than the documented DB-schema collision. Next probes: run routing_admin at -n 4 alongside the full tests/routing_* tree to let loadscope co-schedule it with an unknown sibling; or add an xdist_group marker pinning routing_admin + routing_config_* to one worker; or have its conftest assert a pristine routing config at setup so the polluter is named at failure time instead of inferred. Relates to todo #79 (the failure set ROTATES between runs \u2014 run 31243949907 and 31306357309 each had 8 failures but only 3 in common).",
       "created": "2026-08-09T10:43:34+00:00",
+      "status": "open"
+    },
+    {
+      "id": 100,
+      "text": "R7 PERF (supersedes the closed #39, whose premise was already fixed): the gateway suite's dominant per-test cost is FIXTURE SETUP, not the DB reset. MEASURED 2026-08-10 on a 12-core/24GB host: (a) create_app() costs 194ms every call (5 iterations, first 220ms, min 154ms) and tests/conftest.py::app calls it PER TEST -> 4559 x 194ms = ~15min of pure app construction per full run, before coverage; (b) coverage is a 1.92x multiplier, NOT the 39% recorded in todo #96 -- same 182 tests took 82.04s with --cov vs 42.70s with --no-cov at -n 4 --dist loadscope; (c) --durations on tests/conversations shows per-test setup at 0.43-1.20s while ZERO 'call' entries clear a 50ms threshold, so test bodies are not the cost; (d) the per-test DELETE sweep is 11ms (suite-stability's own measurement, conftest.py:294) and is NOT worth optimizing; (e) the unaccounted ~225ms/test is per-test create_async_engine + engine.dispose(), i.e. a fresh Postgres connection pool per test. FIX DIRECTION: widen the app fixture's scope (module or session) with an explicit app.state reset, and/or reuse one engine per worker. HAZARD, why this was NOT done in flake-tail-burndown: tests mutate app.state directly to inject fakes (app.state.completion_upstream = fake), and app.state-level bleed across tests is exactly todo #99's UNEXPLAINED routing_admin cross-suite leak -- widening app sharing before #99 is grounded would make that class worse in a way that only surfaces weeks later. Sequence #99 first. Not needed for release-integrity exit #6: running the proving runs with --no-cov already halves them, and exit #6 says 'full gateway suite', not 'make ci'.",
+      "created": "2026-08-10T08:08:05+00:00",
+      "status": "open"
+    },
+    {
+      "id": 101,
+      "text": "Test-hygiene, DETERMINISTIC class (residual risk accepted by flake-tail-burndown CR v2, 2026-08-10): 35 tests/ sites use 'await asyncio.sleep(0)' as a one-shot event-loop yield before asserting on a fire-and-forget result. That is CORRECT and load-independent when the awaited coroutine has no internal awaits -- verified for the billing path: use_cases.py:543 fires asyncio.ensure_future(usage_recorder.record(**kwargs)) and the SpyRecorder double is 'async def record(...): self.calls.append(...)', zero awaits, so it completes on its FIRST scheduling step. All 10 sites in tests/image_edits_variations are this shape and none has ever appeared in a CI failure. BUT the property is a fact about the CALLEE, not the test: if any of the 35 sites' fire-and-forget target ever gains a real await (a DB write, a Redis call, an HTTP hop), one yield stops being sufficient and the assertion breaks DETERMINISTICALLY -- on an idle laptop too, so it would be a hard red rather than a rotating flake, which is exactly why M7's guard deliberately does NOT cover it (M7 targets guessed DURATIONS). The 35 are enumerated by inverting the M7 guard's own literal>0 filter. Right fix if it ever bites: convert that specific site to tests._polling.poll_until like a positive wait; do NOT widen M7 to flag sleep(0) globally, which would mark 35 correct sites as debt and dilute the guard's signal.",
+      "created": "2026-08-10T08:15:47+00:00",
       "status": "open"
     }
   ]
