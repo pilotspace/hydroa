@@ -230,16 +230,35 @@ async def _request_log_metering_rows(db_session: AsyncSession, tenant_id: str) -
     ).fetchall()
 
 
-async def _flush_usage(app: Any) -> None:
-    """Deterministically drain the usage-ledger flusher's Redis Stream into Postgres.
+async def _flushed_usage_request_ids(
+    app: Any, db_session: AsyncSession, tenant_id: str
+) -> list[str | None]:
+    """Drain the usage-ledger Redis Stream into Postgres, then read the request_ids back.
 
-    The background flusher (app.state.flusher, started in main.py) polls once a
-    second — a fixed `asyncio.sleep` risks flakily racing that interval. Calling
-    flush_once() directly (same pattern as tests/provider_generation_id_capture's
-    own precedent) makes the usage_records row deterministically present before the
-    correlation assertions below run.
+    The background flusher (app.state.flusher, started in main.py) polls once a second, so
+    a fixed `asyncio.sleep` would race that interval — hence flush_once() directly.
+
+    But ONE flush_once() is not enough, and that is what made this suite flaky: flush_once
+    only moves what is ALREADY in the stream. The usage entry is enqueued by a
+    fire-and-forget task that is a DIFFERENT write from the request_logs row the callers
+    poll for above, so it can still be in flight when that row is already committed. The
+    flush then drains an empty stream and the assertion reads `[]` against a real
+    request_id. Observed in a full-suite run at -n 12; polling the request_logs row is
+    polling the WRONG SIGNAL for this assertion.
+
+    So the flush itself is retried until the row lands, then settled once — `== 1` claims
+    not-two as well as not-none, and a duplicate usage record is a double-bill.
     """
-    await app.state.flusher.flush_once()
+
+    async def _flush_and_read() -> list[str | None]:
+        await app.state.flusher.flush_once()
+        return await _usage_record_request_ids(db_session, tenant_id)
+
+    await poll_until(_flush_and_read, lambda ids: len(ids) >= 1)
+    # NEGATIVE WAIT: the exactly-one half of the callers' `len(...) == 1`. The poll above
+    # returns the instant the first row lands, so only a real pause can expose a second.
+    await asyncio.sleep(0.1)
+    return await _flush_and_read()
 
 
 async def _usage_record_request_ids(db_session: AsyncSession, tenant_id: str) -> list[str | None]:
@@ -298,8 +317,7 @@ async def test_non_streaming_capture_carries_latency_tokens_and_correlation_id(
     )
     assert request_id is not None, "request_id must be populated"
 
-    await _flush_usage(app)
-    usage_request_ids = await _usage_record_request_ids(db_session, tenant_id)
+    usage_request_ids = await _flushed_usage_request_ids(app, db_session, tenant_id)
     assert len(usage_request_ids) == 1
     assert usage_request_ids[0] == str(request_id), (
         f"request_logs.request_id ({request_id}) must match usage_records.raw->>'request_id' "
@@ -349,8 +367,7 @@ async def test_streaming_clean_close_capture_carries_latency_tokens_and_correlat
     assert isinstance(latency_ms, int) and latency_ms >= 0
     assert request_id is not None
 
-    await _flush_usage(app)
-    usage_request_ids = await _usage_record_request_ids(db_session, tenant_id)
+    usage_request_ids = await _flushed_usage_request_ids(app, db_session, tenant_id)
     assert len(usage_request_ids) == 1
     assert usage_request_ids[0] == str(request_id)
 
@@ -547,8 +564,7 @@ async def test_request_id_correlates_rows_and_usage_records_has_no_new_column(
     request_id = rows[0].request_id
     assert request_id is not None
 
-    await _flush_usage(app)
-    usage_request_ids = await _usage_record_request_ids(db_session, tenant_id)
+    usage_request_ids = await _flushed_usage_request_ids(app, db_session, tenant_id)
     assert usage_request_ids == [str(request_id)]
 
     # usage_records' column list is UNCHANGED from before this task — no new column,
