@@ -179,6 +179,48 @@ Target (measurable):
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
 
+<!-- CR v3 — amended 2026-08-10, approved by Tin Dang. An EXPANSION of §4, which is the kind
+     of change that must be asked for rather than absorbed, so it is recorded here even though
+     it adds tests rather than removing them.
+
+     WAS: four guards, all keyed off `asyncio.sleep` sites (M1/M2/M4/M6/M7).
+     NOW: those four PLUS four guards for the classes the proving runs actually surfaced.
+
+     WHY the frozen four are not enough — this is the load-bearing finding of the whole task.
+     The census counted SLEEP SITES. The real population is ASSERTIONS ON FIRE-AND-FORGET
+     WRITES, and sleep sites are only a subset of it. Five of the six streak attempts died on
+     defects that contain no sleep at all, so `UNKNOWN == 0` was true and silent about every
+     one of them:
+
+       class 4  a DB SINGLETON row read by a suite that does not own the schema lifecycle
+                (routing_config is one row per database; routing_admin bypasses the root
+                `app` fixture's per-test DELETE). Closed todo #99, whose recorded diagnosis
+                of an app.state leak was wrong.
+       class 5  a live DNS lookup inside a unit test documented "no network required"
+                (azure_audio omitted the `egress_policy=` injection every sibling has).
+       class 7  a fire-and-forget assertion with NO wait of any kind — never had a sleep,
+                so never entered the census.
+       class 9  a settle that cannot distinguish "all landed" from "none started" — XLEN
+                stability at length 0 is trivially stable.
+
+     Classes 6 and 8 are deliberately NOT guarded: "polls the wrong signal" and "a race
+     assertion that contradicts itself" require reasoning about which write an assertion
+     depends on, which no AST scan can decide. They stay as recorded lessons.
+
+     SCOPE unchanged: still `apps/gateway/tests/` + `./`, still zero files under
+     `apps/gateway/src/`. The tamper tripwire is re-crossed rather than edited around.
+
+     TRADEOFF Tin was shown and accepted: this grows an approved bundle mid-build. The
+     alternative was todo #104 alone, which records the classes but lets them recur. -->
+
+<!-- CR v4 — 2026-08-10, Tin-approved (milestone-level, mirrored in
+     .add/milestones/release-integrity/MILESTONE.md): exit criterion #6 now PINS the proving
+     shape at `-n 12 --dist loadscope`, no `--reruns`, and states explicitly that a red run
+     RESETS the streak. An unpinned criterion is satisfiable by its weakest reading, and for a
+     contention-dependent flake tail the parallelism IS the experiment. Also capped: 2 further
+     attempts after A6, then this criterion becomes its own audit task. -->
+
+
 ### Build-strategy — Scope (may touch) is HARD scope-lock; the rest is SOFT (the builder self-improves and records actual at verify)
 Scope (may touch): `apps/gateway/tests/` `./`
   <HARD. Deliberately EXCLUDES `apps/gateway/src/` — the diagnosis is that all four CI failures
@@ -244,6 +286,29 @@ Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
     one of POSITIVE (now a poll) / NEGATIVE (reasoned) / STRUCTURAL (allow-listed by shape).
     Asserts the UNKNOWN bucket is empty — the machine-checkable form of M4.
     · covers: M4
+  - [CR v3] test_suite_reading_a_singleton_row_clears_it: every table with a singleton primary
+    key (`CheckConstraint("id IS TRUE")` — today exactly `routing_config`) is cross-test GLOBAL
+    state. Any suite that reads it while building its own app (create_app in a suite conftest,
+    bypassing the root `app` fixture's per-test DELETE) must clear it. Assert the flagged set is
+    empty. Runs RED against the tree before `691cace`.
+    · covers: CR v3 class 4
+  - [CR v3] test_test_built_provider_injects_an_egress_policy: a provider constructed directly
+    in `tests/` must pass `egress_policy=`, or it builds the production
+    DenyPrivateAndMetadataEgressPolicy and performs a LIVE DNS LOOKUP — in suites that document
+    themselves as needing no network. Assert the flagged set is empty. Runs RED against the
+    tree before `691cace` (azure_audio).
+    · covers: CR v3 class 5
+  - [CR v3] test_fire_and_forget_assertion_has_a_wait: a test function that triggers a
+    fire-and-forget write via an HTTP call and then asserts on the written table must contain
+    SOME wait (a poll, a settle helper, or a declared sleep). A site with no wait at all never
+    entered the sleep census. Assert the flagged set is empty. Runs RED against the tree before
+    `2108c59`; validated by re-running the scan against `git show HEAD:` of the pre-fix file.
+    · covers: CR v3 class 7
+  - [CR v3] test_quiescence_settle_requires_an_expected_count: a "wait until the length stops
+    changing" settle must take an expected count, because a stream at 0 is trivially stable and
+    cannot be told apart from one that has not started. Assert no stability-only settle exists.
+    Runs RED against the tree before `7057c59`.
+    · covers: CR v3 class 9
   - ACCEPTANCE (not a unit red — the four sites' failure is load-dependent, and a flake is not a
     trustworthy red): the four tests named in §3 GROUND pass 3/3 at `-n 6` with the host under
     load, and `make ci` exits 0 three consecutive times. Evidence = CI run 31356301036 as the
@@ -303,6 +368,35 @@ Strategy actually used: waves ran W1 → W2 → (W3+W4 merged) → W5, with two 
   two of the four §4-declared guards existed, and three green runs of a suite missing
   declared tests would have proved the wrong thing. Guards 3 and 4 landed first (`9fe7737`),
   then the streak restarted.
+
+  W6 (CR v3), the four defect-keyed guards. Two findings worth carrying forward:
+
+  A GUARD CAN BE GREEN AGAINST THE TREE THAT MOTIVATED IT. The class-4 guard's first draft
+  asked "does this suite name a singleton table?" and did not flag `routing_admin` — the one
+  suite whose five-test failure the guard exists to prevent — because it reads the singleton
+  through `GET /admin/routing` and never names the table. The obvious repair ("any suite
+  building its own app must clear every singleton table") flags 29 suites that never touch
+  routing config; a guard demanding 29 unnecessary DELETEs trains people to paste one without
+  reading, which is how the hazard got missed in the first place. So the link is derived
+  instead: a router module that reads the table declares the prefix that reads it, and a
+  suite naming that prefix is a reader. Two refinements were forced by measurement, not
+  foresight — the app-assembly root had to be excluded (`main.py` names every table AND
+  declares unrelated routers, linking the singleton to `/internal` and dragging in three
+  innocent suites), and a table mention inside a string counts only when the string is SQL
+  (`tests/guardrails` lists the table in a MANIFEST; `signup_routing_authz` reads it via
+  `text("SELECT config FROM routing_config …")`, so blanket-skipping strings would have
+  discarded the true positive with the false one). Final: flags `routing_admin` pre-fix,
+  clears it post-fix, and surfaced ONE genuine new finding — `signup_routing_authz`, which is
+  both reader and polluter of the same row.
+
+  A FROZEN GUARD WAS EDITED, deliberately and in the strict direction. Attempt 6 failed on
+  M2's guard reporting a sibling guard's own explanatory comment as an orphaned marker. Both
+  marker matchers accepted `# NEGATIVE WAIT:` anywhere in a line, so neither could tell a
+  declaration from a comment DISCUSSING the convention. The false positive was the cheap half;
+  the same looseness in M7's guard (a frozen §4 test) was a false NEGATIVE — a prose mention
+  would have grandfathered an undeclared fixed sleep six lines below it. Anchoring the marker
+  to the start of the comment closes both. `re-cross` re-snapshots the tripwire; nothing was
+  weakened, and the change is recorded here rather than left for the tamper check to discover.
 Code lives in: `apps/gateway/tests/` (test-only by contract — see §3 Scope)
 Spawn (multi-agent): build/verify subagent spawns default `isolation: worktree`; cross-agent advisor — spawn `add-advisor` (an agent OTHER than the builder) for the freeze `--cross` and the §6 refute-read; `self` only when solo.
 Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 Scope (an out-of-scope build fails the gate: scope_violation); keep the §3 Regression floor green; allow-list packages only; ask if unclear.

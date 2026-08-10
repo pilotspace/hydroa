@@ -1245,7 +1245,7 @@
       "milestone": "release-integrity",
       "depends_on": [],
       "created": "2026-08-10T07:13:58+00:00",
-      "updated": "2026-08-10T08:15:57+00:00",
+      "updated": "2026-08-10T12:07:29+00:00",
       "relates_to": [
         "ci-flake-classification"
       ],
@@ -1269,9 +1269,15 @@
         "tests": {
           "apps/gateway/tests/repo_hygiene/__init__.py": "d41d8cd98f00b204e9800998ecf8427e",
           "apps/gateway/tests/repo_hygiene/_date_bomb.py": "66397caff59c5bc91aa2ec24287a6068",
+          "apps/gateway/tests/repo_hygiene/test_fire_and_forget_has_a_wait.py": "0a078f67a75a909885f82ab8baaf0af4",
+          "apps/gateway/tests/repo_hygiene/test_negative_wait_declarations.py": "597385d345acba3fe7dcab3cd808a414",
           "apps/gateway/tests/repo_hygiene/test_no_ddl_after_lifespan.py": "c9f36200443cdccb3a13b889ee27cbda",
-          "apps/gateway/tests/repo_hygiene/test_no_unbounded_positive_wait.py": "0e5c1e213cdc2c46286df16c4bd32bea",
-          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "4522642e40e586c2655b812c5f50b039"
+          "apps/gateway/tests/repo_hygiene/test_no_unbounded_positive_wait.py": "4e7820446aa7af7ba43028b3c6309fcf",
+          "apps/gateway/tests/repo_hygiene/test_provider_egress_injection.py": "a855fab4ce18ec906cd32a22ec1132f5",
+          "apps/gateway/tests/repo_hygiene/test_quiescence_settle_takes_a_count.py": "744ebd64b44eb7adb090bd74c9eaa9ff",
+          "apps/gateway/tests/repo_hygiene/test_repo_hygiene.py": "4522642e40e586c2655b812c5f50b039",
+          "apps/gateway/tests/repo_hygiene/test_singleton_row_isolation.py": "7d0b371bafbd80cb63039a91ff15bffb",
+          "apps/gateway/tests/repo_hygiene/test_sleep_census_is_exhaustive.py": "6db69bcda0c1415e56b2583b7f7a9634"
         }
       },
       "scope": {
@@ -1279,11 +1285,11 @@
           "apps/gateway/tests/",
           ".add/tasks/flake-tail-burndown/"
         ],
-        "snapshot_md5": "2b7befdc0187273513fc016cbd944c5e"
+        "snapshot_md5": "ff2118ce839f44826481a19b91d68eed"
       },
       "recross": {
-        "by": "Tin Dang",
-        "at": "2026-08-10T08:15:57+00:00",
+        "by": "auto-mode (UNREVIEWED \u2014 strictness-only edit to M7's guard, flagged for Tin in \u00a75)",
+        "at": "2026-08-10T12:07:29+00:00",
         "from_phase": "build"
       }
     }
@@ -1361,7 +1367,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-10T10:41:20+00:00",
+  "updated": "2026-08-10T12:07:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3142,6 +3148,12 @@
       "id": 104,
       "text": "GUARD GAP from flake-tail-burndown: the 4 repo_hygiene guards only cover asyncio.sleep sites, but the first proving run's 6 failures were BOTH non-sleep isolation defects. Two guards worth adding: (a) a suite whose Settings point at the shared test DB must clear the GLOBAL/singleton rows it reads (routing_config is one row per database; routing_admin bypasses the root app fixture's per-test DELETE) \u2014 see closed todo #99; (b) an Azure/HTTP provider constructed in tests must inject egress_policy= (azure_audio omitted it and performed a LIVE DNS lookup in a suite documented as 'no network required'; every sibling Azure suite already injects AllowAllEgressPolicy). Both classes are 'a fix that did not propagate', the same meta-pattern M6 exists for.",
       "created": "2026-08-10T10:41:20+00:00",
+      "status": "open"
+    },
+    {
+      "id": 105,
+      "text": "Class 10 \u2014 absolute wall-clock latency budgets in tests are flakes with an alibi. scoped_self_serve_signup asserted 'response < 0.5s' against an injected 1.5s mail delay to prove dispatch is off the request path; under -n 12 it measured 0.586s, so the structural property held by ~2.5x and the assertion failed anyway (signup's cost IS the deliberate Argon2 timing mask). Fixed there by parking the send on an Event so the passing path has no wall-clock at all. NOT guarded and NOT enumerated: sweep tests/ for absolute-duration thresholds (elapsed <, duration_ms <, time.monotonic deltas) and convert each to a causal proof or a delay-relative one.",
+      "created": "2026-08-10T12:06:51+00:00",
       "status": "open"
     }
   ]
