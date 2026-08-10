@@ -19,6 +19,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from gateway.core.egress_policy import AllowAllEgressPolicy
 from gateway.proxy.domain.credential_context import (
     reset_provider_credential,
     set_provider_credential,
@@ -85,7 +86,16 @@ def _make_adapter(
     *,
     breaker: CircuitBreaker | None = None,
 ) -> AzureOpenAIProvider:
-    adapter = AzureOpenAIProvider(token_provider_cache=None)
+    # egress_policy is INJECTED, matching every sibling Azure suite (azure_chat,
+    # azure_embeddings, azure_streaming, azure_aad). Without it the provider builds the
+    # production DenyPrivateAndMetadataEgressPolicy, which performs a LIVE DNS LOOKUP of
+    # `myresource.openai.azure.com` before the MockTransport ever sees the request — so
+    # this suite's own "no network required" docstring was false, and the verdict depended
+    # on a resolver. It resolves today (Azure wildcard DNS → a public IP, hence allowed),
+    # which is why the suite passes in isolation; under 12-way xdist load the lookup can
+    # time out and the policy correctly fails CLOSED, surfacing as
+    # ERR_UPSTREAM_EGRESS_DENIED in a test that never intended to exercise egress at all.
+    adapter = AzureOpenAIProvider(token_provider_cache=None, egress_policy=AllowAllEgressPolicy())
     if breaker is not None:
         adapter._breaker = breaker  # type: ignore[attr-defined]
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
