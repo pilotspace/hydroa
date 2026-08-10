@@ -22,14 +22,6 @@ tests/mcp_connector/test_call_flow.py:750 — fixed sleep, then an assertion at 
 tests/mcp_connector/test_call_flow.py:773 — fixed sleep, then an assertion at line 774
 tests/mcp_connector/test_call_flow.py:800 — fixed sleep, then an assertion at line 801
 tests/member_invite_issuance/test_member_invite_issuance.py:956 — fixed sleep, then an assertion at line 966
-tests/obs_callbacks/test_obs_callbacks.py:1000 — fixed sleep, then an assertion at line 1005
-tests/obs_callbacks/test_obs_callbacks.py:1010 — fixed sleep, then an assertion at line 1013
-tests/obs_callbacks/test_obs_callbacks.py:1060 — fixed sleep, then an assertion at line 1063
-tests/obs_callbacks/test_obs_callbacks.py:1233 — fixed sleep, then an assertion at line 1236
-tests/obs_callbacks/test_obs_callbacks.py:448 — fixed sleep, then an assertion at line 451
-tests/obs_callbacks/test_obs_callbacks.py:520 — fixed sleep, then an assertion at line 523
-tests/obs_callbacks/test_obs_callbacks.py:581 — fixed sleep, then an assertion at line 584
-tests/obs_callbacks/test_obs_callbacks.py:629 — fixed sleep, then an assertion at line 632
 tests/payload_capture/test_payload_capture_store.py:405 — fixed sleep, then an assertion at line 408
 tests/payload_capture/test_payload_capture_store.py:463 — fixed sleep, then an assertion at line 466
 tests/payload_capture/test_payload_capture_store.py:882 — fixed sleep, then an assertion at line 886

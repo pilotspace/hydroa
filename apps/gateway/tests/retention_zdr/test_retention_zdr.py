@@ -49,6 +49,7 @@ from gateway.tenants.application.retention_policy import is_zdr
 from gateway.usage.application.retention_sweep import RetentionSweeper
 from gateway.video.infrastructure.repository import VideoJobRepository
 from tests import _redis_env
+from tests._polling import poll_for_count, poll_until
 
 pytestmark = pytest.mark.asyncio
 
@@ -685,6 +686,18 @@ async def test_zdr_completion_skips_cache_but_bills_usage(
     keys += [k async for k in redis_client.scan_iter(match=f"vec-cache:{tid}:*")]
     assert keys == [], f"expected zero cache keys under ZDR, found: {keys}"
 
+    # MIXED wait: the two usage_records rows must APPEAR (positive — ZDR suppresses the
+    # PAYLOAD but metadata is still billed, which is the point of this test) and there
+    # must be exactly TWO (negative — a third would mean double-billing). Poll for
+    # arrival, then settle so the not-three half keeps a window.
+    async def _usage_row_count() -> int:
+        result = await db_session.execute(
+            text("SELECT COUNT(*) FROM usage_records WHERE tenant_id = :tid"), {"tid": tid}
+        )
+        return result.scalar() or 0
+
+    await poll_until(_usage_row_count, lambda n: n >= 2)
+    # NEGATIVE WAIT: the exactly-two half — guards against a double-billed row.
     await asyncio.sleep(0.1)
     rows = (
         await db_session.execute(
@@ -791,7 +804,19 @@ async def test_zdr_purge_pre_existing_payload_rows(
     remaining_keys += [k async for k in redis_client.scan_iter(match=f"vec-cache:{tid}:*")]
     assert remaining_keys == [], f"expected zero cache keys after ZDR purge, found {remaining_keys}"
 
-    await asyncio.sleep(0.1)
+    # POSITIVE WAIT: the purge audit write is fire-and-forget and the assertion below
+    # is `>= 1`, so polling for arrival is exactly equivalent and cannot flake.
+    async def _purge_audit_count() -> int:
+        result = await db_session.execute(
+            text(
+                "SELECT COUNT(*) FROM audit_events"
+                " WHERE action = 'data.purge' AND metadata->>'tenant_id' = :tid"
+            ),
+            {"tid": tid},
+        )
+        return result.scalar() or 0
+
+    await poll_until(_purge_audit_count, lambda n: n >= 1)
     # M10: sweeper-driven purges are "system-level" (no actor) — the pre-existing
     # audit_missing_actor invariant (audit/domain/audit_event.py) forbids a tenant-scoped
     # AuditEvent with no actor, so tenant_id stays NULL on the row itself and the tenant
