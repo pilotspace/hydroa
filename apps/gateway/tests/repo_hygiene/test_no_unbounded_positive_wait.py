@@ -42,7 +42,13 @@ TESTS_ROOT = GATEWAY_ROOT / "tests"
 EXEMPT_FILES = frozenset({TESTS_ROOT / "_polling.py"})
 
 # An inline declaration that the duration is deliberate. Must carry a reason.
-DECLARATION = re.compile(r"#\s*NEGATIVE WAIT:\s*\S+")
+#
+# Anchored at the start of the line (indentation aside) so that a comment merely NAMING
+# the marker cannot grandfather a fixed sleep six lines below it. Every real declaration
+# already sits on its own line; the unanchored version accepted a mid-sentence mention,
+# which is a hole in exactly the direction that matters — it would have let an undeclared
+# sleep through silently rather than reporting it.
+DECLARATION = re.compile(r"^\s*#\s*NEGATIVE WAIT:\s*\S+")
 
 # How far after the sleep an assertion still counts as "the thing being waited for".
 LOOKAHEAD_STATEMENTS = 12

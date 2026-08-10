@@ -47,7 +47,14 @@ from tests.repo_hygiene.test_no_unbounded_positive_wait import (
 # declaration.
 # Only real COMMENT tokens are scanned, so a docstring or a regex that spells the
 # marker out (this module and its sibling both do) is not a usage of it.
-MENTION = re.compile(r"\bNEGATIVE WAIT\b")
+#
+# Anchored at the START of the comment, because tokenising alone was not enough: a
+# comment can DISCUSS the marker without being one. All 33 declarations in the suite sit
+# on their own line as `# NEGATIVE WAIT: …`, so requiring that position costs nothing and
+# stops prose like "same shape as the sibling `# NEGATIVE WAIT:` marker" from being read
+# as a botched declaration. Found by this guard failing on a sibling guard's own comment
+# during a proving run — the guard was right and its matcher was too loose.
+MENTION = re.compile(r"^#\s*NEGATIVE WAIT\b")
 
 # The one accepted shape. Mirrors the sibling guard's DECLARATION, with the reason
 # captured so its substance can be judged.
