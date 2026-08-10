@@ -45,9 +45,11 @@ from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
 from gateway.proxy.infrastructure.batch_window_buffer import (
     _RESULT_KEY_PREFIX,
     BatchWindowBuffer,
+    _items_key,
     _wait_count_key,
     _wait_sum_key,
 )
+from tests._polling import poll_until
 
 pytestmark = pytest.mark.asyncio
 
@@ -828,10 +830,29 @@ class TestWindowFlushesAsOneJob:
                 )
                 for _ in range(3)
             ]
-            await asyncio.sleep(0.5)  # let all 3 appends land AND the window age past it
+            # POSITIVE WAIT, in two stages — a single fixed 0.5s sleep conflated two
+            # independent races and lost CI run 31356301036 with
+            # `{'claimed': 0, 'items': 0}`:
+            #
+            #   1. the 3 concurrent appends must all be buffered. Polling flush_once()
+            #      directly would be WRONG here: a flush that fires with only 1-2 items
+            #      buffered CLAIMS that partial window, and the claim is consumed — the
+            #      assertion below would then fail as `items: 2` with no way to recover.
+            #      So wait on the buffer's own length first.
+            #   2. the window must age past batch_window_seconds. claim_due's due-check
+            #      is elapsed-time-based, so flush_once() is a legitimate no-op until
+            #      then. Once stage 1 holds, retrying flush_once() is safe by
+            #      construction: all 3 items are already present, so it either claims
+            #      the whole window or claims nothing.
+            items_key = _items_key(uuid.UUID(owner["tenant_id"]))
+
+            async def _buffered_count() -> int:
+                return int(await app.state.redis_client.llen(items_key))
+
+            await poll_until(_buffered_count, lambda n: n == 3)
 
             flusher = _make_flusher(app)
-            result = await flusher.flush_once()
+            result = await poll_until(flusher.flush_once, lambda r: r["claimed"] == 1)
             assert result == {"claimed": 1, "items": 3}, f"expected one claimed group: {result}"
 
             responses = await asyncio.gather(*tasks)

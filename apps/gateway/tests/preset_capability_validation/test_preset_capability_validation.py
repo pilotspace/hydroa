@@ -28,18 +28,21 @@ Infrastructure:
     fixture (input_modality_guard_enabled=True).
   - Tests 10-11 (realtime-WS): self-contained `starlette.testclient.TestClient`, mirroring
     `tests/realtime/test_realtime_ws.py`'s own bootstrap pattern (httpx/ASGITransport has no
-    WebSocket support) — schema bootstrap + signup/login/key-creation run inside the SAME
-    TestClient-managed anyio loop via `tc.portal.call(...)`.
+    WebSocket support). The schema is built by `_bootstrap_schema` BEFORE the TestClient is
+    entered — on its own engine and loop, NOT via `tc.portal.call` inside the live lifespan,
+    which deadlocked against the lifespan's background workers (CI run 31356301036). Only
+    signup/login/key-creation (`_signup_and_key`) runs inside the TestClient's anyio loop.
 """
 
 from __future__ import annotations
 
+import asyncio
 import io
 import uuid
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from starlette.testclient import TestClient
 
 from gateway.core.config import Settings
@@ -446,20 +449,47 @@ def _make_realtime_settings() -> Settings:
     )
 
 
-def _bootstrap_and_signup(tc: TestClient, app: Any) -> tuple[str, uuid.UUID]:
-    """Bootstrap schema + signup/login/create key inside the TestClient's live anyio loop.
+def _bootstrap_schema(settings: Settings) -> None:
+    """Build this suite's schema BEFORE the app lifespan starts.
+
+    These two realtime tests manage their own schema (they deliberately bypass the
+    shared conftest `app` fixture, because httpx/ASGITransport has no WebSocket
+    support). This used to run from INSIDE a live TestClient via `tc.portal.call`,
+    which races the background tasks the lifespan starts: several of them query
+    these very tables, so `drop_all`'s AccessExclusiveLock and a background query's
+    AccessShareLock deadlock on the same relations. CI run 31356301036 lost both
+    tests to exactly that, with `DeadlockDetectedError: DROP TABLE
+    compliance_report_runs`.
+
+    `tests/realtime/test_realtime_ws.py::_bootstrap_schema` had already found and
+    fixed this; this suite copied the bootstrap SHAPE without the fix. Doing the
+    DDL before `__enter__` removes the concurrency rather than racing it — there
+    are no background tasks yet. Own engine, own loop, disposed immediately, so
+    nothing is shared across event loops.
+
+    Guarded by tests/repo_hygiene/test_no_ddl_after_lifespan.py.
+    """
+
+    async def _run() -> None:
+        engine = create_async_engine(settings.database_url)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(_run())
+
+
+def _signup_and_key(tc: TestClient) -> tuple[str, uuid.UUID]:
+    """Signup/login/create key inside the TestClient's live anyio loop.
+
+    The schema is NOT touched here — `_bootstrap_schema` owns that, and it must
+    already have run before the TestClient was entered.
 
     Returns (sk_key, tenant_id).
     """
-
-    async def _bootstrap() -> None:
-        engine = app.state.engine
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
-
-    tc.portal.call(_bootstrap)  # type: ignore[attr-defined]
-
     signup = tc.post(
         "/admin/auth/signup",
         json={
@@ -520,12 +550,13 @@ def test_realtime_ws_chat_turn_rejects_incompatible_model() -> None:
     construction site, so the turn would complete normally (no chat_failed frame) — RED.
     """
     settings = _make_realtime_settings()
+    _bootstrap_schema(settings)  # BEFORE the lifespan — see _bootstrap_schema's docstring
     app = create_app(settings)
     tc = TestClient(app, raise_server_exceptions=True)
     tc.__enter__()
     fake_upstream: FakeCompletionUpstream
     try:
-        sk_key, _tenant_id = _bootstrap_and_signup(tc, app)
+        sk_key, _tenant_id = _signup_and_key(tc)
 
         chat_model_id = "chat-image-only-realtime-pcv"
 
@@ -593,12 +624,13 @@ def test_realtime_ws_stt_turn_rejects_incompatible_model() -> None:
     site, so an STT model missing "audio" would be silently accepted — RED.
     """
     settings = _make_realtime_settings()
+    _bootstrap_schema(settings)  # BEFORE the lifespan — see _bootstrap_schema's docstring
     app = create_app(settings)
     tc = TestClient(app, raise_server_exceptions=True)
     tc.__enter__()
     fake_provider: FakeUpstreamProvider
     try:
-        sk_key, _tenant_id = _bootstrap_and_signup(tc, app)
+        sk_key, _tenant_id = _signup_and_key(tc)
 
         stt_model_id = "stt-text-only-realtime-pcv"
 
