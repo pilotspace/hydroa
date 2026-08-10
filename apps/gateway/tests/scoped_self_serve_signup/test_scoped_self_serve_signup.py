@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -31,6 +30,8 @@ import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests._polling import poll_until
 
 from .conftest import (
     CONFIRM,
@@ -204,6 +205,39 @@ async def test_probe_registered_vs_unknown_indistinguishable(
 # ===========================================================================
 
 
+class _GatedEmailSender:
+    """An EmailSender that blocks inside `send` until the test releases it.
+
+    Replaces this test's original wall-clock budget with a CAUSAL one. The invariant is
+    "dispatch is not on the response path", and the original proved it by injecting a 1.5s
+    send delay and asserting the response returned within 0.5s. That inequality holds only
+    while the request's own cost stays well under the budget — and signup's cost is
+    dominated by the deliberate M6 Argon2 timing mask, which is expensive BY DESIGN. Under
+    `-n 12` it measured 0.586s against the 0.5s budget: the structural property held (0.586s
+    is nowhere near the 1.5s an inline send would have cost) and the test failed anyway.
+
+    Blocking on an Event instead removes wall-clock from the passing path entirely. If
+    dispatch is off-path the response returns while `send` is still parked, whatever the
+    host is doing; if Build ever inlines `await send_email(...)`, the request cannot return
+    at all and the bounded wait below fails it. Strictly stronger than a threshold, and it
+    additionally proves the send was actually SCHEDULED — the 0.5s version passed whether or
+    not any email was dispatched.
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[Any] = []
+        self.started: list[Any] = []
+        self._release = asyncio.Event()
+
+    async def send(self, message: Any) -> None:
+        self.started.append(message)
+        await self._release.wait()
+        self.sent.append(message)
+
+    def release(self) -> None:
+        self._release.set()
+
+
 async def test_email_dispatch_never_blocks_the_response(
     client: httpx.AsyncClient,
     scoped_app_client: tuple[Any, httpx.AsyncClient, FakeEmailSender],
@@ -218,13 +252,14 @@ async def test_email_dispatch_never_blocks_the_response(
     Comparing branch-A-vs-branch-B wall-clock deltas directly would be flaky (send times
     are naturally close and CI jitter dwarfs the signal). Instead this asserts the
     STRUCTURAL property that makes any such delta irrelevant: email dispatch never sits on
-    the response path AT ALL, on EITHER branch — swap in a FakeEmailSender that sleeps 1.5s
-    before "sending" and prove the HTTP response still returns in well under that delay, for
-    both the fresh-email and already-registered-email branches. If Build inlines `await
-    send_email(...)` on the request path (the member-verify precedent's own shape), this
-    test times out/fails; only scheduling BOTH sends off the request path (e.g.
-    asyncio.ensure_future — the shape LoginUseCase.execute already uses for its own
-    fire-and-forget superadmin-login audit write) passes."""
+    the response path AT ALL, on EITHER branch. The send is parked on an Event, and the
+    response must come back with the send still parked — for both the fresh-email and
+    already-registered-email branches. If Build inlines `await send_email(...)` on the
+    request path (the member-verify precedent's own shape), the request cannot return until
+    the Event is set and this test fails; only scheduling BOTH sends off the request path
+    (e.g. asyncio.ensure_future — the shape LoginUseCase.execute already uses for its own
+    fire-and-forget superadmin-login audit write) passes.
+    """
     seed = await client.post(
         SIGNUP,
         json={"tenant_name": "Slow Mail Co", "email": TAKEN_EMAIL, "password": PASSWORD},
@@ -233,28 +268,46 @@ async def test_email_dispatch_never_blocks_the_response(
 
     application, scoped_client, _fake = scoped_app_client
     await _seed_free_plan(db_session)
-    slow_sender = FakeEmailSender(delay_seconds=1.5)
-    application.state.email_sender = slow_sender
+    gated = _GatedEmailSender()
+    application.state.email_sender = gated
 
-    RESPONSE_BUDGET_SECONDS = 0.5  # generous vs. the 1.5s injected mail delay; not vs. CI jitter
+    # Only ever reached by an INLINE await, which parks forever on the Event. The passing
+    # path never waits, so this bounds a BROKEN implementation rather than a slow host.
+    INLINE_DISPATCH_TIMEOUT_SECONDS = 30.0
 
-    start = time.monotonic()
-    resp_fresh = await scoped_client.post(SIGNUP, json=personal_body(email=FRESH_EMAIL))
-    fresh_elapsed = time.monotonic() - start
-    assert resp_fresh.status_code == 202, resp_fresh.text
-    assert fresh_elapsed < RESPONSE_BUDGET_SECONDS, (
-        f"fresh-email branch response took {fresh_elapsed:.3f}s — email dispatch must never "
-        "sit on the request path (M6/M7 timing mask)"
-    )
+    try:
+        for branch, email in (("fresh-email", FRESH_EMAIL), ("already-registered", TAKEN_EMAIL)):
+            try:
+                resp = await asyncio.wait_for(
+                    scoped_client.post(SIGNUP, json=personal_body(email=email)),
+                    timeout=INLINE_DISPATCH_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                pytest.fail(
+                    f"{branch} branch never returned while the email send was parked — "
+                    "dispatch sits on the request path (M6/M7 timing mask)"
+                )
+            assert resp.status_code == 202, resp.text
+            assert not gated.sent, (
+                f"{branch} branch response returned only AFTER the send completed, so "
+                "dispatch sat on the request path (M6/M7 timing mask)"
+            )
 
-    start = time.monotonic()
-    resp_taken = await scoped_client.post(SIGNUP, json=personal_body(email=TAKEN_EMAIL))
-    taken_elapsed = time.monotonic() - start
-    assert resp_taken.status_code == 202, resp_taken.text
-    assert taken_elapsed < RESPONSE_BUDGET_SECONDS, (
-        f"already-registered branch response took {taken_elapsed:.3f}s — email dispatch must "
-        "never sit on the request path (M6/M7 timing mask)"
-    )
+        # Non-vacuity: the responses above prove nothing unless a send was actually
+        # scheduled. Both branches must have entered `send` and be parked in it. Polled
+        # rather than read directly because an off-path send is scheduled, not awaited —
+        # it reaches its first line on a later loop turn.
+        async def _started() -> list[Any]:
+            return list(gated.started)
+
+        started = await poll_until(_started, lambda s: len(s) >= 2, timeout=10.0)
+        assert len(started) == 2, (
+            f"expected both branches to schedule exactly one send, saw {len(started)} — "
+            "with no send scheduled the assertions above would pass vacuously"
+        )
+    finally:
+        # Never leave a task parked on the Event: teardown would either hang or warn.
+        gated.release()
 
 
 # ===========================================================================
