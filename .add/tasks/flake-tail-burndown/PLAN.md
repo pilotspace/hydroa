@@ -405,18 +405,78 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
 
 ## 6 · VERIFY — evidence + non-functional review ▸ docs/08-step-6-verify.md
 
-- [ ] all tests (or §4 acceptance checks) pass — including the §3 Regression floor (host suite)
+- [x] all tests (or §4 acceptance checks) pass — including the §3 Regression floor (host suite)
+      Three consecutive full-suite runs at `-n 12 --dist loadscope --no-cov`, no `--reruns`, each a
+      single invocation, each exit 0, on `7b96dee`: 824s / 694s / 332s, all 4570 passed · 7 skipped ·
+      1 xfailed. All 8 §4 guards green (`tests/repo_hygiene/`, 24 passed). `ruff check` clean after
+      `ruff format .` (2 files reformatted); `pyright` 0 errors / 0 warnings.
 - [ ] coverage did not decrease
-- [ ] no test or contract was altered during build
-- [ ] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (a confirmed cheat is HARD-STOP)
-- [ ] concurrency / timing of the risky operation is safe
-- [ ] no exposed secrets, injection openings, or unexpected dependencies
-- [ ] layering & dependencies follow CONVENTIONS.md
+      The streak ran `--no-cov` by design (§5: coverage is a 1.92x wall-clock multiplier that cannot
+      change a verdict). The repo's own definition of this box is `addopts`' `--cov-fail-under=80`,
+      so one run at `-n 12` WITH coverage enabled settles it — in flight, verdict recorded below.
+- [~] no test or contract was altered during build
+      NOT a clean yes, recorded rather than ticked. The §3 contract is untouched. Two §4 guards WERE
+      edited after freeze — `test_no_unbounded_positive_wait` (M7) and `test_negative_wait_declarations`
+      (M2) — to anchor the `# NEGATIVE WAIT:` matcher at the start of a comment. Strictness-only in
+      both, and the M7 change closed a false NEGATIVE (a prose mention would have grandfathered an
+      undeclared fixed sleep). `re-cross` re-snapshotted the tripwire; the approver field reads
+      `auto-mode (UNREVIEWED …)` because signing Tin's name to a change he has not seen would be a
+      fabricated signoff. §4 also grew four tests under CR v3 (Tin-approved).
+- [x] the green was EARNED, not gamed — no overfit to fixtures, vacuous asserts, or stubbed-away logic (a confirmed cheat is HARD-STOP)
+      See the refute-read below. Scope-lock held: zero files under `apps/gateway/src/` in any commit
+      on this branch, so no green was bought by changing the product.
+- [x] concurrency / timing of the risky operation is safe
+      The whole task is this box. Nine of ten classes now have a standing guard or a causal proof;
+      classes 6, 8 and 10 are explicitly unguarded (below).
+- [x] no exposed secrets, injection openings, or unexpected dependencies
+      No dependency change; test-only diff; no new credentials or network reachability. The one
+      security-adjacent test touched (`test_email_dispatch_never_blocks_the_response`, which defends
+      the M6/M7 signup timing oracle) came out STRICTER — see the refute-read.
+- [x] layering & dependencies follow CONVENTIONS.md
+      Guards live in `tests/repo_hygiene/` beside the four that preceded them and share their
+      helpers by import rather than by copy, so the two cannot drift.
 - [ ] a person reviewed and approved the change
+      Tin's call. Branch `fix/flake-tail-burndown` is pushed (no PR, per his instruction). Two items
+      need his eye specifically: the post-freeze guard edit above, and whether exit #6's tick should
+      stand given what it does not establish.
 
 ### Refute-read verdict — the earned-green check (record it; required for an auto-PASS)
-Verdict: <EARNED | NOT-EARNED>
-By: <self | agent-id> · adversarially checked: <what was probed>
+Verdict: EARNED — with three named limits, none of which is a cheat but any of which could be
+mistaken for coverage this work does not have.
+By: self (recorded honestly as self; the session's standing instruction is not to spawn agents
+unless asked, so no independent second mind reviewed this — that is a gap in the evidence, not a
+claim of independence).
+Adversarially checked:
+  1. **Could the streak be green because tests stopped running?** No. Test count went 4566 -> 4570,
+     which is exactly the four new guards; all three runs collected and passed the identical
+     4570/7/1 and each brought up 12 xdist nodes. Run 3's 332s (vs run 1's 824s) was probed for
+     skipped work and is host warmth — identical counts rule out skipping.
+  2. **Could the rewritten timing test pass vacuously?** This was the real risk: the ORIGINAL passed
+     whether or not any email was dispatched. The replacement asserts both responses returned with
+     the send still parked AND that exactly two sends entered `send` — so if `application.state.email_sender`
+     were not the seam the code uses, `started` would stay empty and the poll would fail. It passes,
+     which means it demonstrably intercepted twice. Checked for leaked parked tasks: no
+     "never awaited" / "Task was destroyed" warnings, and no warning in the run is attributed to
+     either changed suite.
+  3. **Do the new guards actually catch what they claim?** Each of the four was run against a
+     pre-fix worktree (`691cace^`) and required to name the original victim. This caught a guard
+     that was GREEN against the very tree that motivated it (class 4 missed `routing_admin`, which
+     reads the singleton through a route and never names the table) — a green guard that would have
+     certified safety it could not see. Fixed, re-verified red pre-fix / green post-fix, and it then
+     surfaced one genuine new finding (`signup_routing_authz`, reader AND polluter of the same row).
+  4. **Is any guard buying its green with ceremony?** Checked and rejected one that did: the broad
+     class-4 rule flagged 29 suites that never touch routing config. A guard that demands 29
+     unnecessary DELETEs trains people to paste one unread, which is how this hazard survived in the
+     first place. Also dropped a false positive (`tests/guardrails` names the table only in a
+     manifest string) without dropping the true one (`signup_routing_authz` reads it via SQL in a
+     string) by requiring a string mention to be SQL.
+Limits, stated so the verdict is not over-read:
+  - Classes 6 (polling the wrong signal) and 8 (a self-contradicting race assertion) have NO guard,
+    deliberately: judging them needs reasoning an AST scan cannot do.
+  - Class 10 (absolute wall-clock thresholds) has no guard AND no enumeration — todo #105. It was
+    found by attempt 6, one instance was fixed, and the rest of `tests/` is unaudited for it.
+  - Three green runs are evidence about the classes that were REACHED. The guards make a REGRESSION
+    of the ten fixed classes fail loudly; they do not bound an eleventh.
 
 ### GATE RECORD
 Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
