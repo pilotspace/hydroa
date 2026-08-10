@@ -268,7 +268,41 @@ Tests live in: `apps/gateway/tests/repo_hygiene/` · MUST run red before Build.
 
 ## 5 · BUILD — AI writes the code (execution) ▸ docs/07-step-5-build.md
 
-Strategy actually used: <fill at VERIFY — what you ACTUALLY did (or "as planned"); harvested into §7 Decisions (ADR)>
+Strategy actually used: waves ran W1 → W2 → (W3+W4 merged) → W5, with two deviations.
+
+  W1/W2 REORDERED, deliberately. The plan wrote the guards (W2) after the four CI-red
+  fixes (W1), so M6's guard was authored against a tree where its violation still stood —
+  which is what the §4 note demands. But `test_no_ddl_after_lifespan` did NOT flag
+  `preset_capability_validation` on the first draft: the `drop_all` sat three frames down
+  (test → `_bootstrap_and_signup` → a nested `_bootstrap` handed to `tc.portal.call`). A
+  guard that reports zero violations against a known-violating tree is a guard that would
+  have let the next copy-paste through, so it grew a local call-graph fixpoint until it
+  named both functions. That failure is the entire argument for red-first guards, and it
+  only appeared because the ordering was honoured.
+
+  W3 and W4 MERGED into one per-site pass. The plan separated "76 POSITIVE" from "92
+  UNKNOWN" on the classifier's buckets, but the classifier's 12-line window is exactly
+  what the §3 least-sure flag says not to trust. Reading the enclosing function is the
+  work, and once read, a site's bucket is an OUTPUT of that read, not an input to it. So
+  every site — POSITIVE or UNKNOWN — got the same treatment: read the whole function,
+  then convert, or keep-and-declare. The guard's own count (46 → 25 → 20 → 0) replaced the
+  classifier as the progress meter, because it re-derives the population every run instead
+  of trusting a snapshot taken before the first edit.
+
+  A THIRD bucket appeared that the plan did not name: MIXED. An `assert count == N` claims
+  not-fewer AND not-more, and the two halves need opposite treatment — a bare poll returns
+  the instant the Nth item lands and silently degrades `== 1` to `>= 1`. Where the not-more
+  half guards a real invariant (one metering record per call, no double-bill, no duplicate
+  audit row), those sites became poll-THEN-settle with the retained sleep annotated for
+  which half it defends. 12 of the 46 sites landed here.
+
+  W5 ran at `-n 4 --dist loadscope --no-cov` — byte-identical parallelism to `make test-ci`
+  (the target `make ci` invokes), minus coverage. Coverage is a measured 1.92× wall-clock
+  multiplier and cannot change a verdict, and the exit criterion says "full gateway suite",
+  not "make ci". The first launch was KILLED ~10 minutes in: filling §5 surfaced that only
+  two of the four §4-declared guards existed, and three green runs of a suite missing
+  declared tests would have proved the wrong thing. Guards 3 and 4 landed first (`9fe7737`),
+  then the streak restarted.
 Code lives in: `apps/gateway/tests/` (test-only by contract — see §3 Scope)
 Spawn (multi-agent): build/verify subagent spawns default `isolation: worktree`; cross-agent advisor — spawn `add-advisor` (an agent OTHER than the builder) for the freeze `--cross` and the §6 refute-read; `self` only when solo.
 Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 Scope (an out-of-scope build fails the gate: scope_violation); keep the §3 Regression floor green; allow-list packages only; ask if unclear.
@@ -308,5 +342,47 @@ Reviewed by: <name> · date: <date>
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
 
+- `[SPEC · open]` The M7 guard cannot see a named-constant duration: `_is_fixed_sleep`
+  requires a numeric literal, so `await asyncio.sleep(_SETTLE_SECONDS)` buckets COMPUTED and
+  is never asked to declare itself. Both live sites are correctly declared today, so this is
+  a future hole, not a present flake. Widening the guard means editing a frozen §4 test, so
+  it needs its own CR rather than a silent patch. (evidence: todo #102; the M2 guard had to
+  widen its OWN attachment predicate to avoid reporting those two sites as ORPHANED)
+- `[SPEC · open]` `tests/credits_ledger/conftest.py` exports a second `poll_until` with a
+  different signature that shadows the shared primitive on import. (evidence: todo #103)
+- `[SPEC · open]` R6 exit criterion #6 says "3 consecutive green full gateway suite runs"
+  without naming a parallelism. The measurements here argue it should: `-n 4` and `-n 12`
+  are different experiments (~2.5h vs ~40min per run on a 12-core host, and different
+  contention profiles), and only the harsher one is evidence about the flake tail. A
+  criterion that does not pin the shape can be satisfied by the weakest reading of it.
+  (evidence: the first streak was launched at `-n 4`, killed, and relaunched at `-n 12`)
+
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.
+
+- `[TDD · open]` `assert count == N` is TWO assertions with opposite timing needs. Replacing
+  its sleep with a bare poll silently degrades it to `>= N` — the poll returns the instant
+  the Nth row lands and never gives an unwanted N+1th the chance to appear. The plan's
+  POSITIVE/NEGATIVE dichotomy had no room for this; 12 of 46 sites were MIXED and needed
+  poll-THEN-settle, with the retained sleep annotated for which half it defends. (evidence:
+  the double-bill invariants in file_search_tool, credits_ledger, plan_catalog, margin_dashboard)
+- `[TDD · open]` A guard authored after its violations are gone proves only that it compiles.
+  Where red-first was impossible (guards 3 and 4 were written after the sweep), each failure
+  mode was introduced deliberately and confirmed to go red — 4 mutations, 4 reds, all
+  reverted. Mutation-verification is the honest substitute; claiming red-first would not have
+  been. (evidence: `9fe7737` commit body)
+- `[TDD · open]` A guard's own docstring is a violation of the pattern it guards. The first
+  draft of the M2 guard matched source LINES and flagged itself 9 times — its docstring, its
+  regex, and its failure message all spell the marker out. Scanning `tokenize` COMMENT tokens
+  instead of lines is what distinguishes documentation about a convention from an instance of
+  it. (evidence: the 15-violation first run, 12 of them self-inflicted)
+- `[ADD · open]` Filling §5 "Strategy actually used" BEFORE gating caught that only 2 of the
+  4 §4-declared guards existed. The proving runs were already 10 minutes in; three green runs
+  of a suite missing declared tests would have proved the wrong thing and looked identical to
+  success. §5 is a checklist against the frozen bundle, not a retrospective. (evidence: the
+  killed first streak at 10:16Z, relaunched 10:27Z after `9fe7737`)
+- `[TDD · open]` The progress meter must re-derive its population every run. The classifier
+  snapshot (252 → 89 → 54) was taken before the first edit and could only decay; the guard's
+  own count (46 → 25 → 20 → 0) re-scans the tree each time, so it caught sites the snapshot
+  never listed and refused a marker of mine that was one character off. (evidence:
+  `# NEGATIVE WAIT (…)`: rejected by the guard that accepts `# NEGATIVE WAIT:`)

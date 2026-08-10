@@ -1361,7 +1361,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-10T08:15:57+00:00",
+  "updated": "2026-08-10T10:27:59+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3124,6 +3124,18 @@
       "id": 101,
       "text": "Test-hygiene, DETERMINISTIC class (residual risk accepted by flake-tail-burndown CR v2, 2026-08-10): 35 tests/ sites use 'await asyncio.sleep(0)' as a one-shot event-loop yield before asserting on a fire-and-forget result. That is CORRECT and load-independent when the awaited coroutine has no internal awaits -- verified for the billing path: use_cases.py:543 fires asyncio.ensure_future(usage_recorder.record(**kwargs)) and the SpyRecorder double is 'async def record(...): self.calls.append(...)', zero awaits, so it completes on its FIRST scheduling step. All 10 sites in tests/image_edits_variations are this shape and none has ever appeared in a CI failure. BUT the property is a fact about the CALLEE, not the test: if any of the 35 sites' fire-and-forget target ever gains a real await (a DB write, a Redis call, an HTTP hop), one yield stops being sufficient and the assertion breaks DETERMINISTICALLY -- on an idle laptop too, so it would be a hard red rather than a rotating flake, which is exactly why M7's guard deliberately does NOT cover it (M7 targets guessed DURATIONS). The 35 are enumerated by inverting the M7 guard's own literal>0 filter. Right fix if it ever bites: convert that specific site to tests._polling.poll_until like a positive wait; do NOT widen M7 to flag sleep(0) globally, which would mark 35 correct sites as debt and dilute the guard's signal.",
       "created": "2026-08-10T08:15:47+00:00",
+      "status": "open"
+    },
+    {
+      "id": 102,
+      "text": "M7 guard blind spot: a NAMED-CONSTANT sleep duration escapes it. test_no_unbounded_positive_wait's _is_fixed_sleep requires a numeric LITERAL, so 'await asyncio.sleep(_SETTLE_SECONDS)' buckets as COMPUTED and is never asked for a declaration. The 2 live sites (obs_callbacks, mcp_connector/test_call_flow) ARE correctly declared, so nothing is flaky today \u2014 but a future site can hide a guessed duration behind a module constant. Found while building the M2 guard (which had to widen its own attachment predicate to avoid reporting those 2 as ORPHANED). Fix = treat a module-level float constant as a literal; needs a CR since the guard is a frozen \u00a74 test.",
+      "created": "2026-08-10T10:27:59+00:00",
+      "status": "open"
+    },
+    {
+      "id": 103,
+      "text": "tests/credits_ledger/conftest.py exports its OWN poll_until with a DIFFERENT signature (single truthy predicate) that shadows tests._polling.poll_until on import. The new flake-sweep call site is spelled _polling.poll_until(...) with a note rather than rebinding a name 3 other tests in that suite depend on. Collapse the duplicate onto the shared primitive.",
+      "created": "2026-08-10T10:27:59+00:00",
       "status": "open"
     }
   ]
