@@ -43,6 +43,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.tenants.domain.entities import Role
 
+from tests._polling import poll_until
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -953,7 +955,20 @@ async def test_create_and_revoke_fire_audit_events(
     revoke = await client.delete(f"/admin/invites/{invite_id}", headers=headers)
     assert revoke.status_code == 204, revoke.text
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit tasks complete
+    # Positive wait: BOTH fire-and-forget audit rows must exist. The assertions are
+    # `is not None`, so a bounded poll for their presence is exactly equivalent.
+    async def _both_audit_actions() -> set[str]:
+        rows = (
+            await db_session.execute(
+                text(
+                    "SELECT DISTINCT action FROM audit_events"
+                    " WHERE action IN ('invite.create', 'invite.revoke')"
+                )
+            )
+        ).fetchall()
+        return {r[0] for r in rows}
+
+    await poll_until(_both_audit_actions, lambda a: a == {"invite.create", "invite.revoke"})
 
     create_audit = (
         await db_session.execute(

@@ -574,6 +574,9 @@ async def test_confirm_with_expired_token_rejected_and_cleaned_up(
         assert issue.status_code == 202, issue.text
         token = extract_confirm_token(fake.sent[0])
 
+        # NEGATIVE WAIT: the 1s confirm-TTL must actually LAPSE. Elapsed time is the trigger
+        # under test — there is no row or counter to poll for, and shortening the wait would
+        # turn the 410 EXPIRED assertion into a race.
         await asyncio.sleep(1.5)
 
         expired = await short_ttl_client.post(CONFIRM, json={"token": token})

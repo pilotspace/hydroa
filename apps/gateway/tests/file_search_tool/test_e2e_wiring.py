@@ -34,6 +34,7 @@ from gateway.vector_stores.infrastructure.orm import (
 )
 from gateway.vector_stores.wire_id import to_wire_id
 
+from tests._polling import poll_until
 from tests.responses_api_core.conftest import (
     RESPONSES,
     FakeCompletionUpstream,
@@ -158,7 +159,16 @@ async def test_file_search_serviced_end_to_end_no_upstream_leak(
     )
 
     assert resp.status_code == 200, resp.text
-    # Let the fire-and-forget usage-record tasks (LLM + per_query) drain.
+    # MIXED wait for the fire-and-forget usage-record tasks (LLM + per_query): BOTH
+    # must land (positive), and file_search must be metered EXACTLY once (negative — a
+    # second per_query record would be a double-bill, and polling alone would never
+    # give it time to appear).
+
+    async def _record_count() -> int:
+        return len(recorder.records)
+
+    await poll_until(_record_count, lambda n: n >= 2)
+    # NEGATIVE WAIT: the exactly-once half of `models.count("file_search") == 1`.
     await asyncio.sleep(0.1)
 
     # (b) M5 — file_search STRIPPED from the outbound provider body (no leak).

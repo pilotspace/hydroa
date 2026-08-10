@@ -33,6 +33,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -189,18 +191,20 @@ async def test_owner_assigns_any_tier(
     assert r3.status_code == 200, r3.text
     assert r3.json()["role"] == "owner"
 
-    # Verify audit event was emitted (user.role_assign in audit_events table)
-    import asyncio
-
-    await asyncio.sleep(0.05)  # let fire-and-forget complete
-    row = await db_session.execute(
-        text(
-            "SELECT action, metadata FROM audit_events "
-            "WHERE action = 'user.role_assign' "
-            "ORDER BY created_at DESC LIMIT 1"
+    # Verify audit event was emitted (user.role_assign in audit_events table).
+    # Positive wait: the assertion is `is not None`, so a bounded poll for the
+    # fire-and-forget row's arrival is exactly equivalent.
+    async def _latest_role_assign_audit() -> Any:
+        row = await db_session.execute(
+            text(
+                "SELECT action, metadata FROM audit_events "
+                "WHERE action = 'user.role_assign' "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
         )
-    )
-    audit_row = row.fetchone()
+        return row.fetchone()
+
+    audit_row = await poll_until(_latest_role_assign_audit, lambda r: r is not None)
     assert audit_row is not None, "Expected user.role_assign audit event"
     assert audit_row[0] == "user.role_assign"
     metadata = audit_row[1]

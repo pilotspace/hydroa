@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
@@ -45,6 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # precedent exactly): Base.metadata.create_all() never replays a migration's own DML
 # seed INSERT, so "the migration seeds 3 rows" / "a pre-existing tenant survives the
 # migration untouched" can only be proven by really running `alembic upgrade`.
+from tests._polling import poll_until
 from tests.migrations.conftest import (  # noqa: F401 — migration_db is a transitive fixture dep
     MIGRATION_DATABASE_URL,
     MIGRATION_DSN,
@@ -245,16 +247,25 @@ async def _audit_metadata(
     written (§1 After M6: "exactly one ... audit row"), attributing the REAL calling
     superadmin as actor (§1 After M6: "attributing the REAL calling superadmin as actor"
     — every superadmin_token in this suite is minted with this same fixed email)."""
+
+    async def _rows() -> Sequence[Any]:
+        return (
+            await db_session.execute(
+                text(
+                    "SELECT actor_email, metadata FROM audit_events"
+                    " WHERE tenant_id = :tid AND action = :action"
+                ),
+                {"tid": target_tenant_id, "action": action},
+            )
+        ).fetchall()
+
+    # MIXED wait: the fire-and-forget audit row must land (positive) and there must be
+    # EXACTLY one (negative — §1 After M6 says "exactly one ... audit row", so a duplicate
+    # write is a real defect a bare poll would never see).
+    await poll_until(_rows, lambda r: len(r) >= 1)
+    # NEGATIVE WAIT: the exactly-one half of `len(rows) == 1`.
     await asyncio.sleep(0.05)
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT actor_email, metadata FROM audit_events"
-                " WHERE tenant_id = :tid AND action = :action"
-            ),
-            {"tid": target_tenant_id, "action": action},
-        )
-    ).fetchall()
+    rows = await _rows()
     assert len(rows) == 1, (
         f"expected exactly 1 audit_events row for action={action!r} "
         f"tenant={target_tenant_id}, found {len(rows)}"

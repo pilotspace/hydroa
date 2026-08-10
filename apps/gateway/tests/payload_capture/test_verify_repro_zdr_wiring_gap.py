@@ -102,6 +102,10 @@ async def test_repro_real_zdr_tenant_via_default_wiring_gets_capture_row(
         headers=auth_key(key_info["key"]),
     )
     assert resp.status_code == 200
+    # NEGATIVE WAIT: asserts `len(rows) == 0` — a ZDR fail-closed SECURITY contract.
+    # Only elapsed time can demonstrate that no request_logs row was written; a poll
+    # against an empty table returns on iteration one and proves nothing. This file is
+    # a repro harness for that exact defect, so a vacuous assert here would hide it.
     await asyncio.sleep(0.3)
 
     rows = await _request_log_rows(db_session, tenant_id)

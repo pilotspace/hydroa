@@ -620,6 +620,9 @@ async def test_repeated_patch_active_false_is_idempotent(
     row1 = await fetch_user_row(db_session, user_id)
     deactivated_at_1 = row1["deactivated_at"]
 
+    # NEGATIVE WAIT: a real wall-clock gap between the two PATCHes. If the repeat wrongly
+    # REWROTE `deactivated_at`, a zero-length gap could land the new value on the same
+    # timestamp and `row2['deactivated_at'] == deactivated_at_1` would pass vacuously.
     await asyncio.sleep(0.05)
     second = await client.patch(f"/scim/v2/Users/{user_id}", json=op, headers=_scim_bearer(scim_a))
     assert second.status_code == 200, second.text

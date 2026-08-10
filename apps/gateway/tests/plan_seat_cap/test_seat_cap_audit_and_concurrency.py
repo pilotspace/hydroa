@@ -69,6 +69,9 @@ async def test_rejected_admission_fires_no_audit_event(
     )
     assert_problem(resp, 403, "ERR_PLAN_SEAT_CAP_EXCEEDED")
 
+    # NEGATIVE WAIT: the assertion below is `after == before` — a rejected admission must
+    # fire ZERO invite.accept audit events. Polling an unchanged count returns on the first
+    # iteration and proves nothing; the elapsed window IS the test.
     await asyncio.sleep(0.05)  # let any fire-and-forget task complete, if one were (wrongly) fired
     after = await audit_event_count(db_session, action="invite.accept")
     assert after == before, "a rejected admission must fire zero invite.accept audit events"

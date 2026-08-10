@@ -122,6 +122,7 @@ async def test_refused_call_never_produces_a_usage_records_row(
     # return the empty list on its first iteration and never give an erroneous write
     # a chance to appear, turning a real assertion into a vacuous one. The sleep IS
     # the test here. tests/_polling.py's own docstring names this exact case.
+    # NEGATIVE WAIT: `rows == []` — a 403 writes no usage record (see the note above).
     await asyncio.sleep(0.3)
     from gateway.usage.application.flusher import UsageLedgerFlusher
 

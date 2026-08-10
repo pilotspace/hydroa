@@ -964,7 +964,14 @@ async def test_kill_audited_independently_fail_open(
     assert kill.status_code == 200
     assert kill.json()["killed_at"] is not None
 
-    # Let the fire-and-forget task actually run and raise/swallow.
+    # MIXED wait: the fire-and-forget task must run at all (positive), and it must be
+    # attempted EXACTLY once (negative — a retry loop around a failing audit sink would
+    # append twice, and a bare poll would return before the second append could show).
+    async def _attempts() -> int:
+        return len(calls)
+
+    await poll_until(_attempts, lambda n: n >= 1)
+    # NEGATIVE WAIT: the no-retry half of `calls == ["attempted"]`.
     await asyncio.sleep(0.05)
     assert calls == ["attempted"]
 
@@ -1082,6 +1089,9 @@ async def test_concurrent_kill_race_exactly_one_winner(
             )
 
     await poll_until(_count_kill_events, lambda c: c >= 1)
+    # NEGATIVE WAIT: the poll above already proved the kill event ARRIVED; this settle
+    # is the other half of `== 1` — it gives a SECOND (erroneous) write a chance to
+    # appear. Polling cannot show absence, so the duration is load-bearing.
     await asyncio.sleep(0.1)  # deliberate: give a SECOND (erroneous) write a chance
     async with app.state.sessionmaker() as session:
         count = await session.scalar(

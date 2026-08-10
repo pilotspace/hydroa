@@ -120,6 +120,8 @@ async def test_non_byok_provider_and_unwired_resolver_remain_unaudited(
     assert no_resolver is None
     assert get_provider_credential() is None  # nothing was ever set
 
+    # NEGATIVE WAIT: the assertion below is `== 0` — the no-op skip paths must write no
+    # audit row at all. Polling a zero count returns immediately and proves nothing.
     await asyncio.sleep(0.05)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 0, (
         "no-op skip paths never reach platform-tenant-specific logic, hence unaudited"

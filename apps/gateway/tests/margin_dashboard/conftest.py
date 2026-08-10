@@ -17,12 +17,15 @@ import asyncio
 import datetime
 import time
 import uuid
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests._polling import poll_until
 
 # A fixed UTC window the tests seed into — July 2026 calendar month, matching the §2
 # scenarios' own "July 2026" framing and the tie-out period=2026-07 examples.
@@ -214,15 +217,23 @@ async def audit_count(session: AsyncSession, *, action: str) -> int:
 
 
 async def audit_row(session: AsyncSession, *, action: str) -> dict[str, Any]:
+    async def _rows() -> Sequence[Any]:
+        return (
+            await session.execute(
+                text(
+                    "SELECT tenant_id, actor_email, metadata FROM audit_events"
+                    " WHERE action = :action"
+                ),
+                {"action": action},
+            )
+        ).fetchall()
+
+    # MIXED wait: the fire-and-forget audit write must land (positive) and there must be
+    # exactly ONE row (negative — a duplicate audit event is itself a defect).
+    await poll_until(_rows, lambda r: len(r) >= 1)
+    # NEGATIVE WAIT: the exactly-one half of `len(rows) == 1`.
     await asyncio.sleep(0.05)
-    rows = (
-        await session.execute(
-            text(
-                "SELECT tenant_id, actor_email, metadata FROM audit_events WHERE action = :action"
-            ),
-            {"action": action},
-        )
-    ).fetchall()
+    rows = await _rows()
     assert len(rows) == 1, f"expected exactly 1 audit row for action={action!r}, found {len(rows)}"
     tenant_id, actor_email, metadata = rows[0]
     return {"tenant_id": tenant_id, "actor_email": actor_email, "metadata": dict(metadata)}

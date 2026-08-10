@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests import _polling
 from tests.credits_ledger.conftest import (
     auth_key,
     get_balance_row,
@@ -345,18 +346,28 @@ async def test_verify_nonchat_success_never_settles_only_sweep_fully_refunds(
     )
     assert resp.status_code == 200, resp.text
 
-    # Give any fire-and-forget usage-recording task a moment to land.
+    async def _ledger_rows() -> list[Any]:
+        return list(
+            (
+                await db_session.execute(
+                    text(
+                        "SELECT entry_type, amount_usd FROM credit_ledger WHERE tenant_id = :t"
+                        " ORDER BY created_at"
+                    ),
+                    {"t": api_key["tenant_id"]},
+                )
+            ).all()
+        )
+
+    # MIXED wait: BOTH the hold and the settle must land (positive), and there must be no
+    # THIRD entry (negative — a second settle would double-charge the tenant's credits).
+    # NOTE: spelled `_polling.poll_until` because this suite's conftest exports its own
+    # single-argument `poll_until` (truthy-predicate form) that shadows the shared one.
+    await _polling.poll_until(_ledger_rows, lambda r: len(r) >= 2)
+    # NEGATIVE WAIT: the no-extra-entry half of `entry_types == ["hold", "settle"]`.
     await asyncio.sleep(0.5)
 
-    rows = (
-        await db_session.execute(
-            text(
-                "SELECT entry_type, amount_usd FROM credit_ledger WHERE tenant_id = :t"
-                " ORDER BY created_at"
-            ),
-            {"t": api_key["tenant_id"]},
-        )
-    ).all()
+    rows = await _ledger_rows()
     entry_types = [r[0] for r in rows]
     # HEAL: settle now posts for the non-chat pipeline (was ["hold"] before the fix).
     assert entry_types == ["hold", "settle"], (

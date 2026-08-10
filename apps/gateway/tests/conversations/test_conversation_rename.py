@@ -125,6 +125,10 @@ class TestRenameConversation:
         conv_id = create_resp.json()["id"]
         original_updated_at = create_resp.json()["updated_at"]
 
+        # NEGATIVE WAIT: a real wall-clock gap, not a wait for state. The assertion below
+        # is that `updated_at` MOVED, which requires the clock to actually advance between
+        # the create and the patch. There is nothing to poll for — polling would return
+        # instantly and the two timestamps could be identical, making the assertion vacuous.
         await asyncio.sleep(0.01)  # ensure clock advances
 
         patch_resp = await client.patch(

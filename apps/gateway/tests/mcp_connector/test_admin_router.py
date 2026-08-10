@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
 from tests.mcp_connector.conftest import (
     MCP_SERVERS,
     assert_problem,
@@ -46,17 +47,21 @@ async def test_owner_sets_tenant_allowlist_and_audit_recorded(
     assert body["servers"] == [{"url": "https://mcp.acme.example/v1", "label": "Acme"}]
     assert body["updated_at"] is not None
 
-    await asyncio.sleep(0.1)
-    audit = (
-        await db_session.execute(
-            text(
-                "SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid"
-                " AND action = 'mcp_server_policy.put'"
-            ),
-            {"tid": owner["tenant_id"]},
-        )
-    ).scalar()
-    assert (audit or 0) >= 1, "a fire-and-forget audit event must be recorded"
+    # Positive wait: the assertion is `>= 1`, so a bounded poll is exactly equivalent.
+    async def _audit_count() -> int:
+        row = (
+            await db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid"
+                    " AND action = 'mcp_server_policy.put'"
+                ),
+                {"tid": owner["tenant_id"]},
+            )
+        ).scalar()
+        return int(row or 0)
+
+    audit = await poll_until(_audit_count, lambda n: n >= 1)
+    assert audit >= 1, "a fire-and-forget audit event must be recorded"
 
 
 async def test_get_default_tenant_allowlist_is_empty(
