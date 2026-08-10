@@ -1056,9 +1056,33 @@ async def test_concurrent_kill_race_exactly_one_winner(
     assert r2.status_code == 200
     assert r1.json()["killed_at"] == r2.json()["killed_at"]  # same winning timestamp
 
-    # Let any fire-and-forget audit tasks settle, then confirm exactly ONE audit
-    # event was recorded for this kill (not zero, not two).
-    await asyncio.sleep(0.1)
+    # MIXED wait — this asserts exactly ONE audit event: not zero, and not two.
+    # The two halves need opposite treatment, so neither a bare sleep nor a bare
+    # poll is correct on its own:
+    #   * "not zero" is a POSITIVE wait on a fire-and-forget write. The old fixed
+    #     0.1s passed on an idle laptop and failed in CI run 31243949907 as
+    #     `assert 0 == 1` — the audit row simply had not landed yet.
+    #   * "not two" is a NEGATIVE assertion. Polling alone would return the instant
+    #     the FIRST row appeared and never give a duplicate a chance to show up,
+    #     silently downgrading this to "at least one" — the vacuous-green trap
+    #     tests/_polling.py warns about.
+    # So: poll until the row exists (kills the flake), THEN settle and re-count
+    # (preserves the duplicate check).
+    async def _count_kill_events() -> int:
+        async with app.state.sessionmaker() as session:
+            return (
+                await session.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM audit_events "
+                        "WHERE action = 'agent_principal.killed' AND target_id = :pid"
+                    ),
+                    {"pid": principal["id"]},
+                )
+                or 0
+            )
+
+    await poll_until(_count_kill_events, lambda c: c >= 1)
+    await asyncio.sleep(0.1)  # deliberate: give a SECOND (erroneous) write a chance
     async with app.state.sessionmaker() as session:
         count = await session.scalar(
             text(

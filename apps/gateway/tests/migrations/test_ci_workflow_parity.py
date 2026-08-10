@@ -34,21 +34,20 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # this line AND all four manifests together — which is the whole point.
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 
-# The gateway job's wall-clock floor, set from a MEASUREMENT rather than an
-# extrapolation. Two runs were cancelled proving the point: at 30 min (every run on
-# main from 2026-07-23) and again at 75 (run 31197251730, 2026-08-07 — 74m17s with
-# the serial suite still going). Steps 1-9 cost 32s combined, so the budget is
-# essentially all test time.
+# The gateway job's wall-clock floor, set from a MEASUREMENT. Run 31243949907
+# (2026-08-08) is the first gateway run that ever FINISHED: 4553 passed / 8 failed
+# in 4935s = 1h22m15s, at -n 4 with coverage. This floor is that number x ~1.5.
 #
-# MEASURED, at last. Run 31243949907 (2026-08-08) is the first gateway run that
-# ever FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
-# This floor is that number x ~1.5. Three earlier caps were guessed and all three
-# were cancelled mid-suite (30 -> ~30m, 75 -> 74m17s serial, 60 -> 59m27s at -n 4),
-# so every figure before this one was a lower bound, never a runtime.
+# Three earlier caps were GUESSED and all three were cancelled mid-suite, so every
+# figure before the measurement was a lower bound and never a runtime:
+#   30 -> ~30m       serial, every run on main from 2026-07-23
+#   75 -> 74m17s     serial, run 31197251730
+#   60 -> 59m27s     -n 4,   run 31241464171
+# Steps 1-9 cost 32s combined, so the budget is essentially all test time.
 #
-# Re-derive this constant from an observed run, never from an extrapolation: the
-# 75 came from scaling a 12-core dev-host number to a 4-core runner and was wrong,
-# and the 60 that replaced it was wrong too. Both mistakes cost a cancelled run.
+# Re-derive this constant from an observed run, never from an extrapolation: the 75
+# came from scaling a 12-core dev-host number to a 4-core runner and was wrong, and
+# the 60 that replaced it was wrong too. Each mistake cost a cancelled run.
 #
 # A cap below the suite's own runtime is not a safety bound — it is a guaranteed
 # `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
@@ -206,6 +205,37 @@ def test_gateway_timeout_outlasts_the_suite() -> None:
         f"{MIN_GATEWAY_TIMEOUT_MINUTES}-minute floor. Measured: the serial suite "
         "was still running at 74m17s on this runner. At this budget the job is "
         "cancelled mid-suite and the check never reaches a verdict."
+    )
+
+
+def test_ci_python_version_is_patch_pinned_and_matches_dev() -> None:
+    """CI and dev must run the SAME Python, down to the patch.
+
+    Not hygiene — a correctness gate. `ipaddress` special-purpose network lists
+    changed in a 3.12 PATCH release (CVE-2024-4032 / gh-113171), and the egress
+    SSRF policy reads those predicates:
+
+        ipaddress.ip_address("::ffff:10.20.30.40").is_reserved
+            3.12.3  -> True      (denied before the RFC1918 allow-list rescue runs)
+            3.12.13 -> False     (reaches the rescue, allowed)
+
+    CI pinned only "3.12", resolved 3.12.3, and failed
+    test_write_time_opt_in_relaxes_only_private_class in run 31243949907 while the
+    same code passed on a dev box. A security control whose verdict depends on the
+    interpreter's patch version is not reproducible, so both ends are pinned and
+    checked against each other here. See todo #97.
+    """
+    pinned = (REPO_ROOT / "apps" / "gateway" / ".python-version").read_text().strip()
+    assert re.fullmatch(r"\d+\.\d+\.\d+", pinned), (
+        f".python-version is {pinned!r}; it must name an exact patch version "
+        "(e.g. 3.12.13), not a minor series — a minor series is what let CI drift "
+        "to 3.12.3 while dev ran 3.12.13."
+    )
+    ci_version = str(_load(CI_WORKFLOW)["jobs"]["gateway"]["steps"][1]["with"]["python-version"])
+    assert ci_version == pinned, (
+        f"ci.yml pins Python {ci_version!r} but .python-version says {pinned!r}. "
+        "These must agree exactly — `ipaddress` predicates the egress policy relies "
+        "on differ across 3.12 patch releases."
     )
 
 

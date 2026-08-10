@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": "ci-timeout-and-e2e-scope",
+  "active_task": "ci-flake-classification",
   "active_milestone": "managed-rag-finetune",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -1199,6 +1199,44 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "ci-flake-classification": {
+      "title": "Classify the 8 failures the first completed CI run exposed, starting with the egress security control",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": "release-integrity",
+      "depends_on": [],
+      "created": "2026-08-08T15:25:39+00:00",
+      "updated": "2026-08-09T09:21:34+00:00",
+      "relates_to": [
+        "ci-timeout-and-e2e-scope"
+      ],
+      "flag_verified": true,
+      "route": {
+        "lane": "unrouted",
+        "by": null
+      },
+      "tripwire": {
+        "contract_md5": "8af900db36c09d0d26083931a1cf8383",
+        "tests": {
+          "apps/gateway/tests/migrations/test_ci_workflow_parity.py": "7cd3127d2796d42c9f829cb1f08da849"
+        }
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/tests/tool_call_metering/test_di_wiring.py",
+          "apps/gateway/tests/agent_identity_governance/test_agent_identity_governance.py",
+          "apps/gateway/tests/migrations/test_ci_workflow_parity.py",
+          "apps/gateway/.python-version",
+          ".github/workflows/ci.yml"
+        ],
+        "snapshot_md5": "3ba1940fd8d48de3fa0ae3dc66788c04"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
     }
   },
   "milestones": {
@@ -1274,7 +1312,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-08T07:53:43+00:00",
+  "updated": "2026-08-09T09:21:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2430,7 +2468,7 @@
   ],
   "active_tasks": {
     "managed-rag-finetune": "zdr-ingest-lock-heal",
-    "release-integrity": "ci-timeout-and-e2e-scope"
+    "release-integrity": "ci-flake-classification"
   },
   "todos": [
     {
@@ -3007,6 +3045,18 @@
       "id": 96,
       "text": "MEASURED 2026-08-08, run 31243949907 \u2014 the gateway suite's first EVER completed CI run: 8 failed, 4553 passed, 7 skipped, 1 xfailed in 4935s (1h22m15s) at -n 4 with coverage. Key numbers: (a) set timeout-minutes to ~120 (82m * 1.5) and raise MIN_GATEWAY_TIMEOUT_MINUTES to match \u2014 supersedes the 180 instrument in todo #95; (b) -n 4 bought almost NOTHING vs serial (serial was cancelled at 74m17s still running; -n 4 completed at 82m25s), because ubuntu-latest's 4 vCPUs are shared with the Postgres+Redis service containers and every worker carries 39% coverage overhead while contending on ONE database. Adding workers to this runner is a dead end; the only real fixes are matrix-sharding with a DB per shard, or a bigger runner. All 8 failures are PRE-EXISTING (PR #98 touches zero production source): 5 map to already-filed issues (#74 names guardrails/test_guardrails_core and request_log_metering_fields; the Makefile test-parallel comment names the realtime DDL deadlock; v58 flags the batch claim/drain lifecycle). The other 3 (agent_identity_governance kill-race, s3_egress_policy IPv6-mapped literal, tool_call_metering/test_di_wiring) all pass locally in isolation and need classification.",
       "created": "2026-08-08T07:52:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 97,
+      "text": "SECURITY-ADJACENT (fail-closed, NOT a bypass) + REPRODUCIBILITY: the egress SSRF control's behavior depends on the CPython PATCH version, and the patch version is unpinned in every environment. ROOT CAUSE, verified by running both interpreters: ipaddress.ip_address('::ffff:10.20.30.40').is_reserved is True on 3.12.3 but False on 3.12.13 (CVE-2024-4032 / gh-113171 revised the special-purpose network lists in 3.12.4). core/egress_policy.py::_is_denied_ip denies unconditionally on is_reserved BEFORE the RFC1918/ULA allow-list rescue can run, so on 3.12.3 an IPv4-mapped private address is denied and on 3.12.13 it is allowed. This is what failed CI run 31243949907 as test_write_time_opt_in_relaxes_only_private_class[[::ffff:10.20.30.40]-False] \u2014 a REAL deterministic version difference, NOT the timing flake it first looked like. Risk direction is fail-closed (more restrictive on old Python), and metadata/SSRF protection holds on BOTH versions (::ffff:169.254.169.254 is caught by the unconditional _METADATA_IPS check plus its embedded link-local), so there is NO bypass. The defect is that three environments run three interpreters: Docker ghcr.io/astral-sh/uv:python3.12-bookworm-slim (moving tag), CI setup-uv python-version '3.12' -> resolved 3.12.3, dev 3.12.13, requires-python '>=3.12'. A rebuild could silently change egress decisions in production. FIX: pin the patch version across Dockerfile + ci.yml + a .python-version file, and consider making the is_reserved deny not fire on the canonical IPv4-mapped spelling so the control is version-independent by construction.",
+      "created": "2026-08-08T15:27:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 98,
+      "text": "Dockerfile Python is still UNPINNED at the patch level: ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim is a moving tag, and a patch-pinned variant does NOT exist (verified: ghcr.io/astral-sh/uv:python3.12.13-bookworm-slim returns MISSING, the minor tag EXISTS). CI and dev are now pinned to 3.12.13 via apps/gateway/.python-version + ci.yml, guarded by test_ci_python_version_is_patch_pinned_and_matches_dev \u2014 but the DEPLOYED image can still drift to a different 3.12.x on any rebuild, which changes ipaddress predicates the egress SSRF policy reads (todo #97). Two options: (a) digest-pin the base image (ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:...), which also freezes the uv version and needs a periodic bump, or (b) let uv provision the interpreter from .python-version inside the image so the base image's python is irrelevant. Either way the change must be verified by an actual docker build + a runtime assertion of sys.version, which is why it was NOT bundled into the flake-fix commit. Extend the parity guard to cover the Dockerfile once pinned.",
+      "created": "2026-08-09T09:19:19+00:00",
       "status": "open"
     }
   ]
