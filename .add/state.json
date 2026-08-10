@@ -1312,7 +1312,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-09T09:21:34+00:00",
+  "updated": "2026-08-09T10:43:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3057,6 +3057,12 @@
       "id": 98,
       "text": "Dockerfile Python is still UNPINNED at the patch level: ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim is a moving tag, and a patch-pinned variant does NOT exist (verified: ghcr.io/astral-sh/uv:python3.12.13-bookworm-slim returns MISSING, the minor tag EXISTS). CI and dev are now pinned to 3.12.13 via apps/gateway/.python-version + ci.yml, guarded by test_ci_python_version_is_patch_pinned_and_matches_dev \u2014 but the DEPLOYED image can still drift to a different 3.12.x on any rebuild, which changes ipaddress predicates the egress SSRF policy reads (todo #97). Two options: (a) digest-pin the base image (ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:...), which also freezes the uv version and needs a periodic bump, or (b) let uv provision the interpreter from .python-version inside the image so the base image's python is irrelevant. Either way the change must be verified by an actual docker build + a runtime assertion of sys.version, which is why it was NOT bundled into the flake-fix commit. Extend the parity guard to cover the Dockerfile once pinned.",
       "created": "2026-08-09T09:19:19+00:00",
+      "status": "open"
+    },
+    {
+      "id": 99,
+      "text": "tests/routing_admin (ra1/ra2/ra3/ra4/ra7) failed 5-of-8 in CI run 31306357309 with cross-test state leakage \u2014 'model_groups mismatch: {gpt: [a]}' and KeyError on expected candidates, i.e. it saw ANOTHER suite's routing config. This is the same suite the 0.9.0 release notes already call out as an xdist flake ('routing_admin xdist flakes green in isolation'), so it is recurring, not new. NOT reproduced locally after four probes: passes 3/3 in isolation WITH random ordering enabled (so not intra-file order dependence), and passes when run in one process directly after tests/routing_config_write + tests/routing_config_store, which are the only two suites that set the exact leaked value gpt->['a']. Its conftest builds an app with 'no DB schema needed', so the leak is app.state/Settings-level rather than the documented DB-schema collision. Next probes: run routing_admin at -n 4 alongside the full tests/routing_* tree to let loadscope co-schedule it with an unknown sibling; or add an xdist_group marker pinning routing_admin + routing_config_* to one worker; or have its conftest assert a pristine routing config at setup so the polluter is named at failure time instead of inferred. Relates to todo #79 (the failure set ROTATES between runs \u2014 run 31243949907 and 31306357309 each had 8 failures but only 3 in common).",
+      "created": "2026-08-09T10:43:34+00:00",
       "status": "open"
     }
   ]
