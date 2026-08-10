@@ -81,6 +81,10 @@ def _make_provider(
         config=_AD_CFG,
         now_fn=clock or _Clock(),
         expiry_skew_s=skew,
+        # These providers ARE dialed (`await provider.get_token()` below), so the production
+        # policy would resolve the AAD authority host for real before MockTransport is
+        # reached. The suite already injects this at the one construction further down.
+        egress_policy=AllowAllEgressPolicy(),
     )
     provider._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]

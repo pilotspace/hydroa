@@ -283,6 +283,8 @@ def test_azure_openai_provider_client_never_follows_redirects() -> None:
 def test_azure_ad_token_provider_client_never_follows_redirects() -> None:
     from gateway.proxy.infrastructure.azure_ad import AzureADConfig
 
+    # EGRESS: construction-only — this asserts on the client's follow_redirects flag; no
+    # request is issued, so the egress policy is never consulted.
     tp = AzureADTokenProvider(
         config=AzureADConfig(tenant_id="t", client_id="c", client_secret="s")  # noqa: S106
     )
