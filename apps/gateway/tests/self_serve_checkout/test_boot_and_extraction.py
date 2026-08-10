@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
 
+from tests._polling import poll_until
+
 from .conftest import _CATALOG, _seed_catalog, bearer, mint_role_token, signup_owner
 
 TEST_JWT_SECRET = "test-secret-not-for-production-0123456789"
@@ -134,15 +136,21 @@ async def test_superadmin_plan_endpoint_unchanged(
     assert str(row[0]) == catalog["pro"]
     assert row[1] == _CATALOG["pro"]["seat_cap"]
 
-    # superadmin audit row still written with the assign action.
-    audit = (
-        await db_session.execute(
-            text(
-                "SELECT action, metadata FROM audit_events"
-                " WHERE action = 'platform.plan.assign' ORDER BY created_at DESC LIMIT 1"
+    # superadmin audit row still written with the assign action. The audit write is
+    # fire-and-forget, and this site had NO wait of any kind — it passed because the task
+    # usually completes before the next await, and failed under 12-way load. The assertion
+    # is `is not None`, so a bounded poll for its arrival is exactly equivalent.
+    async def _latest_assign_audit() -> Any:
+        return (
+            await db_session.execute(
+                text(
+                    "SELECT action, metadata FROM audit_events"
+                    " WHERE action = 'platform.plan.assign' ORDER BY created_at DESC LIMIT 1"
+                )
             )
-        )
-    ).fetchone()
+        ).fetchone()
+
+    audit = await poll_until(_latest_assign_audit, lambda r: r is not None)
     assert audit is not None
     assert audit[0] == "platform.plan.assign"
     assert audit[1]["new_plan_id"] == catalog["pro"]

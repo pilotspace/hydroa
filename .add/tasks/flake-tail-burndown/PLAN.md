@@ -350,6 +350,31 @@ One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence �
   widen its OWN attachment predicate to avoid reporting those two sites as ORPHANED)
 - `[SPEC · open]` `tests/credits_ledger/conftest.py` exports a second `poll_until` with a
   different signature that shadows the shared primitive on import. (evidence: todo #103)
+- `[SPEC · open]` Two flake classes the census could not see, both found by the FIRST proving
+  run and both "a fix that did not propagate": (4) a suite that reads a DB **singleton** row
+  without owning the schema lifecycle — `routing_config` is one row per database and
+  `routing_admin` bypasses the root `app` fixture's per-test DELETE (closes todo #99, whose
+  recorded diagnosis of an app.state leak was wrong); (5) a "no network required" unit test
+  performing a **live DNS lookup** — `azure_audio` omitted the `egress_policy=` injection every
+  sibling Azure suite already has. Neither is an `asyncio.sleep`, so no guard in this task
+  covers either. Both deserve one: "a suite whose Settings point at the shared DB must clear
+  the global rows it reads", and "a provider constructed in tests must inject an egress
+  policy". (evidence: `691cace`; both reproduce deterministically — 5s for #4, a
+  getaddrinfo monkeypatch for #5). Class 4's blast radius was then bounded statically:
+  `routing_config` is the ONLY table with a true singleton key (`CheckConstraint("id IS
+  TRUE")`); every other non-tenant-scoped table is either keyed by a parent row
+  (invoice_lines, team_members, conversation_messages, …) or deliberately-seeded reference
+  data (plans, pricing_snapshots), neither of which can leak a *value* into an unrelated
+  suite's read. So the guard for (a) has a one-table surface today and is cheap.
+- `[SPEC · open]` Class 6, found by proving-run 2 and the one that limits this whole task:
+  `request_log_metering_fields` polled `poll_until` on the `request_logs` row and then
+  flushed the usage stream ONCE — two different fire-and-forget writes, so the flush drained
+  an empty stream and the assertion read `[]`. There is no `asyncio.sleep` at the site, so
+  NONE of the four guards can see it. **A converted site is not a fixed site**, and
+  "UNKNOWN=0" is not "no races remain" — the guards bound the sleep population, not the
+  race population. Any future guard for this class has to reason about WHICH signal a poll
+  waits for versus which write the assertion depends on. (evidence: `eb0b3f8`; pre-fix fails
+  and post-fix passes under a deterministic 0.4s `redis.xadd` delay)
 - `[SPEC · open]` R6 exit criterion #6 says "3 consecutive green full gateway suite runs"
   without naming a parallelism. The measurements here argue it should: `-n 4` and `-n 12`
   are different experiments (~2.5h vs ~40min per run on a 12-core host, and different

@@ -1361,7 +1361,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-10T10:27:59+00:00",
+  "updated": "2026-08-10T10:41:20+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3112,7 +3112,7 @@
       "id": 99,
       "text": "tests/routing_admin (ra1/ra2/ra3/ra4/ra7) failed 5-of-8 in CI run 31306357309 with cross-test state leakage \u2014 'model_groups mismatch: {gpt: [a]}' and KeyError on expected candidates, i.e. it saw ANOTHER suite's routing config. This is the same suite the 0.9.0 release notes already call out as an xdist flake ('routing_admin xdist flakes green in isolation'), so it is recurring, not new. NOT reproduced locally after four probes: passes 3/3 in isolation WITH random ordering enabled (so not intra-file order dependence), and passes when run in one process directly after tests/routing_config_write + tests/routing_config_store, which are the only two suites that set the exact leaked value gpt->['a']. Its conftest builds an app with 'no DB schema needed', so the leak is app.state/Settings-level rather than the documented DB-schema collision. Next probes: run routing_admin at -n 4 alongside the full tests/routing_* tree to let loadscope co-schedule it with an unknown sibling; or add an xdist_group marker pinning routing_admin + routing_config_* to one worker; or have its conftest assert a pristine routing config at setup so the polluter is named at failure time instead of inferred. Relates to todo #79 (the failure set ROTATES between runs \u2014 run 31243949907 and 31306357309 each had 8 failures but only 3 in common).",
       "created": "2026-08-09T10:43:34+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 100,
@@ -3136,6 +3136,12 @@
       "id": 103,
       "text": "tests/credits_ledger/conftest.py exports its OWN poll_until with a DIFFERENT signature (single truthy predicate) that shadows tests._polling.poll_until on import. The new flake-sweep call site is spelled _polling.poll_until(...) with a note rather than rebinding a name 3 other tests in that suite depend on. Collapse the duplicate onto the shared primitive.",
       "created": "2026-08-10T10:27:59+00:00",
+      "status": "open"
+    },
+    {
+      "id": 104,
+      "text": "GUARD GAP from flake-tail-burndown: the 4 repo_hygiene guards only cover asyncio.sleep sites, but the first proving run's 6 failures were BOTH non-sleep isolation defects. Two guards worth adding: (a) a suite whose Settings point at the shared test DB must clear the GLOBAL/singleton rows it reads (routing_config is one row per database; routing_admin bypasses the root app fixture's per-test DELETE) \u2014 see closed todo #99; (b) an Azure/HTTP provider constructed in tests must inject egress_policy= (azure_audio omitted it and performed a LIVE DNS lookup in a suite documented as 'no network required'; every sibling Azure suite already injects AllowAllEgressPolicy). Both classes are 'a fix that did not propagate', the same meta-pattern M6 exists for.",
+      "created": "2026-08-10T10:41:20+00:00",
       "status": "open"
     }
   ]
