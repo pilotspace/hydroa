@@ -285,6 +285,15 @@ Strategy actually used: waves ran W1 → W2 → (W3+W4 merged) → W5, with two 
   audit row), those sites became poll-THEN-settle with the retained sleep annotated for
   which half it defends. 12 of the 46 sites landed here.
 
+  ⚠ CORRECTION (2026-08-10, by measurement, left visible rather than edited away): this section
+  and the milestone amendment both claim `-n 4` projects **~2.5h per run** on this host. That is
+  WRONG by roughly 8x. `make ci` — which IS `-n 4 --dist loadscope`, with coverage — completed in
+  **1104s (18m24s)**. The figure was extrapolated from a partial run and then repeated as if
+  measured. Actual: `-n 4` + coverage 1104s · `-n 12` no-cov 824/694/332s · `-n 12` + coverage
+  477s. The decision to prove exit #6 at `-n 12` still stands, but only on the leg that was
+  always the real one — harsher contention on the shared Postgres/Redis, and the shape under
+  which the tail was first observed. "`-n 4` is impractically slow" is simply false here.
+
   W5 ran at `-n 4 --dist loadscope --no-cov` — byte-identical parallelism to `make test-ci`
   (the target `make ci` invokes), minus coverage. Coverage is a measured 1.92× wall-clock
   multiplier and cannot change a verdict, and the exit criterion says "full gateway suite",
