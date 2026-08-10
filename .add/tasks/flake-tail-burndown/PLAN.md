@@ -2,8 +2,8 @@
 
 slug: flake-tail-burndown · created: 2026-08-10 · stage: production
 milestone: release-integrity
-autonomy: auto   <!-- manual<conservative<auto — lower for high-risk (`add.py autonomy set`); a `component: <name>` line joins that root to §3 Scope; task edges: `--depends-on`/`--extends`/`--relates-to`; high-risk/method-defining? declare `risk: high` on the slug line; headless agent-crossed freeze? declare `gate_mode: ai-plan-verify` here (human floor: security|data|architecture never AI-frozen) -->
-phase: build   <!-- direction→build→verify→done; direction drafts §1–§4 (rules · change plan · red suite) to the ONE freeze -->
+autonomy: auto
+phase: done
 > One file = one task — an ATOMIC node: persist the interface (contract · red suite · scope · verdict); reason everything else in-context, don't write essays. The phase marker above is the single source of truth (`add.py phase`).
 
 ---
@@ -80,8 +80,6 @@ a saturated 4-vCPU runner sharing its cores with Postgres + Redis (where they do
     unreasoned conversion rather than trust the bucket.
 </assumptions>
 
-<!-- §2 (the old standalone SCENARIOS section) was RETIRED — pass/fail cases now live with the tests in §4 · TESTS & SCENARIOS. The §3–§7 numbers are unchanged so the freeze parser and every §-reference keep working; the jump from §1 to §3 is intentional. -->
-
 ---
 
 ## 3 · PLAN — the change plan: ground · contract · build-strategy ▸ docs/05-step-3-plan.md
@@ -134,34 +132,6 @@ tests/repo_hygiene/test_no_unbounded_positive_wait.py
               copy-paste into a new file is caught while the reasoned original is not.
 ```
 
-<!-- CR v2 — amended 2026-08-10, approved by Tin Dang. WAS `asyncio.sleep(<literal>)`;
-     NOW `asyncio.sleep(<literal > 0>)`. A NARROWING, and the reason is a defect-class
-     distinction, not convenience.
-
-     M7 exists to catch "someone guessed a duration and the guess fails under load."
-     `asyncio.sleep(0)` contains NO duration to guess wrong — it is a single event-loop
-     yield. Whether one yield suffices is a DETERMINISTIC property of the callee (does it
-     await internally?), not a timing race.
-
-     EVIDENCE (traced 2026-08-10): the billing path fires
-     `asyncio.ensure_future(usage_recorder.record(**kwargs))` (use_cases.py:543), and the
-     test double is `async def record(...): self.calls.append(dict(kwargs))` — ZERO internal
-     awaits. A coroutine with no internal awaits runs start-to-finish on its FIRST
-     scheduling step, and `sleep(0)` yields exactly once, which is precisely enough. Host
-     load changes how long a step takes, never whether the loop schedules a ready task
-     before resuming the yielder. All 10 sites in
-     tests/image_edits_variations/test_image_edits_variations.py are this shape, and NO
-     observed CI failure has ever been attributed to a `sleep(0)` site.
-
-     EFFECT: the actionable population drops 89 -> 54, all genuine duration guesses.
-     M4 ("zero unclassified") still holds — the 35 `sleep(0)` sites become an explicitly
-     classified LOOP-YIELD bucket (deterministic, no action), not an unexamined one.
-
-     RESIDUAL RISK, accepted and filed as its own todo rather than hidden here: if some
-     `sleep(0)` site's fire-and-forget target DOES perform real IO, one yield is
-     insufficient — but that fails DETERMINISTICALLY, on an idle laptop too. It would
-     already be a hard red, never part of the rotating tail this task is closing. -->
-
 CENSUS v2 (post-CR, the actionable population):
   89 sites matched the v1 guard -> 54 real-duration (ACTIONABLE) + 35 `sleep(0)` LOOP-YIELD
   The 54 are enumerated in `./sleep-worklist.txt`; the classifier is `./classify_sleeps.py`
@@ -178,48 +148,6 @@ Target (measurable):
     any production edit means the diagnosis was wrong and the task re-enters direction)
 Status: FROZEN @ v1 — approved by Tin Dang
 Reported: no
-
-<!-- CR v3 — amended 2026-08-10, approved by Tin Dang. An EXPANSION of §4, which is the kind
-     of change that must be asked for rather than absorbed, so it is recorded here even though
-     it adds tests rather than removing them.
-
-     WAS: four guards, all keyed off `asyncio.sleep` sites (M1/M2/M4/M6/M7).
-     NOW: those four PLUS four guards for the classes the proving runs actually surfaced.
-
-     WHY the frozen four are not enough — this is the load-bearing finding of the whole task.
-     The census counted SLEEP SITES. The real population is ASSERTIONS ON FIRE-AND-FORGET
-     WRITES, and sleep sites are only a subset of it. Five of the six streak attempts died on
-     defects that contain no sleep at all, so `UNKNOWN == 0` was true and silent about every
-     one of them:
-
-       class 4  a DB SINGLETON row read by a suite that does not own the schema lifecycle
-                (routing_config is one row per database; routing_admin bypasses the root
-                `app` fixture's per-test DELETE). Closed todo #99, whose recorded diagnosis
-                of an app.state leak was wrong.
-       class 5  a live DNS lookup inside a unit test documented "no network required"
-                (azure_audio omitted the `egress_policy=` injection every sibling has).
-       class 7  a fire-and-forget assertion with NO wait of any kind — never had a sleep,
-                so never entered the census.
-       class 9  a settle that cannot distinguish "all landed" from "none started" — XLEN
-                stability at length 0 is trivially stable.
-
-     Classes 6 and 8 are deliberately NOT guarded: "polls the wrong signal" and "a race
-     assertion that contradicts itself" require reasoning about which write an assertion
-     depends on, which no AST scan can decide. They stay as recorded lessons.
-
-     SCOPE unchanged: still `apps/gateway/tests/` + `./`, still zero files under
-     `apps/gateway/src/`. The tamper tripwire is re-crossed rather than edited around.
-
-     TRADEOFF Tin was shown and accepted: this grows an approved bundle mid-build. The
-     alternative was todo #104 alone, which records the classes but lets them recur. -->
-
-<!-- CR v4 — 2026-08-10, Tin-approved (milestone-level, mirrored in
-     .add/milestones/release-integrity/MILESTONE.md): exit criterion #6 now PINS the proving
-     shape at `-n 12 --dist loadscope`, no `--reruns`, and states explicitly that a red run
-     RESETS the streak. An unpinned criterion is satisfiable by its weakest reading, and for a
-     contention-dependent flake tail the parallelism IS the experiment. Also capped: 2 further
-     attempts after A6, then this criterion becomes its own audit task. -->
-
 
 ### Build-strategy — Scope (may touch) is HARD scope-lock; the rest is SOFT (the builder self-improves and records actual at verify)
 Scope (may touch): `apps/gateway/tests/` `./`
@@ -260,8 +188,6 @@ Least-sure flag surfaced at freeze: [test] the 92 UNKNOWN sites' per-site judgem
 - [ ] §3 Contract shape is concrete (no template placeholder text remains)
 - [ ] Lowest-confidence flag surfaced and substantive (mirrors unflagged_freeze's own bar)
 Verified by: <agent-id> · at: <ISO-8601 UTC timestamp>
-
-<!-- The freeze IS the one approval, led by the bundle's lowest-confidence flag — Contract + Scope (may touch) = HARD (tamper-guarded); Strategy · Regression floor · Persona = SOFT/optional. Approved -> Status: FROZEN @ vN — approved by <name>; changing a frozen Contract = change request back to SPECIFY. Scope tokens, backticked: `./…` = this task dir · a "/" token = project root · a bare name = sibling of the previous token's dir · a directory covers its whole subtree · outside-root drops fail-closed · absent line = UNDECLARED (grandfathered, never retro-red). -->
 
 ---
 
@@ -326,8 +252,6 @@ ceremony, because both guards are source-scanners whose failure mode is silent u
 Rigor: one red test per §1 Must/Reject — the PRIMARY cases + primary edge cases — is the gated floor. Minor/secondary behaviors are DESCRIBED in prose below as build-guidance — no `covers:` tag, no red test, not gated. Add a Given/When/Then line inline ONLY when a human stakeholder needs a readable case — never as ceremony; the test_plan is the canonical encoding of every scenario.
 
 Tests live in: `apps/gateway/tests/repo_hygiene/` · MUST run red before Build.
-<!-- declare paths as backticked tokens on this line: `./…` = this task dir · a token with "/" = the project root · a bare name = a sibling of the previous token's dir · a directory counts its *.py files (non-recursive) · declared counts marked † · outside the project root counts 0. The test_plan bullets' `covers:` tails are machine-read too: `add.py locate path::test_name` resolves a failing test to the frozen §3 clause it proves -->
-<!-- NON-CODING task (kind: docs · release · infra, or a non-coding project)? §4 is a failing-first ACCEPTANCE CHECK, not a script — verifiable pass/fail evidence (mkdocs build succeeds · §X covers A/B/C · every internal link resolves), red before the artifact exists and green after. Set `Tests live in: evidence` (no `./tests/`). The red→green discipline holds; only the must-be-executable-code requirement is lifted. -->
 
 ---
 
@@ -410,10 +334,16 @@ Constraints: do NOT change any test or the frozen §3 contract; stay inside §3 
       single invocation, each exit 0, on `7b96dee`: 824s / 694s / 332s, all 4570 passed · 7 skipped ·
       1 xfailed. All 8 §4 guards green (`tests/repo_hygiene/`, 24 passed). `ruff check` clean after
       `ruff format .` (2 files reformatted); `pyright` 0 errors / 0 warnings.
-- [ ] coverage did not decrease
-      The streak ran `--no-cov` by design (§5: coverage is a 1.92x wall-clock multiplier that cannot
-      change a verdict). The repo's own definition of this box is `addopts`' `--cov-fail-under=80`,
-      so one run at `-n 12` WITH coverage enabled settles it — in flight, verdict recorded below.
+- [x] coverage did not decrease
+      The streak ran `--no-cov` by design (§5). The repo's own definition of this box is `addopts`'
+      `--cov-fail-under=80`, so one run at `-n 12` WITH coverage enabled settles it:
+      `TOTAL 31348 stmts / 2782 miss / 91%` — "Required test coverage of 80% reached. Total
+      coverage: 91.13%", rc=0, 477s, 4570 passed · 7 skipped · 1 xfailed. This is also a FOURTH
+      consecutive green full-suite run, and the only one that exercised the coverage path.
+      Correction to §5's own figure while it is in view: the 1.92x coverage multiplier measured
+      earlier did not reproduce here (477s with coverage vs 332s without on a warm host, ~1.4x).
+      The multiplier is noisy on this box; the ARGUMENT for --no-cov during the streak does not
+      depend on its size, only on coverage being unable to change a test's verdict.
 - [~] no test or contract was altered during build
       NOT a clean yes, recorded rather than ticked. The §3 contract is untouched. Two §4 guards WERE
       edited after freeze — `test_no_unbounded_positive_wait` (M7) and `test_negative_wait_declarations`
@@ -479,19 +409,29 @@ Limits, stated so the verdict is not over-read:
     of the ten fixed classes fail loudly; they do not bound an eleventh.
 
 ### GATE RECORD
-Reported: <yes — the gate report (banner/ARC) rendered before this outcome recorded | no>
-Outcome: <PASS | RISK-ACCEPTED | HARD-STOP>
-If RISK-ACCEPTED -> owner: <name> · ticket: <link> · expires: <date>   (never for a security gap)
-Reviewed by: <name> · date: <date>
-
-<!-- Security is ALWAYS HARD-STOP; record exactly one outcome — no silent pass. The Refute-read verdict is recorded, never engine-blocked; a human spot-audit backstops anything unrecorded. -->
+Reported: yes
+Outcome: PASS
+Reviewed by: auto-mode (project autonomy: auto) · date: 2026-08-10
+Human review OUTSTANDING and deliberately not represented as done — two items need Tin
+specifically, both already flagged in §5/§6 rather than left for him to find:
+  1. The post-freeze edit to two frozen §4 guards (strictness-only; `re-cross` approver reads
+     `auto-mode (UNREVIEWED …)`, not his name).
+  2. Whether exit #6's tick should stand given the three limits recorded against it — classes 6
+     and 8 unguarded by design, class 10 unguarded and unenumerated (todo #105).
+No security finding at any point in this task, so no HARD-STOP was triggered. Nothing was
+RISK-ACCEPTED: there is no known-broken thing being waved through, only human review pending on
+completed and verified work. Scope-lock held throughout — zero files under `apps/gateway/src/` on
+this branch, so no green was bought by changing the product.
 
 ---
 
 ## 7 · OBSERVE — feed the next loop ▸ docs/09-the-loop.md
 
 ### Decisions (ADR)
-<harvested at done from §1/§3/§5/§6 — do not hand-edit; one actor-tagged line per decision, refilled only while this placeholder stands>
+- [AI] specify — chose <unrecorded>
+- [human] freeze — froze §3 @ v1 (approved by Tin Dang)
+- [AI] build — strategy used: waves ran W1 → W2 → (W3+W4 merged) → W5, with two deviations.
+- [AI] verify — gate PASS (reviewed by auto-mode (project autonomy: auto))
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
@@ -565,3 +505,32 @@ One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)
   own count (46 → 25 → 20 → 0) re-scans the tree each time, so it caught sites the snapshot
   never listed and refused a marker of mine that was one character off. (evidence:
   `# NEGATIVE WAIT (…)`: rejected by the guard that accepts `# NEGATIVE WAIT:`)
+- `[TDD · open]` **A guard must be RED against the tree that motivated it** — run it on the
+  pre-fix commit and require it to name the original victim. The class-4 guard's first draft was
+  GREEN against `routing_admin`, the one suite whose 5-test failure it exists to prevent, because
+  that suite reads the singleton through a route and never names the table. A guard that reports
+  zero against a known-violating tree is worse than no guard: it certifies safety it cannot see.
+  (evidence: `git worktree add $SCRATCHPAD/prefix-tree 691cace^` → 0 violations, then 1 after the
+  route link, then the same guard surfaced a genuine second polluter)
+- `[TDD · open]` **Ceremony is a guard failure mode.** The broad repair of the same guard ("any
+  suite building its own app must clear every singleton table") flagged 29 suites that never touch
+  routing config. A guard demanding 29 unnecessary DELETEs trains people to paste one unread —
+  which is exactly how the real hazard survived. Prefer a derived, narrow link and state its limit
+  over a broad rule that is technically sound and practically ignored. (evidence: 29 → 1)
+- `[TDD · open]` **When a guard false-positives, ask what the same looseness lets THROUGH.** The
+  M2 guard flagging a sibling's explanatory comment was the cheap, visible half; the identical
+  unanchored matcher in M7's guard was a false NEGATIVE that would have grandfathered an
+  undeclared fixed sleep. The false positive was the only reason the false negative was ever
+  found. (evidence: attempt 6, 1 of 2 failures)
+- `[TDD · open]` **Prove a timing property causally, not temporally.** An absolute wall-clock
+  threshold on a contended host is a flake with an alibi: `response < 0.5s` against an injected
+  1.5s delay failed at 0.586s while the property it existed to prove held by ~2.5×. Park the
+  dependency on an `asyncio.Event` and assert the response returns with it still parked — the
+  passing path then contains no wall-clock at all, and the only timeout left is reachable solely
+  by the broken implementation. The causal version also caught a vacuity the threshold version
+  had: it proves a send was actually SCHEDULED. (evidence: class 10 / todo #105)
+- `[ADD · open]` **The sleep census was the wrong population, and `UNKNOWN == 0` hid that.** Five
+  of six streak attempts died on classes owning no sleep site. A closed, machine-checked census is
+  worth exactly what its population definition is worth — key guards off the DEFECT (assertions on
+  fire-and-forget writes) rather than off the SYMPTOM that happened to be enumerable. (evidence:
+  CR v3, guards 4 → 8; classes 6/8/10 still deliberately or necessarily unguarded)

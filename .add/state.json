@@ -1240,12 +1240,12 @@
     },
     "flake-tail-burndown": {
       "title": "Kill the test-suite flake tail: 4 CI-red sites, a drop_all-after-lifespan guard, and the 89 unclassified fixed sleeps",
-      "phase": "build",
-      "gate": "none",
+      "phase": "done",
+      "gate": "PASS",
       "milestone": "release-integrity",
       "depends_on": [],
       "created": "2026-08-10T07:13:58+00:00",
-      "updated": "2026-08-10T12:07:29+00:00",
+      "updated": "2026-08-10T12:46:34+00:00",
       "relates_to": [
         "ci-flake-classification"
       ],
@@ -1291,6 +1291,31 @@
         "by": "auto-mode (UNREVIEWED \u2014 strictness-only edit to M7's guard, flagged for Tin in \u00a75)",
         "at": "2026-08-10T12:07:29+00:00",
         "from_phase": "build"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-08-10T12:45:57+00:00",
+            "reason": "scope_violation: task 'flake-tail-burndown' touched outside its declared \u00a75 Scope \u2014 tmp/add-records-attempt6.txt \u00b7 tmp/exit6-met.txt (2 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "rounds": {
+        "count": 1,
+        "history": [
+          {
+            "at": "2026-08-10T12:45:57+00:00",
+            "source": "scope",
+            "note": null
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
       }
     }
   },
@@ -1367,7 +1392,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-10T12:07:29+00:00",
+  "updated": "2026-08-10T12:46:34+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
