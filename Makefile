@@ -14,8 +14,8 @@ GATEWAY_JWT_SECRET ?= e2e-test-secret-change-me
 _ENVFILE := $(GATEWAY)/.env
 _ENVFLAG := $(if $(wildcard $(_ENVFILE)),--env-file $(_ENVFILE),)
 
-.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check ci ci-e2e \
-	edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
+.PHONY: install lint typecheck allowlist allowlist-node test test-fast migrate migrate-check migrate-parity ci ci-e2e \
+	e2e-edge edge edge-up edge-sync edge-dashboard edge-smoke edge-down edge-logs edge-ps \
 	kind-preflight kind-load kind-up kind-wait kind-diag kind-smoke kind-e2e kind-e2e-ui kind-down
 
 install:
@@ -248,6 +248,21 @@ kind-smoke:
 	@code=$$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1:$(KIND_EDGE_PORT)/api/health 2>/dev/null || echo 000); \
 	  if [ "$$code" != "000" ]; then echo "✅ edge reachable through TLS (HTTP $$code)"; \
 	  else echo "❌ edge unreachable at https://127.0.0.1:$(KIND_EDGE_PORT)"; exit 1; fi
+
+# Envoy edge e2e on the docker-compose stack (NOT kind): brings up infra/docker-compose.e2e.yml,
+# runs `pytest -m e2e`, tears the stack down on exit. Covers TLS termination, bearer authz and
+# /internal blocking — apps/gateway/tests/edge/{test_e2e_edge,test_e2e_tls,test_authz_bearer}.py,
+# 1128 lines of security-relevant surface.
+#
+# This target exists because until 2026-08-11 that suite had NO automated home and no manual one
+# either: the tests are marked `@pytest.mark.e2e`, which pyproject `addopts` deselects from every
+# run (`-m 'not e2e and not kind_e2e'`), and scripts/e2e_edge.sh was invoked by NOTHING —
+# `grep e2e_edge Makefile` returned empty, so even a human could not run it without already
+# knowing the script path. Deliberately NOT wired into `make ci`: it needs the compose stack, which
+# the CI gateway job does not have. Discoverable and runnable is the fix here; gated is a separate
+# decision. See todo #108.
+e2e-edge:
+	./scripts/e2e_edge.sh
 
 # Live core-flow e2e (v53 task 7): up (idempotent) → seed pricing → drive the edge →
 # assert an accurate, non-zero usage+cost row. Leaves the cluster up; add --down to remove.

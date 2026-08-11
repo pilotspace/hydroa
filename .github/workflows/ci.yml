@@ -105,7 +105,20 @@ jobs:
           cache-dependency-path: apps/dashboard/package-lock.json
       - name: Install
         run: npm ci
+      - name: Lint
+        # `npm run lint` = `eslint .`, declared in package.json since the dashboard
+        # existed but never actually RUN by anything. Next 15 and earlier ran ESLint as
+        # part of `next build`, so the Build step below covered it silently; Next 16
+        # REMOVED that, and the gate went dark at the Next 16 upgrade (#3) with nothing
+        # reporting the change. When first executed on 2026-08-11 it was red with 5
+        # errors — 4 of them one real defect (refs written during render in
+        # useVerifyPoll). A declared check that nothing invokes reports green forever;
+        # see todo #107.
+        run: npm run lint
       - name: Test
         run: npx vitest run
       - name: Build
+        # NOTE: this DOES still typecheck TypeScript — next.config.ts sets neither
+        # `typescript.ignoreBuildErrors` nor `eslint.ignoreDuringBuilds`. It is only
+        # the ESLint half that Next 16 dropped, which is why Lint is now its own step.
         run: npx next build

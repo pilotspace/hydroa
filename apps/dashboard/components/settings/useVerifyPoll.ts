@@ -74,10 +74,20 @@ export function useVerifyPoll<TVerified>(params: {
   const verifyRef = useRef(params.verify);
   const onVerifiedRef = useRef(params.onVerified);
   const ceilingRef = useRef(config.ceilingMs);
-  idsRef.current = pollableIds;
-  verifyRef.current = params.verify;
-  onVerifiedRef.current = params.onVerified;
-  ceilingRef.current = config.ceilingMs;
+  // Refreshed AFTER commit, not during render. These four assignments used to sit
+  // bare in the render body, which `react-hooks/refs` reports as an error: a render
+  // can be started and thrown away under concurrent React, and a ref written by a
+  // discarded render keeps a value that never became UI. Every reader here runs
+  // post-commit — the interval below fires on a timer, and the `idsKey` effect is
+  // declared after this one, so React flushes this first — which makes the move
+  // behaviour-preserving rather than a workaround for the lint rule.
+  // No dependency array on purpose: "latest value" means every render.
+  useEffect(() => {
+    idsRef.current = pollableIds;
+    verifyRef.current = params.verify;
+    onVerifiedRef.current = params.onVerified;
+    ceilingRef.current = config.ceilingMs;
+  });
 
   // Per-claim lifecycle (refs — never trigger a render, survive across ticks).
   const startedAt = useRef<Map<string, number>>(new Map());

@@ -26,6 +26,7 @@ import pytest
 import redis.asyncio as aioredis
 from sqlalchemy import text
 
+from gateway.agent_oauth.infrastructure import ip_rate_limiter
 from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
@@ -69,11 +70,41 @@ async def _make_app_and_client(custom_settings: Settings) -> tuple[Any, httpx.As
     )
 
 
+class _FrozenClock:
+    """Stands in for the `time` module `ip_rate_limiter` imported, pinned mid-bucket.
+
+    20s past a minute boundary, so neither `_window_key`'s `time.time() // 60` nor
+    `_seconds_to_next_window`'s modulo can roll while a test is running.
+    """
+
+    _T = 1_000_000_020.0
+
+    @staticmethod
+    def time() -> float:
+        return _FrozenClock._T
+
+
 @pytest.fixture
 async def low_rpm_app_and_client(
     request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[Any, httpx.AsyncClient]]:
     """App+client with token_rpm=2 and trusted_proxy_hops from the test's param (default 1)."""
+    # The limiter buckets on `int(time.time() // 60)` — a FIXED window aligned to the UTC
+    # minute. Each S2 test below fires 3 requests and asserts the 3rd is 429, which silently
+    # assumes all three land in ONE bucket. They almost always do (the calls take ~2ms), but
+    # when a run straddles a minute boundary the counter resets and the 3rd request is
+    # ADMITTED with 400 instead. That is exactly what failed CI on PR #102 — [400, 400, 400]
+    # — while the identical commit had passed on main minutes earlier.
+    #
+    # Freezing the limiter's clock deletes a variable these tests are not about. Their
+    # subject is WHICH hop the resolver keys on (the rightmost, Envoy-appended one), not
+    # window arithmetic, so the proof becomes causal — same key => same bucket => limited —
+    # rather than contingent on wall-clock alignment. This is the class-10 family in todo
+    # #105: a temporal assumption masquerading as a structural assertion. Do NOT "fix" a
+    # recurrence by re-running; the failure was reproduced deterministically by advancing
+    # this same clock 40s per call.
+    monkeypatch.setattr(ip_rate_limiter, "time", _FrozenClock(), raising=True)
     hops = getattr(request, "param", 1)
     s = Settings(
         database_url=TEST_DATABASE_URL,
