@@ -119,6 +119,64 @@ Issues/Risks (shared): the CI failure is an ORG BILLING condition, not code — 
 - [ ] each Exit criterion above is satisfied by a Cross-task evidence row or a Ship-by-domain change (cite which)
 - goal: <restate + the one evidence line that proves it>
 
+## Learnings
+
+The through-line of this milestone: **a check that never reaches a verdict reports green.** It
+cost 6+ releases of admin-merge history and turned up in five distinct shapes, three of them
+found only by going looking after the first two.
+
+1. **Masked gates — the five shapes seen here.** (a) A gate ORDERED BEHIND a failing step, so
+   one red test skips it (`migrate-parity`, which hid 16 unregistered ORM modules for months).
+   (b) A gate INVOKED BY NOTHING — `npm run lint` was declared since the dashboard existed and
+   never run; Next 16 silently dropped the `next build` ESLint pass and the gate went dark at
+   the upgrade with nothing reporting it. (c) A gate PERMANENTLY RED AND OPT-IN, so its result
+   is habitually ignored. (d) An artifact upload with `if-no-files-found: warn`, which uploads
+   nothing and lets the downstream gate "pass" having measured zero. (e) A SKIPPED required
+   check, which is not a failing one — a bare `needs:` on an aggregating job would have made
+   every shard failure invisible to branch protection.
+   The lesson is procedural, not technical: after fixing one, SWEEP for the others. Three of
+   these were found only because we went looking (todos #107/#108/#109).
+
+2. **Never accept a dry run as proof of an enforcement boundary.** `git push --dry-run`
+   reported success against protected `main` because it never sends the ref update, so the
+   server never evaluates protection. Only a REFUSED REAL OPERATION proves a gate — here an
+   admin merge rejected with HTTP 405. This nearly produced a signed-off exit criterion on
+   evidence that meant nothing.
+
+3. **A blocked API can have two independent causes, and fixing one silently leaves the other.**
+   Branch protection 403'd for ~6 releases and was recorded as an org-billing problem. It was
+   actually plan + repository VISIBILITY; making the repo public fixed it instantly. Billing
+   was a real but separate fault. Re-diagnose from scratch when a workaround has outlived its
+   original explanation.
+
+4. **Every timeout must come from an OBSERVED run, never an extrapolation.** Three guessed caps
+   (30/75/60) produced three `cancelled` runs that proved nothing; the 75 came from scaling a
+   12-core dev host to a 4-core runner. And when the unit of work changes, RE-DERIVE — after
+   sharding, the whole-suite 120 left a hung shard burning two hours (todo #112).
+
+5. **In CI, the scaling limit is usually not the one you are optimising.** More xdist workers
+   on one box did nothing (4 vCPUs shared with the service containers, a ~1.92x coverage
+   multiplier, one contended database). More BOXES worked — 65-82 min to ~13. But then the
+   binding constraint moved again: the Free plan's 5-CONCURRENT-JOB cap means past 4 shards the
+   pipeline gets SLOWER. "Free" is not "unlimited", and we shipped 6 shards before measuring.
+
+6. **Reproduce load-dependent flakes by DELAY INJECTION, not by re-running.** Wrapping the
+   deciding seam in a sleep loaded as an external `-p` plugin cracked three "cannot reproduce"
+   flakes in seconds each, and forced the less-common outcome of a legal race. Re-running had
+   already failed 0/20 on one of them.
+
+7. **A guard must be RED against the tree that motivated it.** A new guard that is green on the
+   pre-fix commit is worse than none, because it advertises coverage it does not have. Keep a
+   `<fix>^` worktree and require the guard to name the original victim. Corollary learned the
+   hard way here: guards must also cross-check DECLARATIONS OF THE SAME FACT — `SHARDS` and the
+   matrix length were two spellings of one number, and the drift is silent in the direction
+   that skips tests.
+
+8. **Fixing the flake tail means working the CLASS, not the sightings.** Two consecutive runs
+   had 8 failures each with only 3 in common, so "8 failures" was a sighting and not the
+   population. Five of six streak attempts died on classes owning no sleep site at all, which
+   is why the sleep census was the wrong population to reason from.
+
 ## Release steps
 - [ ] open a PR from the Close ship-review; the human reviews + merges (the FIRST merge that goes through required checks rather than admin-merge — that is itself the milestone's proof)
 - [ ] cut 0.14.0 "release integrity" — CHANGELOG + RELEASES rows
