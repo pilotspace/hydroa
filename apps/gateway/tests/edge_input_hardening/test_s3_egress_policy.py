@@ -271,6 +271,9 @@ async def test_allow_all_egress_policy_never_denies() -> None:
 
 
 def test_azure_completion_upstream_client_never_follows_redirects() -> None:
+    # EGRESS: construction-only — asserts on the client's follow_redirects flag; no request
+    # is issued, so the egress policy is never consulted. Same shape as the declaration on
+    # test_azure_ad_token_provider_client_never_follows_redirects below.
     upstream = AzureCompletionUpstream(token_provider_cache=None)
     assert upstream._client.follow_redirects is False  # noqa: SLF001
 

@@ -197,6 +197,33 @@ def _violations() -> list[str]:
     return sorted(found)
 
 
+def test_the_route_link_this_guard_depends_on_still_resolves() -> None:
+    """The by-route arm must not go dead silently.
+
+    `_violations` finds a reader two ways: the suite NAMES the table, or the suite calls a
+    ROUTE that reads it. The second arm is the one that matters — the suite whose failure
+    motivated this guard never names the table, so the first version of the guard was GREEN
+    against the exact tree it was written for.
+
+    That arm rests on a one-hop substring link from table name to `APIRouter(prefix=...)`, and
+    the docstring on `singleton_reading_routes` names its own limit: a router reaching the
+    singleton through a differently-named indirection would not be linked. Nothing checked
+    that the link still resolves — so a rename could quietly return the guard to its original
+    blind state, passing all the while. This is that check.
+    """
+    routes = singleton_reading_routes()
+    assert routes, "no singleton tables discovered — see the marker self-check in _violations"
+    unlinked = sorted(table for table, prefixes in routes.items() if not prefixes)
+    assert not unlinked, (
+        f"these singleton tables resolve to NO route prefix: {unlinked}. The by-route arm of "
+        "this guard is therefore inert for them, and a suite that reads the table only through "
+        "an HTTP call — the exact case this guard exists for — would no longer be flagged. "
+        "Either restore the naming link the match relies on (a router that reads the table "
+        "imports something carrying the table's own spelling) or replace the heuristic; do not "
+        "delete this assertion, which would leave the guard green and blind."
+    )
+
+
 def test_suite_reading_a_singleton_row_clears_it() -> None:
     """CR v3 class 4 — a singleton row is global state; a suite that reads it must own it.
 

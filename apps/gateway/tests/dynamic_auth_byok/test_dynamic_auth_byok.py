@@ -439,6 +439,9 @@ async def test_azure_wrong_credential_type_raises_provider_key_missing() -> None
         call_count += 1
         return httpx.Response(200, json=_AZURE_200)
 
+    # EGRESS: not dialed — the wrong-type credential raises ProviderKeyMissing before a URL
+    # is built, so the egress policy is never consulted. Declared rather than injected because
+    # this file is a FROZEN contract (§3 CONTRACT, FROZEN @ v25 task-3).
     adapter = AzureCompletionUpstream(  # type: ignore[call-arg]
         max_retries=0,
         backoff_base=0.0,
