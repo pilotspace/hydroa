@@ -1392,7 +1392,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T02:46:28+00:00",
+  "updated": "2026-08-11T07:05:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3185,6 +3185,54 @@
       "id": 106,
       "text": "migrations/env.py is a HAND-MAINTAINED manifest of ORM modules with nothing enforcing it \u2014 16 modules covering 24 tables had drifted out of it, and 'alembic check' proposed DROP TABLE for all of them. The rate-card import already carried a comment warning of exactly this ('mass rate-card loss') and it drifted 16 more times anyway, which is the proof that a written warning is not a guard. Two candidate fixes, deliberately NOT taken now (Tin chose the minimal hand-add 2026-08-10): (a) a test asserting every module defining __tablename__ is imported by env.py \u2014 same AST manifest-guard pattern as tests/repo_hygiene/, would have caught all 16; (b) replace the hand list with a package walk. Note the drift was invisible for months because the gateway CI job failed at the test step and never reached the migration parity guard \u2014 fixing the flakes is what exposed it.",
       "created": "2026-08-11T02:46:28+00:00",
+      "status": "open"
+    },
+    {
+      "id": 107,
+      "text": "MASKED GATE 1 \u2014 dashboard eslint never runs in CI and is RED. apps/dashboard/package.json declares \"lint\": \"eslint .\" but .github/workflows/ci.yml's dashboard job runs only vitest + next build. Next 16 REMOVED eslint-during-build, so this gate has silently not run since the Next 16 upgrade (#3). It fails today with 5 errors: 4x react-hooks/refs 'Cannot access refs during render' in components/settings/useVerifyPoll.ts:77-80 (the domain-verification poll hook \u2014 a discarded concurrent render leaves the latest-value refs holding values that never committed; fix = move the 4 assignments into an effect), and 1x react/no-unescaped-entities in components/plan/PlanSeatsPage.tsx:197. Fix the 5, THEN add 'npm run lint' to the dashboard job so it cannot regress. Verified NOT masked: next.config.ts sets neither ignoreBuildErrors nor ignoreDuringBuilds, so TypeScript IS genuinely checked by next build.",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 108,
+      "text": "MASKED GATE 2 \u2014 the Envoy edge suite (1128 lines) has NO automated home and is unreachable from make. apps/gateway/tests/edge/{test_e2e_edge,test_e2e_tls,test_authz_bearer}.py are @pytest.mark.e2e, which pyproject addopts deselects from EVERY run (-m 'not e2e and not kind_e2e'). Their driver scripts/e2e_edge.sh (infra/docker-compose.e2e.yml) is invoked by NO Makefile target \u2014 grep 'e2e_edge' Makefile returns nothing, so even a human cannot run it without knowing the script path. This surface covers TLS termination, bearer authz and /internal blocking, i.e. it is security-relevant, and nothing has exercised it automatically. Minimum fix: add a make target that runs e2e_edge.sh so it is discoverable and runnable; deciding whether it can be gated in CI is separate (it needs the compose stack).",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 109,
+      "text": "MASKED GATE 3 \u2014 kind-e2e has NEVER passed: 30 runs, 30 failures, 0 success, ever (gh run list --workflow=kind-e2e.yml). Its own header admits '0 green in 15 attempts'; the true figure is now 0/30. It is workflow_dispatch-only, so it reports nothing on PRs. This matters because kind-e2e is the DECLARED automated proof of the e2e exit criterion \u2014 a criterion whose proof surface has never once produced a pass. Either make it green or stop describing it as the proof; a permanently-red opt-in job is indistinguishable from no job. R7-sized (45-min k8s pipeline, needs real debugging), not a quick fix.",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 110,
+      "text": "RELEASE-PROVENANCE DRIFT \u2014 the Helm chart has not been bumped in 9 releases and the release checklist has no step that would. charts/ai-proxy/Chart.yaml carries appVersion \"0.4.0\" (chart version 0.1.0), values.yaml pins BOTH image tags to \"0.4.0\", and values-prod.yaml overrides only the GATEWAY tag to \"0.4.0-prod\" \u2014 the dashboard tag is not overridden for prod at all, so it falls back to plain \"0.4.0\". Meanwhile apps/gateway/pyproject.toml says 0.13.0. Nothing in .github/workflows builds or publishes images (only ci.yml + kind-e2e.yml exist), so images are entirely hand-built per docs/runbooks/cloud-deploy.md:35-41. The trap: that runbook tells the operator to build and push images 'tagged to match image.tag in values-prod.yaml' \u2014 i.e. match the image to the FILE, not the file to the release. Followed literally at 0.14.0 you push an image tagged 0.4.0-prod containing 0.14.0 code, and the deployed tag then LIES about what is running, which is exactly the kind of thing SOC 2 CC8.1 asks you to evidence. Fix: (a) bump Chart.yaml appVersion + both values.yaml tags + the values-prod override as part of the release cut, (b) add the dashboard tag override to values-prod.yaml, (c) write the bump into a release checklist so it cannot drift again, (d) consider a publish workflow so the image is built from the tagged commit rather than a laptop. Found during 0.14.0 release prep. Note CHANGELOG.md ALSO has no 0.13.0 entry \u2014 same provenance family as the missing v0.9.0/v0.10.0 tags.",
+      "created": "2026-08-11T05:14:41+00:00",
+      "status": "open"
+    },
+    {
+      "id": 111,
+      "text": "FLAKE CLASS 10, SECOND POPULATION \u2014 fixed-window rate-limit tests that assume N requests land in ONE wall-clock minute. Distinct from todo #105 (absolute elapsed-time thresholds): here nothing measures duration at all \u2014 the test fires 3 requests and asserts the 3rd is 429, which silently assumes no minute boundary falls between them. Every fixed-window limiter buckets on int(time.time() // 60): agent_oauth/infrastructure/ip_rate_limiter.py, scim/infrastructure/rate_limiter.py, domain_capture/infrastructure/rate_limiter.py, plus the signup / access-request / invite-preview per-IP knobs in core/config.py. Population: 19 '== 429' assertions across 13 test files; 3 of them (S2.1/S2.2/S2.3 in edge_input_hardening/test_s2_xff_trust.py) FIXED 2026-08-11 by freezing the limiter clock inside the low_rpm_app_and_client fixture. The other ~16 need the same PER-SITE judgement \u2014 some use a single request or a mocked limiter and are inert. REPRODUCTION RECIPE (do NOT re-run and hope): load an EXTERNAL -p plugin that replaces the limiter module's time with a stand-in advancing 40s per call; the boundary crossing then happens every run and the CI failure reproduces in under a second. This class likely accounts for part of the rotating flake tail that needed 7 attempts to yield 3 green runs \u2014 a DIFFERENT boundary-sensitive file can lose the race each run, which is exactly the 'rotates between runs' signature. Candidate guard: an AST check that a test asserting 429 against a fixed-window limiter also pins the clock. Motivating evidence: PR #102 gateway FAILED on a docs-only diff (1 failed / 4569 passed) while the identical commit passed on main minutes earlier.",
+      "created": "2026-08-11T05:31:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 112,
+      "text": "CI: tighten the gateway timeout-minutes to the measured SHARD wall-clock. The 120 cap and its MIN_GATEWAY_TIMEOUT_MINUTES=120 floor were both sized against the WHOLE 82-min suite; after the 6-way shard matrix each job runs ~1/6 of it, so a hung shard now burns 2 hours before reporting and defeats the fast-feedback the sharding bought. Do NOT guess the new number \u2014 every timeout figure in that comment block is MEASURED. Take the slowest shard duration from the first few PR runs, set the cap to ~1.5x it, and lower the guard floor in the same commit (the floor's own rationale, 'a timeout below the suite's wall-clock is a flake generator', is still right; only the relevant wall-clock changed).",
+      "created": "2026-08-11T06:57:43+00:00",
+      "status": "open"
+    },
+    {
+      "id": 113,
+      "text": "Pin container image digests, prod first. Verified 2026-08-11: infra/docker-compose.prod.yml floats pgvector/pgvector:pg16 and redis:7-alpine; dev additionally runs minio/minio:latest and minio/mc:latest (:latest is unpinned by construction). The prod pgvector float is not hygiene, it is the DOCUMENTED corruption mechanism: a floating minor can swap the glibc/musl base under a live data volume, which is exactly the collation-version mismatch the pgvector runbook rehearsal (PR #102) proved corrupts indexes SILENTLY -- and REFRESH COLLATION VERSION errors on the musl case, so the documented same-volume remedy CANNOT clear the preflight; only dump/restore finishes. So an unattended prod pull can produce an unrecoverable-in-place database. Pin by sha256 digest, not by a longer tag (tags are mutable). SOC 2 CC8.1 also wants reproducible deploys, and this is on the audit path. Order: prod pgvector first, then prod redis, then the dev minio pair.",
+      "created": "2026-08-11T06:59:56+00:00",
+      "status": "open"
+    },
+    {
+      "id": 114,
+      "text": "CLOSED NEGATIVE, do not re-try: COVERAGE_CORE=sysmon cannot remove the ~1.92x coverage multiplier here. Tested 2026-08-11 on coverage 7.14.1 / Python 3.12.13. coverage.py REFUSES the sys.monitoring core whenever concurrency=greenlet is set, which apps/gateway/pyproject.toml [tool.coverage.run] sets because SQLAlchemy's async bridge runs ORM code inside greenlet switches: 'CoverageWarning: Cant use core=sysmon: it doesnt support concurrency=greenlet, using default core (no-sysmon)'. Note the failure mode -- it FALLS BACK with a warning rather than erroring, so setting the env var in CI and judging by wall-clock alone would show no improvement with no visible reason. Dropping concurrency=greenlet would let sysmon engage but would under-report every async DB code path, i.e. buying speed by weakening the measurement the 80% gate depends on -- not acceptable. The remaining real levers stay: shard/concurrency-slot tuning, and the create_app + per-test-engine fixture work in todo #100 (still sequenced behind todo #99).",
+      "created": "2026-08-11T07:05:29+00:00",
       "status": "open"
     }
   ]
