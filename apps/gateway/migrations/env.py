@@ -85,6 +85,40 @@ import gateway.video.infrastructure.orm  # noqa: F401 — registers VideoGenerat
 # payload-capture-store: registers RequestLogRow on Base.metadata.
 import gateway.logs.infrastructure.orm  # noqa: F401 — registers RequestLogRow on Base.metadata
 
+# ---------------------------------------------------------------------------
+# 2026-08-10 — 16 modules that were NEVER registered here, covering 24 tables.
+#
+# `alembic check` proposed DROP TABLE for every one of them. The rate-card note above
+# already spelled out this exact failure ("autogenerate would not see ... and would propose
+# DROP TABLE for it — mass rate-card loss") and the list drifted 16 more times anyway,
+# because nothing enforces it: this file is a hand-maintained manifest, and adding a table
+# anywhere in the codebase does not fail until someone runs `alembic check`.
+#
+# It stayed invisible for months because CI never got this far — the gateway job failed at
+# the test step and aborted before the migration parity guard ran. The first fully-green
+# suite run (PR #100) is what exposed it.
+#
+# ⚠ Adding a new table? Add its module here too, or autogenerate will propose dropping it.
+# A guard that makes this fail loudly rather than silently is todo #106 — note that the
+# warning on the rate-card import above is evidence that a comment alone does not work.
+# ---------------------------------------------------------------------------
+import gateway.access_requests.infrastructure.orm  # noqa: F401 — access_requests
+import gateway.auth.infrastructure.saml_orm  # noqa: F401 — saml_provider_configs
+import gateway.batches.infrastructure.orm  # noqa: F401 — batch_jobs, batch_job_items
+import gateway.billing.infrastructure.orm  # noqa: F401 — invoices, invoice_lines, invoice_corrections
+import gateway.compliance.infrastructure.orm  # noqa: F401 — tenant_report_schedules, compliance_report_runs
+import gateway.credits.infrastructure.orm  # noqa: F401 — tenant_credit_balances, credit_ledger
+import gateway.domain_capture.infrastructure.orm  # noqa: F401 — tenant_domain_claims
+import gateway.files.infrastructure.orm  # noqa: F401 — files
+import gateway.finetune.infrastructure.orm  # noqa: F401 — finetune_jobs, finetune_job_events
+import gateway.guardrail_analytics.infrastructure.orm  # noqa: F401 — guardrail_verdict_events
+import gateway.payments.infrastructure.orm  # noqa: F401 — checkout_sessions
+import gateway.responses_store.infrastructure.orm  # noqa: F401 — stored_responses
+import gateway.scim.infrastructure.orm  # noqa: F401 — scim_tokens
+import gateway.tenants.infrastructure.region_pricing_orm  # noqa: F401 — tenant_region_multiplier_overrides
+import gateway.tenants.infrastructure.tier_markup_orm  # noqa: F401 — tenant_priority_markup_overrides
+import gateway.vector_stores.infrastructure.orm  # noqa: F401 — vector_stores, vector_store_files, vector_store_chunks
+
 from gateway.core.db import Base
 
 # ---------------------------------------------------------------------------
