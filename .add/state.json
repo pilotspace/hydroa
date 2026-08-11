@@ -1392,7 +1392,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T05:31:35+00:00",
+  "updated": "2026-08-11T07:05:29+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -3215,6 +3215,24 @@
       "id": 111,
       "text": "FLAKE CLASS 10, SECOND POPULATION \u2014 fixed-window rate-limit tests that assume N requests land in ONE wall-clock minute. Distinct from todo #105 (absolute elapsed-time thresholds): here nothing measures duration at all \u2014 the test fires 3 requests and asserts the 3rd is 429, which silently assumes no minute boundary falls between them. Every fixed-window limiter buckets on int(time.time() // 60): agent_oauth/infrastructure/ip_rate_limiter.py, scim/infrastructure/rate_limiter.py, domain_capture/infrastructure/rate_limiter.py, plus the signup / access-request / invite-preview per-IP knobs in core/config.py. Population: 19 '== 429' assertions across 13 test files; 3 of them (S2.1/S2.2/S2.3 in edge_input_hardening/test_s2_xff_trust.py) FIXED 2026-08-11 by freezing the limiter clock inside the low_rpm_app_and_client fixture. The other ~16 need the same PER-SITE judgement \u2014 some use a single request or a mocked limiter and are inert. REPRODUCTION RECIPE (do NOT re-run and hope): load an EXTERNAL -p plugin that replaces the limiter module's time with a stand-in advancing 40s per call; the boundary crossing then happens every run and the CI failure reproduces in under a second. This class likely accounts for part of the rotating flake tail that needed 7 attempts to yield 3 green runs \u2014 a DIFFERENT boundary-sensitive file can lose the race each run, which is exactly the 'rotates between runs' signature. Candidate guard: an AST check that a test asserting 429 against a fixed-window limiter also pins the clock. Motivating evidence: PR #102 gateway FAILED on a docs-only diff (1 failed / 4569 passed) while the identical commit passed on main minutes earlier.",
       "created": "2026-08-11T05:31:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 112,
+      "text": "CI: tighten the gateway timeout-minutes to the measured SHARD wall-clock. The 120 cap and its MIN_GATEWAY_TIMEOUT_MINUTES=120 floor were both sized against the WHOLE 82-min suite; after the 6-way shard matrix each job runs ~1/6 of it, so a hung shard now burns 2 hours before reporting and defeats the fast-feedback the sharding bought. Do NOT guess the new number \u2014 every timeout figure in that comment block is MEASURED. Take the slowest shard duration from the first few PR runs, set the cap to ~1.5x it, and lower the guard floor in the same commit (the floor's own rationale, 'a timeout below the suite's wall-clock is a flake generator', is still right; only the relevant wall-clock changed).",
+      "created": "2026-08-11T06:57:43+00:00",
+      "status": "open"
+    },
+    {
+      "id": 113,
+      "text": "Pin container image digests, prod first. Verified 2026-08-11: infra/docker-compose.prod.yml floats pgvector/pgvector:pg16 and redis:7-alpine; dev additionally runs minio/minio:latest and minio/mc:latest (:latest is unpinned by construction). The prod pgvector float is not hygiene, it is the DOCUMENTED corruption mechanism: a floating minor can swap the glibc/musl base under a live data volume, which is exactly the collation-version mismatch the pgvector runbook rehearsal (PR #102) proved corrupts indexes SILENTLY -- and REFRESH COLLATION VERSION errors on the musl case, so the documented same-volume remedy CANNOT clear the preflight; only dump/restore finishes. So an unattended prod pull can produce an unrecoverable-in-place database. Pin by sha256 digest, not by a longer tag (tags are mutable). SOC 2 CC8.1 also wants reproducible deploys, and this is on the audit path. Order: prod pgvector first, then prod redis, then the dev minio pair.",
+      "created": "2026-08-11T06:59:56+00:00",
+      "status": "open"
+    },
+    {
+      "id": 114,
+      "text": "CLOSED NEGATIVE, do not re-try: COVERAGE_CORE=sysmon cannot remove the ~1.92x coverage multiplier here. Tested 2026-08-11 on coverage 7.14.1 / Python 3.12.13. coverage.py REFUSES the sys.monitoring core whenever concurrency=greenlet is set, which apps/gateway/pyproject.toml [tool.coverage.run] sets because SQLAlchemy's async bridge runs ORM code inside greenlet switches: 'CoverageWarning: Cant use core=sysmon: it doesnt support concurrency=greenlet, using default core (no-sysmon)'. Note the failure mode -- it FALLS BACK with a warning rather than erroring, so setting the env var in CI and judging by wall-clock alone would show no improvement with no visible reason. Dropping concurrency=greenlet would let sysmon engage but would under-report every async DB code path, i.e. buying speed by weakening the measurement the 80% gate depends on -- not acceptable. The remaining real levers stay: shard/concurrency-slot tuning, and the create_app + per-test-engine fixture work in todo #100 (still sequenced behind todo #99).",
+      "created": "2026-08-11T07:05:29+00:00",
       "status": "open"
     }
   ]
