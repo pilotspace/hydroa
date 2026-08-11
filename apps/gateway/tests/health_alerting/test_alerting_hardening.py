@@ -286,7 +286,10 @@ async def test_h3_webhook_sink_refuses_metadata_target_before_dial() -> None:
     forked) and refuses — fail CLOSED — before ever touching the network.
     """
     from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
-    from gateway.core.egress_policy import EgressDeniedError
+    from gateway.core.egress_policy import (
+        DenyPrivateAndMetadataEgressPolicy,
+        EgressDeniedError,
+    )
 
     def _must_not_dial(request: httpx.Request) -> httpx.Response:
         raise AssertionError(
@@ -295,7 +298,11 @@ async def test_h3_webhook_sink_refuses_metadata_target_before_dial() -> None:
 
     transport = httpx.MockTransport(_must_not_dial)
     client = httpx.AsyncClient(transport=transport)
-    sink = HttpxWebhookSink(client=client)
+    # The DENYING policy is what this test is about, so it is passed explicitly rather than
+    # inherited from the constructor default. Same object either way — but a test whose whole
+    # subject is the policy should not leave which policy to an unstated default. No DNS
+    # lookup: the target is a literal IP, which the policy validates directly.
+    sink = HttpxWebhookSink(client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy())
 
     with pytest.raises(EgressDeniedError):
         await sink.post_json("http://169.254.169.254/latest/meta-data/", {"a": 1})
@@ -306,7 +313,10 @@ async def test_h3_webhook_sink_refuses_metadata_target_before_dial() -> None:
 async def test_h3_webhook_sink_refuses_loopback_target_before_dial() -> None:
     """Same as above for a loopback target (also always denied)."""
     from gateway.alerting.infrastructure.httpx_webhook_sink import HttpxWebhookSink
-    from gateway.core.egress_policy import EgressDeniedError
+    from gateway.core.egress_policy import (
+        DenyPrivateAndMetadataEgressPolicy,
+        EgressDeniedError,
+    )
 
     def _must_not_dial(request: httpx.Request) -> httpx.Response:
         raise AssertionError(
@@ -315,7 +325,8 @@ async def test_h3_webhook_sink_refuses_loopback_target_before_dial() -> None:
 
     transport = httpx.MockTransport(_must_not_dial)
     client = httpx.AsyncClient(transport=transport)
-    sink = HttpxWebhookSink(client=client)
+    # Explicit for the same reason as the sibling above: the policy IS the subject here.
+    sink = HttpxWebhookSink(client=client, egress_policy=DenyPrivateAndMetadataEgressPolicy())
 
     with pytest.raises(EgressDeniedError):
         await sink.post_json("http://127.0.0.1:8080/admin", {"a": 1})

@@ -334,9 +334,14 @@ async def test_BV8_fail_closed_contextvar_unset(
         BedrockCompletionUpstream(endpoint_url=bedrock_server["base_url"]).complete(
             {"model": "anthropic.claude-3-haiku-20240307-v1:0", "messages": payload["messages"]}
         ),
-        AzureCompletionUpstream(token_provider_cache=None).complete(
-            {"model": "az-chat", "messages": payload["messages"]}
-        ),
+        # The policy is CHOSEN rather than inherited. This assertion is that the credential
+        # check fires before anything is dialed, so the production deny-policy is never
+        # consulted today — but that ordering is a property of the adapter, not of this test.
+        # Injecting keeps the test independent of it; inheriting production would turn a
+        # future reordering into a live DNS lookup inside a MockTransport suite.
+        AzureCompletionUpstream(
+            token_provider_cache=None, egress_policy=AllowAllEgressPolicy()
+        ).complete({"model": "az-chat", "messages": payload["messages"]}),
     ]
     for coro in cases:
         with pytest.raises(ProviderKeyMissing) as exc_info:

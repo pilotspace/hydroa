@@ -32,6 +32,13 @@ from tests._polling import poll_until
 # We import lazily inside each test so that the file can be collected (only the
 # affected test fails at its own import, not the whole module).
 
+# EGRESS: module not dialed — every one of the 9 AzureADTokenProviderCache constructions here
+# injects a fake `provider_factory`, so the real AzureADTokenProvider (the only thing that
+# would consult an egress policy, via set_egress_policy push-down) is never built and no dial
+# is ever attempted. Declared once at module level rather than nine times per call: this file
+# is a FROZEN contract, and the docstring above already states "No real network; no real AAD
+# HTTP" — this marker is the machine-readable form of that same claim.
+
 
 # ---------------------------------------------------------------------------
 # Helpers

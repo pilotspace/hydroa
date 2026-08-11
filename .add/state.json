@@ -150,7 +150,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T15:01:04+00:00",
+  "updated": "2026-08-11T15:13:32+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1815,7 +1815,7 @@
       "id": 80,
       "text": "tests/azure_aad + tests/azure_audio resolve real hostnames (r.openai.azure.com, login.microsoftonline.com) because EgressPolicy.check() resolves the target as the SSRF/DNS-rebinding control. So the suite still needs a working resolver for 14 tests. A blanket DNS block was tried in suite-stability M11 and reverted: blocking or synthesising DNS makes a SECURITY control observe harness-chosen answers. Right fix is to give those suites an injected resolver/policy double, not a global socket patch. Owner: Tin Dang",
       "created": "2026-07-29T10:50:34+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 81,
@@ -1959,7 +1959,7 @@
       "id": 104,
       "text": "GUARD GAP from flake-tail-burndown: the 4 repo_hygiene guards only cover asyncio.sleep sites, but the first proving run's 6 failures were BOTH non-sleep isolation defects. Two guards worth adding: (a) a suite whose Settings point at the shared test DB must clear the GLOBAL/singleton rows it reads (routing_config is one row per database; routing_admin bypasses the root app fixture's per-test DELETE) \u2014 see closed todo #99; (b) an Azure/HTTP provider constructed in tests must inject egress_policy= (azure_audio omitted it and performed a LIVE DNS lookup in a suite documented as 'no network required'; every sibling Azure suite already injects AllowAllEgressPolicy). Both classes are 'a fix that did not propagate', the same meta-pattern M6 exists for.",
       "created": "2026-08-10T10:41:20+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 105,
