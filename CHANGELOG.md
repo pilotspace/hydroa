@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.14.1 — 2026-08-11 — Reproducible release artifacts
+
+Patch release. 0.14.0 made the delivery substrate *attestable*; it did not make the
+built artifact *reproducible*. Every production image floated, so the bits a deploy
+actually ran were decided by when the build happened rather than by the tag. That is
+the same CC8.1 gap 0.14.0 set out to close, one layer down — and it is why these
+fixes are cut as their own tag instead of being folded into the published `v0.14.0`,
+which predates all three of them.
+
+### Fixed
+- **Every production image is now digest-pinned** (`infra/docker-compose.prod.yml`).
+  The Postgres pin is a **data-loss control, not hygiene**: `pg16` is a floating MINOR,
+  so an unattended `docker compose pull` can swap the image's libc base under a live
+  data volume, and a glibc↔musl change alters the collation version the cluster was
+  built with. The 2026-08-10 runbook walk confirmed both halves empirically — indexes
+  corrupt SILENTLY, and the documented same-volume remedy does not work, because
+  `REFRESH COLLATION VERSION` errors with `invalid collation version change` and the
+  preflight can therefore never be cleared in place. Recovery is dump/restore. Envoy
+  is the second: `v1.29-latest` floats BY NAME on the component that terminates TLS
+  and enforces `ext_authz`, so a pull can change the security boundary with no review.
+- **The gateway image runs the interpreter CI actually validated.** It built `FROM`
+  a moving uv tag carrying Python **3.12.12** while `.python-version` and ci.yml both
+  pinned **3.12.13**, so production ran an interpreter no gate had ever executed.
+  This lands on a security control: `core/egress_policy.py` decides SSRF verdicts from
+  `ipaddress` predicates whose values changed *inside* the 3.12 series — `is_reserved`
+  on `::ffff:10.20.30.40` is True on 3.12.3 and False on 3.12.4+ (CVE-2024-4032 /
+  gh-113171). No live hole: 3.12.12 and 3.12.13 were checked against each other on all
+  five egress-relevant predicates and agree. This was a reproducibility defect, fixed
+  before it became a security one.
+
+  Note for future bumps: **uv cannot install 3.12.13 at all.** It can only provision
+  what python-build-standalone publishes, whose newest 3.12 is 3.12.12, so
+  `uv python install` fails outright. The image is therefore based on the official
+  digest-pinned `python:3.12.13-slim-bookworm` with `uv` copied in as a static binary.
+  Aligning CI and dev *down* to 3.12.12 was rejected — the artifact should match what
+  was tested, and matching upward costs nothing.
+
+### Added
+- Standing guards for both pins, each red-checked against the tree that motivated it:
+  `test_prod_images_are_digest_pinned.py`, and
+  `test_the_production_image_pins_the_same_python_as_ci` in the CI parity suite.
+- `test_ci_python_version_is_patch_pinned_and_matches_dev` now sweeps **every** step
+  supplying a `python-version` input. It previously indexed one hard-coded step, so it
+  checked one of the two pins `ci.yml` carries and the other was free to drift. It keys
+  on the input rather than the action name — the pin has already moved from
+  `actions/setup-python` to `astral-sh/setup-uv`, and keying on the action would make
+  the check silently vacuous the next time it moves.
+
 ## 0.14.0 — 2026-08-11 — Release integrity
 
 R6 milestone. **No product features by design** — this release makes the delivery
