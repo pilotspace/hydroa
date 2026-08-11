@@ -150,7 +150,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T13:44:14+00:00",
+  "updated": "2026-08-11T14:06:57+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1965,7 +1965,7 @@
       "id": 105,
       "text": "Class 10 \u2014 absolute wall-clock latency budgets in tests are flakes with an alibi. scoped_self_serve_signup asserted 'response < 0.5s' against an injected 1.5s mail delay to prove dispatch is off the request path; under -n 12 it measured 0.586s, so the structural property held by ~2.5x and the assertion failed anyway (signup's cost IS the deliberate Argon2 timing mask). Fixed there by parking the send on an Event so the passing path has no wall-clock at all. NOT guarded and NOT enumerated: sweep tests/ for absolute-duration thresholds (elapsed <, duration_ms <, time.monotonic deltas) and convert each to a causal proof or a delay-relative one.",
       "created": "2026-08-10T12:06:51+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 106,
