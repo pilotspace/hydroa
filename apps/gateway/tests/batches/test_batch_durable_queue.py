@@ -521,6 +521,9 @@ class TestEnqueueTimeoutBounded:
             await queue.enqueue(uuid.uuid4())
         elapsed = time.monotonic() - start
 
+        # TIME BUDGET: bad path is 60s (the _hang mock's sleep); good path is enqueue's own
+        # timeout firing, which is what pytest.raises(TimeoutError) above already proves. 10s
+        # sits far below the hang and far above the bound, so only an UNBOUNDED enqueue fails.
         assert elapsed < 10, f"enqueue() took {elapsed:.1f}s — not bounded by a timeout"
 
 

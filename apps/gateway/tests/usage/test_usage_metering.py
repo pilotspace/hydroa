@@ -962,6 +962,9 @@ async def test_flush_once_returns_promptly_when_stream_is_drained(
     await flusher.flush_once()
     elapsed = time.monotonic() - started
 
+    # TIME BUDGET: good path ~0s (XREADGROUP without BLOCK returns immediately on a
+    # drained stream), bad path 5s (the socket timeout that kills a BLOCK 0 connection).
+    # 1.0s sits between them — see this test's docstring, which already reasoned it out.
     assert elapsed < 1.0, (
         f"flush_once() on a drained stream took {elapsed:.2f}s — it is blocking. "
         "XREADGROUP must be issued without BLOCK (block=None); BLOCK 0 blocks forever."
