@@ -150,7 +150,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T09:45:22+00:00",
+  "updated": "2026-08-11T13:44:14+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1893,7 +1893,7 @@
       "id": 93,
       "text": "CI gateway job can NEVER go green: .github/workflows/ci.yml sets timeout-minutes: 30 but the gateway suite takes ~37min (4559 tests), so GitHub cancels every run \u2014 main has been cancelled/failed on every run since 2026-07-23. Raise to 60. Separately, kind-e2e has 0 green runs in 15 attempts since 2026-07-20 across every branch; decide whether to fix it or stop running it on every PR, because a permanently-red check trains everyone to ignore checks. Relates to #91 (no enforceable merge gate).",
       "created": "2026-08-07T12:53:37+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 94,
@@ -1917,13 +1917,13 @@
       "id": 97,
       "text": "SECURITY-ADJACENT (fail-closed, NOT a bypass) + REPRODUCIBILITY: the egress SSRF control's behavior depends on the CPython PATCH version, and the patch version is unpinned in every environment. ROOT CAUSE, verified by running both interpreters: ipaddress.ip_address('::ffff:10.20.30.40').is_reserved is True on 3.12.3 but False on 3.12.13 (CVE-2024-4032 / gh-113171 revised the special-purpose network lists in 3.12.4). core/egress_policy.py::_is_denied_ip denies unconditionally on is_reserved BEFORE the RFC1918/ULA allow-list rescue can run, so on 3.12.3 an IPv4-mapped private address is denied and on 3.12.13 it is allowed. This is what failed CI run 31243949907 as test_write_time_opt_in_relaxes_only_private_class[[::ffff:10.20.30.40]-False] \u2014 a REAL deterministic version difference, NOT the timing flake it first looked like. Risk direction is fail-closed (more restrictive on old Python), and metadata/SSRF protection holds on BOTH versions (::ffff:169.254.169.254 is caught by the unconditional _METADATA_IPS check plus its embedded link-local), so there is NO bypass. The defect is that three environments run three interpreters: Docker ghcr.io/astral-sh/uv:python3.12-bookworm-slim (moving tag), CI setup-uv python-version '3.12' -> resolved 3.12.3, dev 3.12.13, requires-python '>=3.12'. A rebuild could silently change egress decisions in production. FIX: pin the patch version across Dockerfile + ci.yml + a .python-version file, and consider making the is_reserved deny not fire on the canonical IPv4-mapped spelling so the control is version-independent by construction.",
       "created": "2026-08-08T15:27:54+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 98,
       "text": "Dockerfile Python is still UNPINNED at the patch level: ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim is a moving tag, and a patch-pinned variant does NOT exist (verified: ghcr.io/astral-sh/uv:python3.12.13-bookworm-slim returns MISSING, the minor tag EXISTS). CI and dev are now pinned to 3.12.13 via apps/gateway/.python-version + ci.yml, guarded by test_ci_python_version_is_patch_pinned_and_matches_dev \u2014 but the DEPLOYED image can still drift to a different 3.12.x on any rebuild, which changes ipaddress predicates the egress SSRF policy reads (todo #97). Two options: (a) digest-pin the base image (ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:...), which also freezes the uv version and needs a periodic bump, or (b) let uv provision the interpreter from .python-version inside the image so the base image's python is irrelevant. Either way the change must be verified by an actual docker build + a runtime assertion of sys.version, which is why it was NOT bundled into the flake-fix commit. Extend the parity guard to cover the Dockerfile once pinned.",
       "created": "2026-08-09T09:19:19+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 99,
@@ -1947,7 +1947,7 @@
       "id": 102,
       "text": "M7 guard blind spot: a NAMED-CONSTANT sleep duration escapes it. test_no_unbounded_positive_wait's _is_fixed_sleep requires a numeric LITERAL, so 'await asyncio.sleep(_SETTLE_SECONDS)' buckets as COMPUTED and is never asked for a declaration. The 2 live sites (obs_callbacks, mcp_connector/test_call_flow) ARE correctly declared, so nothing is flaky today \u2014 but a future site can hide a guessed duration behind a module constant. Found while building the M2 guard (which had to widen its own attachment predicate to avoid reporting those 2 as ORPHANED). Fix = treat a module-level float constant as a literal; needs a CR since the guard is a frozen \u00a74 test.",
       "created": "2026-08-10T10:27:59+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 103,
@@ -1971,19 +1971,19 @@
       "id": 106,
       "text": "migrations/env.py is a HAND-MAINTAINED manifest of ORM modules with nothing enforcing it \u2014 16 modules covering 24 tables had drifted out of it, and 'alembic check' proposed DROP TABLE for all of them. The rate-card import already carried a comment warning of exactly this ('mass rate-card loss') and it drifted 16 more times anyway, which is the proof that a written warning is not a guard. Two candidate fixes, deliberately NOT taken now (Tin chose the minimal hand-add 2026-08-10): (a) a test asserting every module defining __tablename__ is imported by env.py \u2014 same AST manifest-guard pattern as tests/repo_hygiene/, would have caught all 16; (b) replace the hand list with a package walk. Note the drift was invisible for months because the gateway CI job failed at the test step and never reached the migration parity guard \u2014 fixing the flakes is what exposed it.",
       "created": "2026-08-11T02:46:28+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 107,
       "text": "MASKED GATE 1 \u2014 dashboard eslint never runs in CI and is RED. apps/dashboard/package.json declares \"lint\": \"eslint .\" but .github/workflows/ci.yml's dashboard job runs only vitest + next build. Next 16 REMOVED eslint-during-build, so this gate has silently not run since the Next 16 upgrade (#3). It fails today with 5 errors: 4x react-hooks/refs 'Cannot access refs during render' in components/settings/useVerifyPoll.ts:77-80 (the domain-verification poll hook \u2014 a discarded concurrent render leaves the latest-value refs holding values that never committed; fix = move the 4 assignments into an effect), and 1x react/no-unescaped-entities in components/plan/PlanSeatsPage.tsx:197. Fix the 5, THEN add 'npm run lint' to the dashboard job so it cannot regress. Verified NOT masked: next.config.ts sets neither ignoreBuildErrors nor ignoreDuringBuilds, so TypeScript IS genuinely checked by next build.",
       "created": "2026-08-11T04:54:35+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 108,
       "text": "MASKED GATE 2 \u2014 the Envoy edge suite (1128 lines) has NO automated home and is unreachable from make. apps/gateway/tests/edge/{test_e2e_edge,test_e2e_tls,test_authz_bearer}.py are @pytest.mark.e2e, which pyproject addopts deselects from EVERY run (-m 'not e2e and not kind_e2e'). Their driver scripts/e2e_edge.sh (infra/docker-compose.e2e.yml) is invoked by NO Makefile target \u2014 grep 'e2e_edge' Makefile returns nothing, so even a human cannot run it without knowing the script path. This surface covers TLS termination, bearer authz and /internal blocking, i.e. it is security-relevant, and nothing has exercised it automatically. Minimum fix: add a make target that runs e2e_edge.sh so it is discoverable and runnable; deciding whether it can be gated in CI is separate (it needs the compose stack).",
       "created": "2026-08-11T04:54:35+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 109,
@@ -1995,7 +1995,7 @@
       "id": 110,
       "text": "RELEASE-PROVENANCE DRIFT \u2014 the Helm chart has not been bumped in 9 releases and the release checklist has no step that would. charts/ai-proxy/Chart.yaml carries appVersion \"0.4.0\" (chart version 0.1.0), values.yaml pins BOTH image tags to \"0.4.0\", and values-prod.yaml overrides only the GATEWAY tag to \"0.4.0-prod\" \u2014 the dashboard tag is not overridden for prod at all, so it falls back to plain \"0.4.0\". Meanwhile apps/gateway/pyproject.toml says 0.13.0. Nothing in .github/workflows builds or publishes images (only ci.yml + kind-e2e.yml exist), so images are entirely hand-built per docs/runbooks/cloud-deploy.md:35-41. The trap: that runbook tells the operator to build and push images 'tagged to match image.tag in values-prod.yaml' \u2014 i.e. match the image to the FILE, not the file to the release. Followed literally at 0.14.0 you push an image tagged 0.4.0-prod containing 0.14.0 code, and the deployed tag then LIES about what is running, which is exactly the kind of thing SOC 2 CC8.1 asks you to evidence. Fix: (a) bump Chart.yaml appVersion + both values.yaml tags + the values-prod override as part of the release cut, (b) add the dashboard tag override to values-prod.yaml, (c) write the bump into a release checklist so it cannot drift again, (d) consider a publish workflow so the image is built from the tagged commit rather than a laptop. Found during 0.14.0 release prep. Note CHANGELOG.md ALSO has no 0.13.0 entry \u2014 same provenance family as the missing v0.9.0/v0.10.0 tags.",
       "created": "2026-08-11T05:14:41+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 111,
@@ -2007,7 +2007,7 @@
       "id": 112,
       "text": "CI: tighten the gateway timeout-minutes to the measured SHARD wall-clock. The 120 cap and its MIN_GATEWAY_TIMEOUT_MINUTES=120 floor were both sized against the WHOLE 82-min suite; after the 6-way shard matrix each job runs ~1/6 of it, so a hung shard now burns 2 hours before reporting and defeats the fast-feedback the sharding bought. Do NOT guess the new number \u2014 every timeout figure in that comment block is MEASURED. Take the slowest shard duration from the first few PR runs, set the cap to ~1.5x it, and lower the guard floor in the same commit (the floor's own rationale, 'a timeout below the suite's wall-clock is a flake generator', is still right; only the relevant wall-clock changed).",
       "created": "2026-08-11T06:57:43+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 113,
