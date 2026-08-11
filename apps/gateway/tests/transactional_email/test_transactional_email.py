@@ -682,6 +682,11 @@ async def test_two_concurrent_invite_creates_each_get_isolated_send(
 
     assert r1.status_code == 201, r1.text
     assert r2.status_code == 201, r2.text
+    # TIME BUDGET: good path MEASURED at 0.023-0.039s across 3 runs, threshold 1.0s — a
+    # 26-43x margin. Verified by delay injection too: +0.6s into CreateInviteUseCase.execute
+    # did NOT break it, because the two POSTs are gathered so elapsed tracks the max, not
+    # the sum. Unlike the signup case (threshold 0.5s vs a 0.586s Argon2 mask), the
+    # threshold here sits far ABOVE the good path's own cost.
     assert elapsed < _SLOW_DELAY_S / 2, (
         f"HTTP responses must return before the slow ({_SLOW_DELAY_S}s) send completes"
         f" — took {elapsed}s"

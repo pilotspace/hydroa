@@ -316,6 +316,8 @@ async def test_drain_empty_stream_completes_immediately() -> None:
     start = time.monotonic()
     await flusher.drain_until_empty(timeout=5.0)
     elapsed = time.monotonic() - start
+    # TIME BUDGET: good path ~0s (the stream is empty, so the drain returns on its first
+    # read), bad path 5.0s (the timeout it would loop to). 1.0s sits between them.
     assert elapsed < 1.0, f"drain_until_empty on empty stream took {elapsed:.2f}s — expected < 1s"
 
 
@@ -338,6 +340,8 @@ async def test_drain_timeout_exits_cleanly() -> None:
     await flusher.drain_until_empty(timeout=0.0)
     elapsed = time.monotonic() - start
 
+    # TIME BUDGET: good path ~0s (timeout=0 must skip without a read), bad path is a
+    # block on pending events. 1.0s is far above the good path and far below any block.
     assert elapsed < 1.0, (
         f"drain_until_empty(timeout=0) with pending events took {elapsed:.2f}s — expected < 1s"
     )
@@ -362,6 +366,9 @@ async def test_drain_redis_unavailable_exits_within_timeout() -> None:
     await flusher.drain_until_empty(timeout=timeout_s)
     elapsed = time.monotonic() - start
 
+    # TIME BUDGET: stated RELATIVE to the timeout under test (timeout_s + 1.5s), not as an
+    # absolute — so it cannot drift out of step if timeout_s changes. Good path is one
+    # failed Redis call; bad path is retrying past the deadline.
     assert elapsed < timeout_s + 1.5, (
         f"drain_until_empty with broken Redis took {elapsed:.2f}s "
         f"(timeout={timeout_s}s + 1.5s buffer exceeded)"
@@ -494,7 +501,13 @@ async def test_drain_clears_preexisting_pel() -> None:
 
     assert eid in fake._acked, "drain must reclaim + flush a pre-existing PEL entry"
     assert len(sf.inserted) == 1, "the pre-existing PEL entry must be INSERTed"
-    assert elapsed < 3.0, "drain must clear the PEL well within the timeout (not loop to timeout)"
+    # TIME BUDGET: good path MEASURED at 0.0002s (one PEL entry reclaimed and flushed),
+    # bad path 3.0s (looping to the timeout). Tightened from `< 3.0` to `< 1.0` (todo
+    # #105): the threshold used to equal the timeout exactly, so a drain that DID loop to
+    # timeout landed at ~3.0 and scheduling jitter decided whether it read 2.999 or 3.001.
+    # That fails in the MASKED direction — a test that should fail could report green.
+    # 1.0s still leaves 5000x headroom over the measured good path.
+    assert elapsed < 1.0, "drain must clear the PEL well within the timeout (not loop to timeout)"
 
 
 # ── B5 regression: Finding A (poison entry must not starve its reclaim batch) ──
@@ -648,6 +661,9 @@ async def test_shutdown_final_cycles_are_bounded(app: Any) -> None:
     elapsed = time.monotonic() - start
 
     assert hung.entered, "the hung upstream was never called — this test proves nothing"
+    # TIME BUDGET: good path ~1s (shutdown_drain_timeout_seconds), bad path is UNBOUNDED —
+    # the hung upstream never returns, which is the defect under test. 60s is deliberately
+    # loose: the claim is 'bounded at all', and any finite number proves it.
     assert elapsed < 60.0, (
         f"lifespan shutdown took {elapsed:.1f}s with a hung upstream — it is UNBOUNDED. "
         "Every network call in the shutdown path needs a duration bound, not just "
@@ -716,6 +732,9 @@ async def test_shutdown_cancel_join_is_bounded(app: Any) -> None:
         with contextlib.suppress(_asyncio.CancelledError):
             await _t
 
+    # TIME BUDGET: good path is one bounded join deadline, bad path is UNBOUNDED — the
+    # stubborn task ignores cancel() forever. 10s proves 'bounded at all', which is the
+    # whole claim; cancel() only REQUESTS termination.
     assert elapsed < 10.0, (
         f"lifespan shutdown took {elapsed:.1f}s joining a task that ignored cancel — "
         "the join is UNBOUNDED. cancel() only REQUESTS termination; the wait for it "

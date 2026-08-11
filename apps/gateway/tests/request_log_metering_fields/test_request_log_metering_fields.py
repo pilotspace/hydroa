@@ -745,6 +745,8 @@ async def test_capture_store_outage_fail_open_with_new_fields_present() -> None:
         total_tokens=2,
     )
     elapsed = time.monotonic() - start
+    # TIME BUDGET: good path ~0.1s (timeout_seconds above), bad path 5.0s (_SlowSession's
+    # sleep). 2.0s sits between them with 20x headroom over the good path.
     assert elapsed < 2.0, (
         f"persist_request_log must be bounded by timeout_seconds, took {elapsed:.2f}s"
     )

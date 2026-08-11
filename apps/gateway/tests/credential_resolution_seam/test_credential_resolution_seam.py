@@ -394,6 +394,8 @@ async def test_timeout_fails_closed(
 
     assert exc_info.value.code == "ERR_PROVIDER_KEY_MISSING"
     # Must have completed well before the store's sleep would have ended
+    # TIME BUDGET: good path ~0.1s (resolve_timeout_s), bad path 10s (sleeping_store's
+    # sleep). 5.0s sits between them with 50x headroom over the good path.
     assert elapsed < 5.0, (
         f"Timeout should have fired after ~0.1 s, but test took {elapsed:.2f} s — "
         "the resolver did not enforce its asyncio.timeout"

@@ -366,6 +366,13 @@ async def test_e2e_rate_limit_enforced() -> None:
     ]
 
     # Must have fired within a short window for the burst to be meaningful
+    # TIME BUDGET: NOT MEASURED — this is the weakest of the 16 and is stated as such
+    # rather than given a fabricated margin. It bounds N real HTTP round-trips through
+    # Docker + Envoy, so the good path is genuine network work whose cost is unknown here;
+    # the edge suite is dispatch-only (make e2e-edge) so it has never run under -n 12 load.
+    # It is also flake class 10's SECOND population (todo #111): the clock stands in for
+    # 'all N requests landed inside one rate-limit window', which nothing here measures.
+    # Convert to a causal window assertion under #111, do not just raise this number.
     assert elapsed < 3.0, (
         f"Rate limit test took {elapsed:.1f}s — requests were too slow to test burst semantics"
     )

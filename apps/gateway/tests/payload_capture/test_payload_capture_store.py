@@ -573,6 +573,8 @@ async def test_capture_store_outage_never_affects_proxied_response() -> None:
         max_body_bytes=65536,
     )
     elapsed = time.monotonic() - start
+    # TIME BUDGET: good path ~0.1s (timeout_seconds above), bad path 5.0s (_SlowSession's
+    # sleep). 2.0s sits between them with 20x headroom over the good path.
     assert elapsed < 2.0, (
         f"persist_request_log must be bounded by timeout_seconds, took {elapsed:.2f}s"
     )
@@ -1014,6 +1016,9 @@ async def test_capture_concurrency_guard_sheds_load_non_blocking(
     )
     elapsed = time.monotonic() - start
 
+    # TIME BUDGET: good path ~0s (a saturated pool must be skipped, not waited on), bad
+    # path is FOREVER — the semaphore is acquired above and never released, so a blocking
+    # capture hangs rather than merely being slow. 0.5s distinguishes those two outcomes.
     assert elapsed < 0.5, (
         f"a saturated pool must be skipped non-blockingly (no wait), took {elapsed:.2f}s"
     )

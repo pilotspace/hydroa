@@ -630,6 +630,9 @@ async def test_s08_drain_timeout_emits_event(session_factory: Any) -> None:
         elapsed = time.monotonic() - start
 
         # Must not block forever
+        # TIME BUDGET: good path ~0.01s (the drain timeout under test), bad path is an
+        # unbounded block — drain_until_empty looping forever on pending events. 2.0s is 200x
+        # the good path, and any value below 'forever' distinguishes the two.
         assert elapsed < 2.0, f"drain_until_empty took {elapsed:.2f}s — should be < 2s"
 
         # The drain_timeout event must be persisted — this assertion FAILS RED because

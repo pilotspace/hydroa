@@ -196,6 +196,8 @@ async def test_registrar_hint_lookup_bounded_by_timeout(
     finally:
         await application.state.engine.dispose()
 
+    # TIME BUDGET: good path ~0.2s (registrar_hint_dns_timeout_seconds), bad path 5.0s
+    # (FakeNsResolver's injected sleep). 1.5s sits between them, 7.5x over the good path.
     assert elapsed < 1.5, f"lookup was not bounded by the timeout knob: took {elapsed}s"
     assert resp.status_code == 200, resp.text
     assert resp.json() == {
