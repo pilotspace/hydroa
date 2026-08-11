@@ -22,11 +22,24 @@ Read §1 before any upgrade that reuses an existing volume or restores an existi
 
 ```bash
 make pg-preflight DATABASE_URL='postgresql://user:pass@host:5432/dbname'
-# or directly:
-python3 scripts/pg_preflight.py --database-url 'postgresql://...' --json
+# or directly — note `uv run python`, NOT a bare `python3`:
+cd apps/gateway && uv run python ../../scripts/pg_preflight.py --database-url 'postgresql://...' --json
 ```
 
+⚠ A bare `python3 scripts/pg_preflight.py` fails with `ModuleNotFoundError: No module named
+'sqlalchemy'` unless the project venv is active. It fails *safely* — the result is UNKNOWN
+(exit 2), never a false OK — but the `reason` then reads "could not reach or query the
+database", which sends you hunting for a network or credentials problem that does not exist.
+Read the `reason` field before trusting the diagnosis.
+
 The exit code is the contract; the text is for humans.
+
+⚠ **`make pg-preflight` does not preserve the exit code.** `make` exits **2** on any recipe
+failure, so a FAIL (script exit 1) and an UNKNOWN (script exit 2) are indistinguishable
+through `make` — and 2 means UNKNOWN in the table below, whose remedy ("check host, port and
+credentials") is the wrong action for a FAIL. Both outcomes mean *stop*, so nothing unsafe
+follows from this, but **never branch automation on `make pg-preflight`'s exit code.** Call
+the script directly when the code matters, and read `status:` in the output when it does not.
 
 | Exit | Status | Meaning | What to do |
 | --- | --- | --- | --- |
@@ -104,14 +117,38 @@ Pick by whether the data stays on the same cluster.
 
 ### 4a · Same cluster, same volume → REINDEX
 
+> ⚠ **Read this before choosing §4a.** Walking this runbook on 2026-08-10 established that
+> §4a **cannot finish** on the musl-lineage case — which is the case §2 tells you to expect,
+> and the one this whole document is about. `REINDEX` works and genuinely repairs the index
+> ordering (verified: `amcheck` fails before it, passes after). But the second step **errors**:
+>
+> ```
+> ERROR:  invalid collation version change
+> ```
+>
+> Postgres refuses to move `datcollversion` from SQL `NULL` to a value this way. The recorded
+> version therefore stays `NULL`, so `pg_preflight.py` keeps returning **FAIL** forever and the
+> database never reaches a state that reports itself healthy.
+>
+> **If the preflight said `recorded_version: None`, go to §4b.** §4a alone leaves you with
+> correct indexes and a permanently failing check. Use §4a's `REINDEX` only when you need the
+> indexes usable *now* and cannot yet schedule the dump/restore.
+>
+> Where §4a *does* fully apply: a genuine version CHANGE, e.g. `2.31` recorded and `2.36`
+> reported after a base-image glibc bump. There the `REFRESH` succeeds, because there is a
+> recorded version to move from.
+
 The collation changed under the existing files, so the indexes must be rebuilt:
 
 ```bash
+export PGDATABASE=gateway          # the example below needs this set; it is not implied
 psql "$DATABASE_URL" -c "REINDEX DATABASE \"$PGDATABASE\";"
 psql "$DATABASE_URL" -c "ALTER DATABASE \"$PGDATABASE\" REFRESH COLLATION VERSION;"   # ONLY after the REINDEX above
 ```
 
-The `REFRESH` is the **last** step and only ever after a successful `REINDEX` — see §5.
+The `REFRESH` is the **last** step and only ever after a successful `REINDEX` — see §5. If it
+errors with `invalid collation version change`, that is the NULL case above: the REINDEX still
+counts, but finish with §4b.
 
 `REINDEX DATABASE` takes locks and can run long on large tables. Use
 `REINDEX (CONCURRENTLY) DATABASE` on Postgres 12+ if you cannot take the downtime, and
@@ -130,17 +167,36 @@ SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
 Do **not** run the `REFRESH COLLATION VERSION` step if the REINDEX did not complete —
 that is precisely how a half-fixed database starts reporting itself healthy.
 
-### 4b · Moving to a new lineage (new volume, new provider, restore) → dump/restore
+### 4b · Dump/restore into a database created under the NEW libc
+
+Applies to a new volume, a new provider or a restore — **and to the same-volume
+musl→glibc case**, where it is the only remedy that finishes (see the note in §4a). The
+earlier framing of this section as "moving to a new lineage" undersold it: this is the
+primary remedy, not the exotic one.
 
 ```bash
 pg_dump --format=custom "$SOURCE_URL" > gateway.dump
 createdb --template=template0 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8 gateway_new
 pg_restore --dbname="$TARGET_URL" --no-owner gateway.dump
-python3 scripts/pg_preflight.py --database-url "$TARGET_URL"     # must exit 0
+make pg-preflight DATABASE_URL="$TARGET_URL"      # must report status: OK
 ```
 
 `--template=template0` matters: it creates the database with the collation you name
 rather than inheriting whatever `template1` carries on that server.
+
+**Why this works where §4a cannot:** `CREATE DATABASE` records the collation version *as of
+now*, so a database created while the server runs glibc gets `datcollversion` populated
+(`2.36` = the reported version) instead of the `NULL` the musl-era database is stuck with.
+
+**The new database may live on the same cluster and the same volume.** You do not need new
+hardware, a new PVC or a new provider — `createdb` on the server you are already running is
+enough, because it is the *creation time* that matters, not the storage. Verified in the §6
+rehearsal.
+
+⚠ `template0` and `template1` on a musl-created cluster keep `datcollversion = NULL`
+permanently, and so does the old database. That is expected and harmless; only the database
+the gateway connects to needs to be clean. Scope any verification query with
+`AND datname = current_database()` or it will report those templates forever.
 
 **If it is interrupted:** the target database is partial and must be treated as
 discarded — `dropdb` it and start again. Never point the gateway at a partially
@@ -168,6 +224,54 @@ It is legitimate only as the final step of §4a, after a successful `REINDEX`.
 `scripts/pg_preflight.py` never issues it, and never issues any statement other than
 `SELECT` — guarded by
 `apps/gateway/tests/pgvector_deploy/test_pgvector_deploy.py::test_preflight_only_ever_executes_select`.
+
+---
+
+## 6 · Rehearsal record — 2026-08-10
+
+This runbook had never been walked. It has now been, end to end, against a genuine
+musl-lineage volume rather than a described one. Everything in §4 above that carries a ⚠ came
+out of this rehearsal; none of it was visible from reading the document.
+
+**Setup — a real 0.12.x-era volume, not a simulation.** `postgres:16-alpine` (musl) on a fresh
+volume → `alembic upgrade c7e0a4b2d9f1` (the revision immediately before the vector migration,
+52 tables) → 2 001 tenants and 3 000 users, with emails spanning punctuation and accents
+(`ann`, `a-nn`, `a.nn`, `a_nn`, `änn`, `ånn`, `a nn`), which is where musl's codepoint ordering
+and glibc's `en_US.utf8` weighting actually disagree. Then the same volume served by
+`pgvector/pgvector:pg16` (Debian, glibc).
+
+**Findings, in order of severity:**
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| 1 | §4a cannot finish on the musl case — `REFRESH COLLATION VERSION` errors | `ERROR: invalid collation version change`; `datcollversion` stays `NULL`; preflight keeps saying FAIL |
+| 2 | §4b works, and works on the **same** cluster/volume | restored DB: `recorded 2.36 = actual 2.36`, preflight `status: OK`, exit 0 |
+| 3 | The documented `python3 scripts/...` invocation does not run | `ModuleNotFoundError: sqlalchemy` → UNKNOWN, reported as "could not reach the database" |
+| 4 | `make pg-preflight` collapses FAIL into make's exit 2 (= UNKNOWN) | script exit 1 vs make exit 2, same run |
+
+**The silent-failure claim in §2 is confirmed, not assumed.** After the image swap Postgres
+emitted **zero** collation warnings (`docker logs | grep -ci collation` → 0) while
+`recorded=NULL, actual=2.36`. A healthy-looking database with genuinely broken indexes.
+
+**The corruption is real, and provable.** Before the remedy:
+
+```
+ERROR:  item order invariant violated for index "users_email_key"
+DETAIL:  Lower index tid=(3,2) (points to index tid=(18,1)) higher index tid=(3,3) ...
+```
+
+After `REINDEX`, every btree index in `public` passes `bt_index_check(..., true)`. So §4a's
+REINDEX is not optional busy-work — it is what actually repairs the data — it simply cannot
+also clear the recorded-version state.
+
+**Final state after §4b:** preflight `status: OK` / exit 0 · `datcollversion = actual = 2.36` ·
+all btree indexes pass amcheck · the scoped mismatch query returns **0 rows**.
+
+**Still not established by this rehearsal, and not claimed:** no managed-provider target was
+tested (§3 says managed Postgres is unsupported, so provider privilege for `CREATE EXTENSION`
+remains unverified), and no Kubernetes StatefulSet/PVC path was exercised — §2's `kubectl`
+steps are still un-walked. This was a local Docker rehearsal on a production-*shaped* dump,
+which is what the exit criterion asks for, and it is not the same as a production dry-run.
 
 ---
 
