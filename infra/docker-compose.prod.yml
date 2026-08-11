@@ -31,7 +31,22 @@ name: hydroa-prod
 services:
 
   postgres:
-    image: pgvector/pgvector:pg16
+    # PINNED BY DIGEST, and this one is not hygiene — it is the corruption control.
+    #
+    # `pg16` is a floating MINOR tag. An unattended `docker compose pull` can therefore swap
+    # the image's libc base under a LIVE data volume, and a glibc<->musl change alters the
+    # collation version the cluster was built with. The 2026-08-10 runbook walk (PR #102)
+    # confirmed BOTH halves of that failure empirically: indexes silently corrupt, AND the
+    # documented same-volume remedy does NOT work — `REFRESH COLLATION VERSION` errors with
+    # `invalid collation version change` on the musl case, so the preflight can never be
+    # cleared in place. Recovery is dump/restore. So a routine pull can produce a database
+    # that is unrecoverable where it sits.
+    #
+    # Re-pin deliberately (resolve with `docker buildx imagetools inspect <tag>`), never by
+    # relaxing this back to a tag. Verify the new digest is a multi-arch LIST carrying
+    # linux/amd64 before committing it. The tag is kept alongside the digest for
+    # readability; the digest is what actually resolves. See todo #113.
+    image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -45,7 +60,11 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    # Pinned by digest — `7-alpine` is a floating minor. Lower blast radius than Postgres
+    # (Redis here is cache/stream state, not the system of record), but an unattended pull
+    # still changes a running dependency with no change record, which is exactly what
+    # SOC 2 CC8.1 asks you to be able to evidence. See todo #113.
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     # No host port mapping — internal only in production
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -78,7 +97,12 @@ services:
     restart: unless-stopped
 
   envoy:
-    image: envoyproxy/envoy:v1.29-latest
+    # Pinned by digest. `v1.29-latest` is a floating tag BY NAME, on the component that
+    # terminates TLS and enforces ext_authz for the whole edge — so an unattended pull can
+    # change the security boundary itself with no review and no record. Of the three
+    # floating images here this is the one most likely to matter for an audit, even though
+    # the Postgres pin is the one that can destroy data. See todo #113.
+    image: envoyproxy/envoy:v1.29-latest@sha256:5a292b91adc87aa56146fb9ee52fc85c30570d0f175d95b48cde8035a2e641dd
     environment:
       GATEWAY_JWT_SECRET: ${GATEWAY_JWT_SECRET}
     volumes:
