@@ -6,15 +6,39 @@ R6 milestone. **No product features by design** — this release makes the deliv
 substrate attestable, which is the prerequisite for SOC 2 CC8.1 change management.
 
 ### Added
-- **An enforceable merge gate on `main`.** Required `gateway` + `dashboard` checks with
+- **An enforceable merge gate on `main`.** Required `ci` + `dashboard` checks with
   `enforce_admins: true`, `strict: true`, force-pushes and deletions off. Admin-merge is
-  now impossible, not merely discouraged.
+  now impossible, not merely discouraged — proven by an admin merge REFUSED with HTTP 405,
+  not by a dry run (a `push --dry-run` never sends the ref update, so the server never
+  evaluates protection and "success" there means nothing).
+  `ci` is a single aggregating job rather than the individual test jobs, because a matrix
+  renames `gateway` to `gateway (1)`…`gateway (N)` and a required-context list that must be
+  re-edited on every shard-count change will eventually be wrong in the dangerous direction:
+  a shard nobody required is a shard whose failure blocks nothing.
 - **`make e2e-edge`** — the Envoy edge e2e suite (TLS termination, bearer authz,
   `/internal` blocking) is finally reachable; its driver script was invoked by nothing.
 - **A dashboard lint step in CI.** `eslint .` was declared but never run: Next 16 removed
   ESLint from `next build`, and the gate went dark at that upgrade.
 - **A release checklist** in `RELEASES.md`, plus the missing `v0.9.0` / `v0.10.0` tags and
   this file's missing 0.13.0 entry.
+
+### Performance
+- **CI wall-clock 65–82 min → 13m41s**, measured. The gateway suite now runs as a 4-way
+  matrix, each shard on its own runner with its own Postgres and Redis. The lever is BOXES,
+  not workers: `-n 4` on one runner bought almost nothing, because its 4 vCPUs are shared
+  with the service containers, every worker carries a ~1.92× coverage multiplier, and all
+  four contend on one database. Affordable because the repo went public — Actions is
+  unmetered for public repositories.
+  **The shard count is set by the concurrency cap, not the suite size.** The Free plan
+  allows 5 concurrent jobs and `dashboard` holds one, so only 4 shards start immediately;
+  a 5th or 6th queues behind a shard and the pipeline gets *slower*. Free is not unlimited.
+- **A `concurrency` group**, so a superseded run stops holding all 5 slots until it
+  finishes. `cancel-in-progress` deliberately excludes `refs/heads/main`: a cancelled run on
+  main is a required check that reaches no verdict, which is the exact fault this release
+  closes.
+- **`timeout-minutes` 120 → 20**, re-derived against a shard (longest measured 10m29s)
+  rather than the old whole-suite runtime. At 120 a *hung* shard burned two hours before
+  reporting, defeating the fast feedback sharding buys.
 
 ### Fixed
 - **16 unregistered ORM modules** (24 tables) in `migrations/env.py` that `alembic check`
@@ -31,6 +55,15 @@ substrate attestable, which is the prerequisite for SOC 2 CC8.1 change managemen
   VERSION` remedy **cannot finish** on a musl-created volume; dump/restore is required.
 - Chart `appVersion` and image tags, drifted nine releases behind at `0.4.0`, and a
   missing dashboard `-prod` tag override.
+- **Coverage artifacts silently not uploaded.** `upload-artifact@v4` excludes hidden files
+  by default and coverage data files start with a dot, so every shard passed its tests and
+  then failed the upload. Caught loudly only because `if-no-files-found` was set to `error`;
+  at the default `warn` nothing would have uploaded, nothing combined, and the 80% coverage
+  gate would have reported green having measured zero lines.
+- **Silent shard/matrix drift.** The shard total and the matrix job list were two
+  declarations of one number. Drift where the total *exceeds* the matrix length passes every
+  job that exists while the missing indices' tests run nowhere — green shards, green `ci`,
+  a slice of the suite unexecuted. Now guarded, red-checked in both directions.
 
 ### Known limitations
 - `required_approving_review_count` is **0** — GitHub forbids self-approval, and any higher
