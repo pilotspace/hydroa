@@ -23,8 +23,13 @@ tinytag
 aioboto3
 jsonschema
 python3-saml   # saml-sso task (frozen contract §3 freeze question 1) — verified: manylinux wheel
-               # for xmlsec resolves against ghcr.io/astral-sh/uv:python3.12-bookworm-slim,
-               # no apt-get needed (confirmed via `docker build --target builder` + import check)
+               # for xmlsec resolves against the gateway base image, no apt-get needed
+               # (confirmed via `docker build --target builder` + import check).
+               # RE-VERIFIED 2026-08-11 (todo #98) after the base moved from
+               # ghcr.io/astral-sh/uv:python3.12-bookworm-slim to python:3.12.13-slim-bookworm:
+               # `import xmlsec` + `import onelogin.saml2` both succeed in the built image.
+               # Both are Debian bookworm slim, so the wheel's glibc target is unchanged — but
+               # this justification names the base, so it gets re-checked when the base moves.
 reportlab      # invoice-generation TASK.md §3 Issue R2 — pure-Python PDF generation for
                # GET /admin/invoices/{id}/export?format=pdf (M9); no system cairo/pango
                # dependency, unlike weasyprint (recommended at design, confirmed at build)
