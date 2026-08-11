@@ -232,6 +232,56 @@ def test_the_sharded_test_gate_is_enforced_in_full() -> None:
     )
 
 
+def test_the_shard_count_matches_the_matrix_exactly() -> None:
+    """The declared shard TOTAL must equal the number of matrix jobs, and cover 1..N.
+
+    This closes a silent-test-loss hole. The shard total lives in the Tests step's `SHARDS`
+    env while the job list lives in `strategy.matrix.shard`, so the two can drift — and the
+    two directions of drift are NOT symmetric:
+
+    * SHARDS < len(matrix): the extra jobs pass an out-of-range index to tests/_shard.py,
+      which RAISES. Loud, self-announcing, harmless.
+    * SHARDS > len(matrix): every job that DOES exist gets a valid index and passes, while
+      the tests belonging to the missing indices are simply never run anywhere. Six green
+      shards, a green `ci`, and a sixth of the suite silently unexecuted.
+
+    The second is the masked-gate shape this repo keeps rediscovering (todos #107/#108/#109):
+    a check that never reaches a verdict reports green. Nothing else catches it — the
+    partition property in tests/repo_hygiene/test_shard_partition.py holds *for the N it is
+    given*, and each individual shard is genuinely correct. Only the cross-check between the
+    two declarations can see it.
+
+    Also pins the values to exactly 1..N: `_shard_config` requires `1 <= index <= total`, so
+    a matrix of [0, 1, 2] or [1, 1, 2] is either an immediate error or a double-run with a
+    permanently unexecuted slice.
+    """
+    workflow = _load(CI_WORKFLOW)
+    gateway = workflow["jobs"]["gateway"]
+    shards = gateway.get("strategy", {}).get("matrix", {}).get("shard")
+    assert isinstance(shards, list), f"no `strategy.matrix.shard` list; got {shards!r}"
+
+    declared = [
+        step["env"]["SHARDS"]
+        for step in gateway.get("steps", [])
+        if isinstance(step.get("env"), dict) and "SHARDS" in step["env"]
+    ]
+    assert len(declared) == 1, (
+        f"expected exactly one step declaring a SHARDS env var, found {len(declared)}: "
+        f"{declared!r}. More than one is drift waiting to happen; zero means the shard "
+        f"total is coming from somewhere this guard cannot see."
+    )
+    total = int(declared[0])
+
+    assert total == len(shards), (
+        f"SHARDS={total} but the matrix has {len(shards)} jobs ({shards!r}). If SHARDS is "
+        f"the larger of the two, the tests assigned to the missing shard indices are never "
+        f"run by ANY job and the whole pipeline still reports green."
+    )
+    assert sorted(int(s) for s in shards) == list(range(1, total + 1)), (
+        f"matrix.shard must be exactly 1..{total} with no gaps or duplicates; got {shards!r}"
+    )
+
+
 def test_every_gate_bearing_job_is_required_by_the_aggregate_gate() -> None:
     """The `ci` job must depend on every job that can fail, or that job gates nothing.
 
