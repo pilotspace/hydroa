@@ -382,11 +382,89 @@ def test_ci_python_version_is_patch_pinned_and_matches_dev() -> None:
         "(e.g. 3.12.13), not a minor series — a minor series is what let CI drift "
         "to 3.12.3 while dev ran 3.12.13."
     )
-    ci_version = str(_load(CI_WORKFLOW)["jobs"]["gateway"]["steps"][1]["with"]["python-version"])
-    assert ci_version == pinned, (
-        f"ci.yml pins Python {ci_version!r} but .python-version says {pinned!r}. "
+    # EVERY step that pins a python-version, not just the gateway job's. The original
+    # form indexed one hard-coded step, so it checked one of the two pins ci.yml
+    # actually carries and the other could drift silently — a gate that inspects a
+    # subset reports green on the rest.
+    #
+    # Matched on the `python-version` INPUT rather than on the action name: the pin is
+    # currently supplied by `astral-sh/setup-uv`, was `actions/setup-python` before,
+    # and keying on the action would make this silently vacuous the next time that
+    # changes. The input is the thing that matters; the action carrying it is not.
+    ci_pins = {
+        f"{job_name}.steps[{i}]": str(step["with"]["python-version"])
+        for job_name, job in _load(CI_WORKFLOW)["jobs"].items()
+        for i, step in enumerate(job.get("steps", []))
+        if isinstance(step, dict) and "python-version" in (step.get("with") or {})
+    }
+    assert ci_pins, (
+        "no step in ci.yml supplies a `python-version` input — this assertion is "
+        "vacuous, which reports green while checking nothing. If the workflow stopped "
+        "pinning Python, that is the bug; do not delete this check to make it quiet."
+    )
+    drifted = {where: got for where, got in ci_pins.items() if got != pinned}
+    assert not drifted, (
+        f"ci.yml pins Python {drifted} but .python-version says {pinned!r}. "
         "These must agree exactly — `ipaddress` predicates the egress policy relies "
         "on differ across 3.12 patch releases."
+    )
+
+
+def test_the_production_image_pins_the_same_python_as_ci() -> None:
+    """The DEPLOYED interpreter must be the one CI validated (todo #98).
+
+    Pinning CI and dev to a patch release closed only two of the three ends. The
+    gateway image built `FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim` — a
+    moving tag carrying 3.12.12 — so the artifact that serves production ran an
+    interpreter no gate had ever executed, on the same commit CI called green.
+
+    That is the same defect as todo #97, one layer down, and it lands on the same
+    control: `is_reserved("::ffff:10.20.30.40")` is True on 3.12.3 and False on
+    3.12.4+, so the SSRF verdict is a function of when the image happened to be
+    built. Reproducibility is the whole basis of "build from the release tag".
+
+    Checked here rather than in repo_hygiene because the fact being guarded is the
+    AGREEMENT between three declarations of one version, and the other two live in
+    this file. A pin is only as good as the thing that notices when it drifts.
+    """
+    pinned = (REPO_ROOT / "apps" / "gateway" / ".python-version").read_text().strip()
+    dockerfile = (REPO_ROOT / "apps" / "gateway" / "Dockerfile").read_text()
+
+    match = re.search(r"^ARG\s+PYTHON_IMAGE=(\S+)\s*$", dockerfile, re.MULTILINE)
+    assert match, (
+        "apps/gateway/Dockerfile has no `ARG PYTHON_IMAGE=` line. The base image is "
+        "what supplies the interpreter; if it is not declared in one greppable place "
+        "this guard cannot check it, and the image silently runs whatever a moving "
+        "tag resolves to that day."
+    )
+    image = match.group(1)
+
+    assert re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image), (
+        f"the gateway base image is {image!r}; it must be digest-pinned "
+        "(`python:X.Y.Z-slim-bookworm@sha256:...`). Even an exact-patch tag is "
+        "rebuilt in place for base-OS updates, so only the digest is immutable. "
+        "Resolve one with `docker buildx imagetools inspect <tag>` and confirm it is "
+        "a multi-arch LIST carrying linux/amd64."
+    )
+
+    tag_match = re.match(r"^python:(\d+\.\d+\.\d+)-", image)
+    assert tag_match, (
+        f"the gateway base image is {image!r}. Keep the readable `python:X.Y.Z-...` "
+        "tag next to the digest: the digest is what resolves, but the tag is the only "
+        "part a human — or this guard — can compare against .python-version."
+    )
+    image_version = tag_match.group(1)
+
+    assert image_version == pinned, (
+        f"the gateway image is built on Python {image_version} but .python-version "
+        f"pins {pinned}. Production would run an interpreter CI never executed, and "
+        "`ipaddress` predicates the egress SSRF policy reads differ across 3.12 patch "
+        "releases (CVE-2024-4032 / gh-113171) — so the security verdict would depend "
+        "on which end you asked.\n"
+        "Note uv CANNOT resolve this by itself: python-build-standalone does not "
+        "publish every CPython patch (3.12.13 is absent, its newest 3.12 is 3.12.12), "
+        "which is why the base is the official python image with uv copied in as a "
+        "binary. Move BOTH ends together, or not at all."
     )
 
 
