@@ -57,7 +57,7 @@ MIN_GATEWAY_TIMEOUT_MINUTES = 120
 # `make <gate>` string is legitimately absent from the workflow.
 #
 # Only `test-ci` is exempt, and the exemption is NOT a hole: the substitution it permits
-# (a 6-way `test-ci-shard` matrix plus a combined-coverage job) is asserted in full by
+# (a sharded `test-ci-shard` matrix plus a combined-coverage job) is asserted in full by
 # `test_the_sharded_test_gate_is_enforced_in_full`. Adding a name here without a companion
 # assertion would be how a gate quietly stops being enforced — do not.
 _SHARDED_GATES = frozenset({"test-ci"})
@@ -196,7 +196,7 @@ def test_the_sharded_test_gate_is_enforced_in_full() -> None:
     """`make ci`'s `test-ci` is satisfied by shards PLUS a combined coverage gate.
 
     `test-ci` itself is deliberately NOT in the gateway job any more: the suite is split
-    across a 6-way matrix (`make test-ci-shard`), because one runner needed 65-82 min. That
+    across a shard matrix (`make test-ci-shard`), because one runner needed 65-82 min. That
     substitution is only legitimate if BOTH halves are present, so both are asserted here
     rather than left to the exemption in `_SHARDED_GATES`:
 
@@ -243,7 +243,7 @@ def test_the_shard_count_matches_the_matrix_exactly() -> None:
       which RAISES. Loud, self-announcing, harmless.
     * SHARDS > len(matrix): every job that DOES exist gets a valid index and passes, while
       the tests belonging to the missing indices are simply never run anywhere. Six green
-      shards, a green `ci`, and a sixth of the suite silently unexecuted.
+      shards, a green `ci`, and a slice of the suite silently unexecuted.
 
     The second is the masked-gate shape this repo keeps rediscovering (todos #107/#108/#109):
     a check that never reaches a verdict reports green. Nothing else catches it — the
@@ -285,7 +285,7 @@ def test_the_shard_count_matches_the_matrix_exactly() -> None:
 def test_every_gate_bearing_job_is_required_by_the_aggregate_gate() -> None:
     """The `ci` job must depend on every job that can fail, or that job gates nothing.
 
-    A 6-way matrix turns `gateway` into six status contexts, so branch protection points at
+    A shard matrix turns `gateway` into one status context PER SHARD, so branch protection points at
     one aggregate context (`ci`) instead of a list that must be re-edited whenever the shard
     count changes. That indirection is only safe while `ci` actually depends on everything:
     a job missing from `needs` is a job whose failure cannot block a merge, which is the

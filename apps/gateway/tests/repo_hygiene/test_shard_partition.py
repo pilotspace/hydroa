@@ -33,7 +33,7 @@ def _files(spec: dict[str, int]) -> set[str]:
     return set(spec)
 
 
-@pytest.mark.parametrize("total", [1, 2, 3, 6, 7, 12])
+@pytest.mark.parametrize("total", [1, 2, 3, 4, 6, 7, 12])
 def test_partition_assigns_every_file_exactly_once(total: int) -> None:
     """No file may be unassigned (tests vanish) or double-assigned (tests run twice)."""
     spec = {f"tests/suite_{i}/test_{i}.py": (i % 17) + 1 for i in range(60)}
@@ -43,7 +43,7 @@ def test_partition_assigns_every_file_exactly_once(total: int) -> None:
     assert all(0 <= v < total for v in assignment.values()), "shard index out of range"
 
 
-@pytest.mark.parametrize("total", [2, 3, 6, 7])
+@pytest.mark.parametrize("total", [2, 3, 4, 6, 7])
 def test_partition_is_a_true_partition_of_the_test_count(total: int) -> None:
     """Summing the shards must reproduce the full test count — the completeness property."""
     spec = {f"tests/suite_{i}/test_{i}.py": (i * 7 % 23) + 1 for i in range(80)}

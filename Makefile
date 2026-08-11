@@ -75,12 +75,12 @@ test-ci:
 # Splitting is FILE-level and balanced by test count (tests/_shard.py). Coverage is written
 # per-shard and combined by `coverage-combine`, so the 80% gate still applies to the WHOLE
 # suite — `--cov-fail-under=0` here defeats only the PER-SHARD check, which would otherwise
-# fail every shard for not covering the other five sixths.
+# fail every shard for not covering the slices belonging to the other shards.
 #
 # PYTHONPATH=. is required: `-p tests._shard` is imported during pytest's preparse, before
 # rootdir lands on sys.path.
 SHARD  ?= 1
-SHARDS ?= 6
+SHARDS ?= 4
 test-ci-shard:
 	cd $(GATEWAY) && PYTHONPATH=. PYTEST_SHARD=$(SHARD) PYTEST_SHARDS=$(SHARDS) \
 	  COVERAGE_FILE=.coverage.shard$(SHARD) \

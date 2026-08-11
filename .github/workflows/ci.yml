@@ -11,15 +11,17 @@ permissions:
 jobs:
   gateway:
     runs-on: ubuntu-latest
-    # SHARDED 2026-08-11. The suite is split across 6 runners, each with its OWN Postgres and
-    # Redis, cutting wall-clock from 65-82 min to roughly 12-18. The lever is BOXES, not
+    # SHARDED 2026-08-11. The suite is split across 4 runners, each with its OWN Postgres and
+    # Redis, cutting wall-clock from 65-82 min to roughly 13. The lever is BOXES, not
     # workers: `-n 4` on one runner bought almost nothing because its 4 vCPUs are shared with
     # the service containers, every worker carries a ~1.92x coverage multiplier, and all four
     # contend on ONE database (measured, todo #96 / #100).
     #
     # Newly affordable because the repo went PUBLIC: GitHub Actions is unmetered for public
-    # repositories, so 6 concurrent runners cost nothing where they were previously competing
-    # for the metered minutes that were fault 1 of this whole milestone.
+    # repositories, so the concurrent runners cost nothing where they were previously
+    # competing for the metered minutes that were fault 1 of this whole milestone. Note that
+    # "free" is not "unlimited" — the Free plan still caps CONCURRENT jobs, which is what
+    # actually sets the shard count below.
     #
     # The cheap gates (lint, typecheck, allowlists, migrate-parity — 32s + ~40s combined) run
     # in EVERY shard rather than once in a separate job. That is deliberate: they cost no
@@ -33,8 +35,40 @@ jobs:
       # whether the failure reproduces elsewhere. This suite has a live flake tail
       # (todos #105/#111); a partial picture is what made it take 7 attempts to characterise.
       fail-fast: false
+      # FOUR, and the number is set by the CONCURRENCY CAP, not by the suite size.
+      #
+      # This org is on the Free plan, where the observed cap is 5 concurrent jobs. Measured on
+      # run 31467111114: exactly 5 jobs `in_progress` with `gateway (5)` `queued`, and
+      # `gateway (3)` starting at 07:01:45 — two seconds after `dashboard` completed at
+      # 07:01:43. That is a freed slot, not a coincidence.
+      #
+      # So `dashboard` permanently occupies one of the 5 slots and only 4 gateway shards can
+      # start immediately. A 5th or 6th shard does not run in parallel; it QUEUES behind a
+      # shard and lands in a second wave, which costs a whole extra shard-duration. More
+      # shards is therefore SLOWER here past 4 — the counter-intuitive part, and the reason
+      # this is 4 rather than "as many as possible".
+      #
+      # MEASURED per-shard from run 31467111114 at N=6 (all six passed their tests; the run
+      # was red only on the hidden-file upload bug fixed below):
+      #   shard 1: 762 tests, 5m14s test / 6m05s job
+      #   shard 2: 770 tests, 6m53s test / 7m53s job
+      #   shard 4: 767 tests, 6m06s test / 7m01s job
+      #   shard 6: 762 tests, 6m30s test / 7m29s job
+      # Total test work ~38 min across shards, vs 65-82 min on ONE runner — sharding also
+      # cuts total work, because 4 xdist workers no longer contend on a single Postgres.
+      #
+      # Projected from those numbers (~38 min of work / N, plus ~110s of fixed per-shard
+      # setup, plus a ~2 min coverage job):
+      #   N=4 -> 5 jobs, NOTHING queues, ~13 min   <-- chosen
+      #   N=5 -> 6 jobs, one waits ~3 min,  ~14 min
+      #   N=6 -> 7 jobs, one waits ~8 min,  ~18 min
+      #
+      # Revisit if the cap changes (a paid plan lifts it) or the suite grows enough that a
+      # shard exceeds ~10 min. The `SHARDS` env below MUST equal this list's length —
+      # guarded by test_the_shard_count_matches_the_matrix_exactly, because the drift is
+      # silent in the direction that skips tests.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     # MEASURED. Run 31243949907 (2026-08-08) is the first gateway run that ever
     # FINISHED: 4553 passed / 8 failed in 4935s = 1h22m15s, at -n 4 with coverage.
     # 120 is that number x ~1.5. History, all lower bounds because none completed:
@@ -120,18 +154,18 @@ jobs:
         # (`-n 4 --dist loadscope`, no --reruns) so sharding is the only variable;
         # tests/_shard.py does a deterministic FILE-level split balanced by test count.
         #
-        # Verified when this landed: at N=6 the union of all six shards was EXACTLY the
-        # 4578 collected tests — 0 duplicates, 0 missing — with 744-768 tests per shard.
-        # That property is now asserted by tests/repo_hygiene/test_shard_partition.py,
-        # because a sharding bug drops tests and a shard that tested less than it should
-        # still exits 0.
+        # Verified by exhaustive union at N=6: the union of all shards was EXACTLY the 4601
+        # collected tests — 0 duplicates, 0 missing — with 761-772 tests per shard
+        # (max/min = 1.014). The property is N-independent and is asserted for several N by
+        # tests/repo_hygiene/test_shard_partition.py, because a sharding bug drops tests and
+        # a shard that tested less than it should STILL EXITS 0.
         env:
           SHARD: ${{ matrix.shard }}
-          SHARDS: 6
+          SHARDS: 4
         run: make test-ci-shard SHARD="$SHARD" SHARDS="$SHARDS"
       - name: Upload shard coverage
         # Per-shard coverage data; the `coverage` job combines these and enforces the real
-        # 80% gate across the WHOLE suite. Each shard alone covers ~1/6 of the code, so the
+        # 80% gate across the WHOLE suite. Each shard alone covers only its own slice, so the
         # per-shard threshold is disabled in the Makefile target — the gate is not weakened,
         # it is relocated to the only place it can be correctly evaluated.
         # `if: always()` so a failing shard still contributes its data.
@@ -140,13 +174,23 @@ jobs:
         with:
           name: coverage-shard-${{ matrix.shard }}
           path: apps/gateway/.coverage.shard${{ matrix.shard }}
+          # REQUIRED, and it cost a full red run to learn: coverage data files start with a
+          # dot, and upload-artifact v4 silently EXCLUDES hidden files by default. Every
+          # shard passed its tests and then died here with "No files were found with the
+          # provided path" — the file was written exactly where asked, just unmatched.
+          include-hidden-files: true
+          # `error`, not the default `warn`. With `warn` this misconfiguration would have
+          # uploaded nothing, the coverage job would have combined nothing, and the 80% gate
+          # would have reported green having measured zero lines. That is the never-reaches-
+          # a-verdict shape (todos #107/#108/#109) — so both this and the empty-combine
+          # guard in `make coverage-combine` are deliberate belt-and-braces.
           if-no-files-found: error
           retention-days: 1
 
   coverage:
-    # The 80% coverage gate, evaluated on the COMBINED data from all six shards. This job is
+    # The 80% coverage gate, evaluated on the COMBINED data from every shard. This job is
     # where `--cov-fail-under=80` actually lives now; the shards deliberately skip it because
-    # each one only exercises a sixth of the code.
+    # each one only exercises its own slice of the code.
     #
     # `needs: gateway` means every shard must succeed first, so a red shard skips this job and
     # the `ci` gate below then fails — a shard failure can never be laundered into a green.
