@@ -11,7 +11,7 @@ un-isolated, WITHOUT a blanket FLUSHDB (which would destroy the consumer group).
 
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,7 +26,7 @@ from gateway.core.config import Settings
 from gateway.core.db import Base
 from gateway.main import create_app
 from tests.credential_stub import install_stub_resolver
-from tests import _infra_guard, _redis_env
+from tests import _infra_guard, _rate_limit_clock, _redis_env
 
 # ---------------------------------------------------------------------------
 # suite-infra-tripwire §3 — infrastructure guards (todo #83).
@@ -463,3 +463,21 @@ def recorded_usage(app: object) -> Any:
         )
 
     return _get
+
+
+@pytest.fixture(autouse=True)
+def _pinned_rate_limit_windows(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Give every test its own fixed-window rate-limit bucket (todo #111).
+
+    Autouse and unconditional. A fixed-window limiter buckets on floor(now / 60), so a test
+    firing N requests and expecting the (N+1)th to be rejected silently assumes no minute
+    boundary lands between them — a bet that loses a few percent of the time under -n 12 and
+    then reads as a limiter regression. Pinning the limiter's own injected clock removes the
+    boundary entirely; see tests/_rate_limit_clock.py for why this is a class patch and not
+    a global `time.time` freeze, and why each test gets a DISTINCT window.
+
+    Cheap enough to apply everywhere: it wraps seven `__init__`s and restores them, with no
+    IO and no import of the app. Applying it only to the ~21 tests that assert 429 today
+    would leave the next such test unprotected, which is how this class of defect spreads.
+    """
+    yield from _rate_limit_clock.pin_fixed_windows(request.node.nodeid)

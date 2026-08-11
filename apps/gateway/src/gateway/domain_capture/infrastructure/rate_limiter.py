@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from collections.abc import Callable
 
 from redis.exceptions import RedisError
 
@@ -28,15 +29,23 @@ _WINDOW_SECONDS = 60
 
 
 class DomainClaimRateLimiter:
-    def __init__(self, redis: object) -> None:
+    # `now` is injectable so a test can PIN the window (todo #111). The bucket is
+    # `floor(now / WINDOW)`, so a test that fires N requests and expects the (N+1)th to be
+    # rejected is silently assuming no window boundary falls between them. Nothing measured
+    # that assumption, and it fails a few percent of the time under load — which reads as a
+    # limiter regression, not as a test artifact. Both clock reads below MUST come from this
+    # one source: a bucket and a retry_after taken from separate `time.time()` calls can
+    # straddle a boundary and disagree with each other.
+    def __init__(self, redis: object, *, now: Callable[[], float] = time.time) -> None:
         self._redis = redis
+        self._now = now
 
     def _window_key(self, *, action: str, tenant_id: uuid.UUID) -> str:
-        bucket = int(time.time() // _WINDOW_SECONDS)
+        bucket = int(self._now() // _WINDOW_SECONDS)
         return f"domain_claims:rl:{action}:{tenant_id}:{bucket}"
 
     def _seconds_to_next_window(self) -> int:
-        now = time.time()
+        now = self._now()
         elapsed = now % _WINDOW_SECONDS
         remaining = _WINDOW_SECONDS - elapsed
         return max(1, int(remaining) + 1)

@@ -19,6 +19,7 @@ RedisDeploymentLoadGate and RedisCooldownGate.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any
 
 import structlog
@@ -40,14 +41,23 @@ class RedisDeploymentLimitGate:
     keeping all runtime behaviour correct.
     """
 
+    # `now` is injectable so a test can PIN the window (todo #111). The bucket is
+    # `floor(now / WINDOW)`, so a test that fires N requests and expects the (N+1)th to be
+    # rejected is silently assuming no window boundary falls between them. Nothing measured
+    # that assumption, and it fails a few percent of the time under load — which reads as a
+    # limiter regression, not as a test artifact. Both clock reads below MUST come from this
+    # one source: a bucket and a retry_after taken from separate `time.time()` calls can
+    # straddle a boundary and disagree with each other.
     def __init__(
         self,
         *,
         redis: Any,
         window_s: int = 60,
+        now: Callable[[], float] = time.time,
     ) -> None:
         self._redis: Any = redis
         self._window_s = window_s
+        self._now = now
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -55,7 +65,7 @@ class RedisDeploymentLimitGate:
 
     def _bucket(self) -> int:
         """Return the current per-minute bucket index (floor(now / window_s))."""
-        return int(time.time()) // self._window_s
+        return int(self._now()) // self._window_s
 
     def _rpm_key(self, deployment_id: str, bucket: int) -> str:
         return f"{_PFX_RPM}{deployment_id}:{bucket}"
