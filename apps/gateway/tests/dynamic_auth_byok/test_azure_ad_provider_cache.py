@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from gateway.proxy.domain.errors import UpstreamUnavailableError
+from tests._polling import poll_until
 
 # RED: AzureADTokenProviderCache does not exist yet → ImportError at import time.
 # We import lazily inside each test so that the file can be collected (only the
@@ -227,9 +228,14 @@ async def test_cache_ttl_expiry_rebuilds_and_closes() -> None:
     assert p_first is not p_second, (
         "After TTL expiry, a different provider instance must be returned"
     )
-    # The old provider's client must have been scheduled for close
-    # (async close may be fire-and-forget; we wait briefly)
-    await asyncio.sleep(0.01)
+
+    # The old provider's client must have been scheduled for close. POSITIVE WAIT:
+    # the close is fire-and-forget, so poll for it rather than guessing 10ms — that
+    # guess is exactly what fails on a loaded runner.
+    async def _closed() -> bool:
+        return p_first.close_count >= 1 or p_first.closed
+
+    await poll_until(_closed, lambda done: done)
     assert p_first.close_count >= 1 or p_first.closed, (
         "Old provider must be closed (or close() called) after TTL expiry + rebuild"
     )
@@ -315,8 +321,12 @@ async def test_cache_size_cap_evicts_oldest_and_closes() -> None:
     cfg_new = _make_ad_config(tenant_id="tenant-new", client_id="client-new")
     cache.get_or_create(cfg_new, "tenant-A")
 
-    # Allow any async close to run
-    await asyncio.sleep(0.01)
+    # POSITIVE WAIT: the eviction's close is fire-and-forget — poll for it instead of
+    # guessing how long it takes.
+    async def _oldest_closed() -> bool:
+        return oldest.closed or oldest.close_count >= 1
+
+    await poll_until(_oldest_closed, lambda done: done)
 
     assert oldest.closed or oldest.close_count >= 1, (
         "Oldest provider must be closed after size-cap eviction. "

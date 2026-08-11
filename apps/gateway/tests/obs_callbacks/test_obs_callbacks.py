@@ -91,6 +91,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -116,6 +117,39 @@ SSE_CHUNKS = [
     b'data: {"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}\n\n',
     b"data: [DONE]\n\n",
 ]
+
+# How long to wait AFTER a span has arrived to prove a second one does not follow.
+# Load-bearing: see _settled_span_count.
+_SETTLE_SECONDS = 0.05
+
+
+async def _settled_span_count(sink: Any) -> int:
+    """Wait for a fire-and-forget span, then prove no SECOND span follows.
+
+    `assert len(sink.spans) == 1` is a MIXED assertion — it claims not-zero AND
+    not-two, and the two halves need opposite treatment:
+
+    * not-zero is a POSITIVE wait. A bare `asyncio.sleep(0.05)` guesses how long
+      the emit takes and loses the guess on a loaded runner, which is the flake
+      class this suite is being swept for.
+    * not-two is a NEGATIVE wait. Polling cannot demonstrate absence: it returns
+      the instant the first span lands, so a duplicate emitted 10 ms later is
+      never given the chance to appear and the `== 1` silently degrades to
+      `>= 1`. One span per request is a real invariant here, so losing that half
+      would be a vacuous assertion, not a simplification.
+
+    So do both, in order: poll for arrival, then settle. The caller still makes
+    the real assertion on the returned count.
+    """
+
+    async def _count() -> int:
+        return len(sink.spans)
+
+    await poll_until(_count, lambda n: n >= 1)
+    # NEGATIVE WAIT: the not-two half of `== 1`. This duration is deliberate, not
+    # a guess at how long the emit takes — that part is already handled above.
+    await asyncio.sleep(_SETTLE_SECONDS)
+    return len(sink.spans)
 
 
 # ---------------------------------------------------------------------------
@@ -444,12 +478,12 @@ async def test_successful_completion_emits_span(
 
     assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
 
-    # Give the fire-and-forget emit a tick to propagate
-    await asyncio.sleep(0.05)
+    # Wait for the fire-and-forget emit, then settle — see _settled_span_count
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: span_emitter wiring absent → 0 spans
-    assert len(fake_sink.spans) == 1, (
-        f"expected exactly 1 span for a successful completion, got {len(fake_sink.spans)}"
+    assert count == 1, (
+        f"expected exactly 1 span for a successful completion, got {count}"
         + (" [otel module absent]" if not otel_module_present else "")
     )
 
@@ -517,12 +551,10 @@ async def test_streaming_completion_emits_stream_span(
     content = resp.text  # consuming the streaming body
     assert "data:" in content, "expected SSE data in streaming response"
 
-    await asyncio.sleep(0.1)
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: no span emitted yet → 0 != 1
-    assert len(fake_sink.spans) == 1, (
-        f"expected exactly 1 span for a streaming completion, got {len(fake_sink.spans)}"
-    )
+    assert count == 1, f"expected exactly 1 span for a streaming completion, got {count}"
     span = fake_sink.spans[0]
     assert getattr(span, "stream", False) is True, (
         f"span.stream must be True for streaming path, got {getattr(span, 'stream', None)!r}"
@@ -578,12 +610,10 @@ async def test_governance_error_emits_span(
     assert_problem(resp, 402, "ERR_BUDGET_EXCEEDED")
     assert fake_upstream.calls == 0, "upstream must not be called when budget exceeded"
 
-    await asyncio.sleep(0.05)
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: no span emitter wiring → 0 spans
-    assert len(fake_sink.spans) == 1, (
-        f"expected 1 span even on 402 governance error, got {len(fake_sink.spans)}"
-    )
+    assert count == 1, f"expected 1 span even on 402 governance error, got {count}"
     span = fake_sink.spans[0]
     assert getattr(span, "status_code", None) == 402, (
         f"span.status_code must be 402, got {getattr(span, 'status_code', None)!r}"
@@ -626,6 +656,10 @@ async def test_pre_authz_401_no_span(
 
     assert resp.status_code == 401, f"expected 401, got {resp.status_code}: {resp.text}"
 
+    # NEGATIVE WAIT: this sleep IS the test. The assertion is that NO span is ever
+    # emitted for a pre-authz 401, and only elapsed time can demonstrate absence —
+    # polling would return immediately on an empty sink and assert nothing at all.
+    # Do not "convert" this to poll_until; that would make the test vacuous.
     await asyncio.sleep(0.05)
 
     # This should remain 0 — no span for pre-authz failures
@@ -997,7 +1031,11 @@ async def test_cache_hit_span_carries_cached_attr(
     resp1 = await client.post(COMPLETIONS, json=payload, headers=auth_key(key_info["key"]))
     assert resp1.status_code == 200, f"first request failed: {resp1.text}"
 
-    await asyncio.sleep(0.1)
+    # Wait for the MISS request's span to land BEFORE clearing. A fixed sleep that
+    # expires early clears an empty sink, the first span then arrives late, and the
+    # `== 1` below sees 2 — the flake presents as a duplicate span rather than a
+    # missing one, which is why it reads as a correctness bug when it fires.
+    await _settled_span_count(fake_sink)
     fake_sink.spans.clear()  # reset; we only care about the second (HIT) request
 
     # Second request: HIT
@@ -1007,12 +1045,10 @@ async def test_cache_hit_span_carries_cached_attr(
         f"expected x-cache: hit, got {resp2.headers.get('x-cache')!r}"
     )
 
-    await asyncio.sleep(0.05)
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: 0 spans because span_emitter wiring doesn't exist
-    assert len(fake_sink.spans) == 1, (
-        f"expected 1 span for cache-hit completion, got {len(fake_sink.spans)}"
-    )
+    assert count == 1, f"expected 1 span for cache-hit completion, got {count}"
     span = fake_sink.spans[0]
     assert getattr(span, "cached", False) is True, (
         f"span.cached must be True on cache hit, got {getattr(span, 'cached', None)!r}"
@@ -1057,12 +1093,10 @@ async def test_guardrail_blocked_span_carries_attr(
     assert_problem(resp, 400, "ERR_GUARDRAIL_BLOCKED")
     assert fake_upstream.calls == 0, "upstream must not be called when guardrail blocks"
 
-    await asyncio.sleep(0.05)
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: 0 spans because span_emitter wiring doesn't exist
-    assert len(fake_sink.spans) == 1, (
-        f"expected 1 span for guardrail-blocked request, got {len(fake_sink.spans)}"
-    )
+    assert count == 1, f"expected 1 span for guardrail-blocked request, got {count}"
     span = fake_sink.spans[0]
     assert getattr(span, "guardrail_blocked", False) is True, (
         f"span.guardrail_blocked must be True, got {getattr(span, 'guardrail_blocked', None)!r}"
@@ -1230,12 +1264,10 @@ async def test_team_id_attribute_in_span(
     resp = await client.post(COMPLETIONS, json=payload, headers=auth_key(key_info["key"]))
     assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
 
-    await asyncio.sleep(0.05)
+    count = await _settled_span_count(fake_sink)
 
     # TRUE-RED: 0 spans → AssertionError
-    assert len(fake_sink.spans) == 1, (
-        f"expected 1 span for team-attributed key completion, got {len(fake_sink.spans)}"
-    )
+    assert count == 1, f"expected 1 span for team-attributed key completion, got {count}"
     span = fake_sink.spans[0]
     assert getattr(span, "team_id", None) == team_id, (
         f"span.team_id must be {team_id!r}, got {getattr(span, 'team_id', None)!r}"

@@ -380,6 +380,10 @@ async def test_zdr_flip_blocks_on_tenant_row_lock_during_atomic_transaction(
     gen_task = asyncio.ensure_future(generator.generate_for_tenant(uuid.UUID(tenant_id), 1))
 
     await asyncio.wait_for(entered_put.wait(), timeout=10)
+    # NEGATIVE WAIT: a deliberate race construction. This delay lets the concurrent
+    # flip's UPDATE reach Postgres and START BLOCKING on the row lock — the contention
+    # window IS the subject of this test. Nothing observable exists to poll for (a
+    # blocked UPDATE has no visible state), and removing the gap collapses the race.
     await asyncio.sleep(0.1)  # let the flip's UPDATE reach Postgres and start blocking
     release_put.set()
 

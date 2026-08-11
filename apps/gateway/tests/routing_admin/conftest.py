@@ -26,6 +26,9 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from gateway.core.config import Settings
 from gateway.main import create_app
@@ -192,6 +195,42 @@ def issue_jwt(
 # ---------------------------------------------------------------------------
 # Core fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+async def pristine_routing_config() -> AsyncIterator[None]:
+    """Clear the persisted routing-config singleton before every test in this suite.
+
+    THIS SUITE'S ARRANGE, not a workaround. `/admin/routing` GET prefers the row in
+    `routing_config` over the settings-derived config, and that table holds exactly ONE
+    row for the whole database (`id IS TRUE`, a singleton by CHECK constraint). So it is
+    cross-test shared state for every suite that reads it.
+
+    Most suites never notice: the root `app` fixture rebuilds the schema and DELETEs every
+    table per test. This suite deliberately does NOT use it — `base_app` calls create_app()
+    directly so it can inject custom Settings — which also means nothing here clears the
+    table it reads. Under `--dist loadscope` any file scheduled onto the same worker before
+    this one can leave a row behind (`tests/routing_config_write` ends by persisting
+    `{"gpt": ["a"]}`), and then RA1/RA2/RA3/RA4/RA7 assert the settings-derived config and
+    get the neighbour's instead.
+
+    That is the whole of todo #99, which had been recorded as an unexplained app.state or
+    Settings leak after four probes failed to reproduce it. It is neither: it is a database
+    row. `pytest tests/routing_config_write tests/routing_admin` reproduces all five
+    failures in 5 seconds, deterministically.
+
+    Fail-soft on a missing table: if no suite has built the schema on this worker yet there
+    is no persisted override to clear, which is exactly the state this fixture wants.
+    """
+    engine = create_async_engine(TEST_DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM routing_config"))
+    except (ProgrammingError, OperationalError):
+        pass
+    finally:
+        await engine.dispose()
+    yield
 
 
 @pytest.fixture

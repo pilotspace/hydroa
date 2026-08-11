@@ -551,7 +551,13 @@ async def test_s07_breaker_new_episode_after_recovery_produces_new_row(
     # Episode 1: trip open
     for _ in range(5):
         breaker.record_failure()
-    await asyncio.sleep(0.1)
+    # Wait for episode 1's row to be COMMITTED before recovering. The write is
+    # fire-and-forget, and if it is still in flight when the breaker closes the two
+    # episodes can collapse onto one dedupe_key — so the `len(dedupe_keys) == 2`
+    # below would fail as an apparent correctness bug rather than a timing one.
+    await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "circuit_breaker_open"), 1
+    )
 
     # Recover to CLOSED
     breaker.record_success()
@@ -780,11 +786,19 @@ async def test_s11_health_new_failure_run_after_recovery_new_episode(
     # Episode 1
     for _ in range(3):
         await checker.check_once()
-    await asyncio.sleep(0.05)
+    # Same as S07: wait for episode 1's row to commit, not a guessed 50ms.
+    await poll_for_count(
+        lambda: _get_alert_rows_by_type(session_factory, "upstream_health_fail"), 1
+    )
 
     # Recover
     pinger.fail = False
     await checker.check_once()
+    # NEGATIVE WAIT: separates the recovery from episode 2. The recovery check writes
+    # no row, so there is nothing to poll for — and the gap is the POINT: the two fail
+    # episodes must stay DISTINCT, and shortening it can collapse them onto a single
+    # dedupe_key, which is exactly what `len(dedupe_keys) == 2` below exists to catch.
+    # The duration is load-bearing, not a guess.
     await asyncio.sleep(0.05)
 
     # Episode 2

@@ -402,6 +402,9 @@ async def test_capture_off_is_byte_identical_zero_rows(
     assert resp.status_code == 200
     assert resp.json() == UPSTREAM_BODY, "proxied body must be unaffected by capture wiring"
 
+    # NEGATIVE WAIT: proves capture-OFF writes NOTHING. Only elapsed time can show
+    # absence — poll_until would query an empty table, return on iteration one, and
+    # assert nothing at all.
     await asyncio.sleep(0.3)
 
     rows = await _request_log_rows(db_session, tenant_id)
@@ -460,6 +463,10 @@ async def test_zdr_tenant_never_gets_row_even_if_opted_in(
     )
     assert resp.status_code == 200, "proxied response must be unaffected by ZDR suppression"
 
+    # NEGATIVE WAIT: this is the ZDR suppression guarantee — a SECURITY invariant.
+    # The elapsed time is what demonstrates no payload was persisted. Converting this
+    # to a poll would return instantly against an empty table and silently gut the
+    # regression while leaving the suite green.
     await asyncio.sleep(0.3)
 
     rows = await _request_log_rows(db_session, tenant_id)
@@ -879,6 +886,12 @@ async def test_cross_tenant_isolation_on_capture_config(
         headers=auth_key(key_a["key"]),
     )
     assert resp.status_code == 200
+    # MIXED wait: tenant A's row must APPEAR (positive) while tenant B's must never
+    # appear (negative). Poll for A's row so the arrival half cannot flake, then keep a
+    # short settle so B's zero-row assertion still has a window in which a leaked
+    # cross-tenant write could show up.
+    await poll_for_count(lambda: _request_log_rows(db_session, tenant_a), 1)
+    # NEGATIVE WAIT: the cross-tenant-isolation half — see above.
     await asyncio.sleep(0.3)
 
     # tenant B's own config read must reflect only tenant B's own (default OFF) state

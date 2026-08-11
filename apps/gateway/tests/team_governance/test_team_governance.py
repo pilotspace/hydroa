@@ -53,6 +53,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_until
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -699,8 +700,20 @@ async def test_completion_increments_both_counters(
     resp = await client.post(COMPLETIONS, json=payload, headers=auth_key(key))
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    # Allow fire-and-forget recorder coroutine to complete
-    await asyncio.sleep(0.2)
+    # Positive wait: BOTH counters must become > 0. poll_until returns the last value
+    # rather than raising on timeout, so the two assertions below still name exactly which
+    # counter never moved — the poll only removes the "0.2s was too short on a loaded
+    # runner" failure mode without weakening the RED reason.
+    async def _both_counters() -> tuple[bytes | None, bytes | None]:
+        return (
+            await redis_client.get(_key_spend_key(key_id)),
+            await redis_client.get(_team_spend_key(team_id)),
+        )
+
+    await poll_until(
+        _both_counters,
+        lambda c: all(v is not None and Decimal(v.decode()) > Decimal("0") for v in c),
+    )
 
     # Per-key counter must be > 0 (already works in v3 — baseline check)
     raw_key = await redis_client.get(_key_spend_key(key_id))

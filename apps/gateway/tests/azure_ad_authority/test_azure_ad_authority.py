@@ -40,6 +40,8 @@ def test_token_url_uses_configured_authority() -> None:
         client_secret="secret-1",
         authority=_US_AUTHORITY,
     )
+    # EGRESS: construction-only — this asserts on _token_url(), a pure string build; no
+    # request is issued, so the egress policy is never consulted.
     provider = AzureADTokenProvider(config=config)
     assert provider._token_url() == f"{_US_AUTHORITY}/tenant-1/oauth2/v2.0/token"
 

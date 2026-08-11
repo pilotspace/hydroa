@@ -69,6 +69,9 @@ async def test_rejected_admission_fires_no_audit_event(
     )
     assert_problem(resp, 403, "ERR_PLAN_SEAT_CAP_EXCEEDED")
 
+    # NEGATIVE WAIT: the assertion below is `after == before` — a rejected admission must
+    # fire ZERO invite.accept audit events. Polling an unchanged count returns on the first
+    # iteration and proves nothing; the elapsed window IS the test.
     await asyncio.sleep(0.05)  # let any fire-and-forget task complete, if one were (wrongly) fired
     after = await audit_event_count(db_session, action="invite.accept")
     assert after == before, "a rejected admission must fire zero invite.accept audit events"
@@ -141,7 +144,18 @@ async def test_concurrent_admissions_racing_the_last_seat_exactly_one_wins(
         assert oidc_resp.status_code == 403, oidc_resp.text
         assert oidc_resp.json().get("code") == "ERR_PLAN_SEAT_CAP_EXCEEDED"
 
-    assert statuses == sorted([200, 403])
+    # The two paths signal success DIFFERENTLY — the invite returns 200, the OIDC callback
+    # returns 302 (see `oidc_won` above) — so the winning pair depends on WHICH racer won.
+    # This assertion used to hard-code sorted([200, 403]), which holds only when the invite
+    # wins; when the OIDC racer won, [302, 403] was the CORRECT outcome and the test failed
+    # anyway, contradicting its own docstring ("exactly ONE succeeds") and the
+    # `invite_won != oidc_won` assertion above. Scheduling decides the winner, so this was a
+    # coin-flip failure that only showed up under load.
+    expected = sorted([200, 403]) if invite_won else sorted([302, 403])
+    assert statuses == expected, (
+        f"expected one winner and one seat-cap rejection, got {statuses} "
+        f"(invite_won={invite_won}, oidc_won={oidc_won})"
+    )
     assert await active_user_count(db_session, tenant_id=owner["tenant_id"]) == 5
     assert await user_exists(db_session, email="racer-invite@raceseatcap.example") == invite_won
     assert await user_exists(db_session, email="racer-oidc@raceseatcap.example") == oidc_won

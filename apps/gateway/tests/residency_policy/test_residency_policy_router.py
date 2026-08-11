@@ -18,6 +18,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
+
 from tests.residency_policy.conftest import (
     COMPLETIONS,
     EMBEDDINGS,
@@ -36,6 +38,22 @@ pytestmark = pytest.mark.asyncio
 ALIAS = "chat-default"
 EU_CANDIDATE = "anthropic/claude-opus-4-eu"
 US_CANDIDATE = "anthropic/claude-opus-4-us"
+
+
+async def _residency_audit_count(db_session: AsyncSession, tenant_id: str) -> int:
+    """Count residency_policy.update audit rows for a tenant.
+
+    Extracted so the fire-and-forget audit write can be POLLED for instead of slept
+    on — the two call sites previously guessed 0.1s and lost the guess under load.
+    """
+    result = await db_session.execute(
+        text(
+            "SELECT COUNT(*) FROM audit_events WHERE tenant_id = :tid"
+            " AND action = 'residency_policy.update'"
+        ),
+        {"tid": tenant_id},
+    )
+    return result.scalar() or 0
 
 
 def _issue_role_token(app: object, *, tenant_id: str, role_str: str, email: str) -> str:
@@ -91,9 +109,11 @@ async def test_put_sets_pin_and_records_audit(
     assert row[0] == "eu"
     assert row[1] is not None
 
-    import asyncio
-
-    await asyncio.sleep(0.1)
+    # POSITIVE WAIT: the audit write is fire-and-forget, and the assertion below is
+    # `>= 1`, so polling for arrival is exactly equivalent and cannot flake.
+    await poll_until(
+        lambda: _residency_audit_count(db_session, owner["tenant_id"]), lambda n: n >= 1
+    )
     audit = (
         await db_session.execute(
             text(
@@ -157,6 +177,9 @@ async def test_put_invalid_region_rejected(
 
     import asyncio
 
+    # NEGATIVE WAIT: proves a rejected PUT records NO audit event. Only elapsed time
+    # can demonstrate absence — a poll against a zero count returns immediately and
+    # would assert nothing at all.
     await asyncio.sleep(0.1)
     audit = (
         await db_session.execute(

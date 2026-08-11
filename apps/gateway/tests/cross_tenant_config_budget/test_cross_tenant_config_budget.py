@@ -30,6 +30,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
+
 # ---------------------------------------------------------------------------
 # URL helpers
 # ---------------------------------------------------------------------------
@@ -653,19 +655,24 @@ async def test_cross_tenant_budget_write_is_now_audited(
     )
     assert resp.status_code == 200, resp.text
 
-    # Let the fire-and-forget audit write complete (admin-console-audit's own
-    # asyncio.sleep(0.05) drain convention — a bare sleep(0) no longer suffices now that a
-    # real audit write is expected to finish, not just "prove nothing stray fired").
+    # MIXED wait: the fire-and-forget audit write must land (positive) and there must be
+    # exactly ONE row (negative — a duplicate audit event is itself a defect).
+    async def _audit_count() -> int:
+        row = (
+            await db_session.execute(
+                text(
+                    "SELECT COUNT(*) FROM audit_events"
+                    " WHERE tenant_id = :tid AND action = 'platform.budget.update'"
+                ),
+                {"tid": tid},
+            )
+        ).scalar()
+        return int(row or 0)
+
+    await poll_until(_audit_count, lambda n: n >= 1)
+    # NEGATIVE WAIT: the exactly-one half of `count == 1`.
     await asyncio.sleep(0.05)
-    count = (
-        await db_session.execute(
-            text(
-                "SELECT COUNT(*) FROM audit_events"
-                " WHERE tenant_id = :tid AND action = 'platform.budget.update'"
-            ),
-            {"tid": tid},
-        )
-    ).scalar()
+    count = await _audit_count()
     assert count == 1
 
 

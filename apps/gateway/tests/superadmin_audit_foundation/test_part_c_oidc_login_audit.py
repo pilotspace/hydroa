@@ -170,6 +170,8 @@ async def test_non_superadmin_oidc_login_not_audited(
     )
     assert _decode(jwt_b)["role"] == "owner"
 
+    # NEGATIVE WAIT: the assertion below is `== 0` — the audit row count must be UNCHANGED
+    # by either non-superadmin login. Polling a zero count asserts nothing.
     await asyncio.sleep(0.05)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 0, (
         "row count for auth.superadmin_login must be unchanged by either call"
@@ -236,6 +238,8 @@ async def test_oidc_rejections_never_reach_audit_hook(
             cookie_nonce=FAKE_NONCE,
         )
 
+    # NEGATIVE WAIT: the assertion below is `== 0` — a rejected OIDC login must never reach
+    # the audit hook. Polling a zero count asserts nothing.
     await asyncio.sleep(0.05)
     assert await count_audit_rows(db_session, action=AUDIT_ACTION) == 0, (
         "get_or_provision_oidc_user / tokens.issue() were never reached for either rejection"

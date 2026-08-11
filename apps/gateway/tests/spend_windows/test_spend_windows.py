@@ -1109,6 +1109,8 @@ async def test_redis_unavailable_no_alert_event_no_failure(
 
     # Allow any fire-and-forget task to attempt (should not — no Redis crossing detected)
     import asyncio
+    # NEGATIVE WAIT: the assertion below is 0 alert_events rows — with Redis unavailable no
+    # crossing can be detected, so no INSERT may fire. Polling an empty table asserts nothing.
     await asyncio.sleep(0.05)
 
     # Assert: NO alert_events row (Redis was unavailable → no crossing detected → no INSERT)

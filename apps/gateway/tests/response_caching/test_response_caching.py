@@ -1104,6 +1104,7 @@ async def test_spend_counter_not_incremented_on_cache_hit(
     # counter must NOT move — and polling would return the instant the current value is
     # read, never giving an unwanted write the chance to appear. Converting this one
     # would turn a real assertion into a vacuous one; see tests/_polling.py's warning.
+    # NEGATIVE WAIT: the spend counter must NOT move on a cache hit (see the note above).
     await asyncio.sleep(0.15)
 
     spend_after_hit = await _spend()

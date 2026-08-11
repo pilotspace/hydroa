@@ -24,6 +24,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+
+from tests._polling import poll_until
 from tests.agent_token_authn_seam.conftest import mint_agent_token
 from tests.mcp_connector.conftest import (
     ADMIN_KEYS,
@@ -374,6 +376,13 @@ async def test_under_cap_all_dimensions_call_proceeds_and_meters(
 
     import asyncio
 
+    # MIXED wait: the fire-and-forget observer record must land (positive) and there must
+    # be exactly ONE (negative — a duplicate record is a double-count against the budget).
+    async def _record_count() -> int:
+        return len(observer.records)
+
+    await poll_until(_record_count, lambda n: n >= 1)
+    # NEGATIVE WAIT: the exactly-once half of `len(observer.records) == 1`.
     await asyncio.sleep(0.3)
     assert len(observer.records) == 1
     assert observer.records[0]["status"] == "success"

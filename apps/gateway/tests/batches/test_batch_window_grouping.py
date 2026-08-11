@@ -45,9 +45,11 @@ from gateway.proxy.infrastructure.batch_diversion import BatchDiversionAdapter
 from gateway.proxy.infrastructure.batch_window_buffer import (
     _RESULT_KEY_PREFIX,
     BatchWindowBuffer,
+    _items_key,
     _wait_count_key,
     _wait_sum_key,
 )
+from tests._polling import poll_until
 
 pytestmark = pytest.mark.asyncio
 
@@ -477,6 +479,11 @@ class TestLifecycleReWaitsWhenClaimWinsRace:
         assert stream is not None
 
         async def _publish_shortly() -> None:
+            # NEGATIVE WAIT: a deliberate race construction — this delay is the test's
+            # SUBJECT, not a wait for state. It publishes the result slightly AFTER the
+            # consumer starts waiting, which is the interleaving under test. Removing or
+            # polling it away would collapse the race window and the test would pass
+            # without ever exercising the ordering it exists to pin.
             await asyncio.sleep(0.1)
             assert captured_custom_id is not None
             await buffer.publish_result(
@@ -828,10 +835,29 @@ class TestWindowFlushesAsOneJob:
                 )
                 for _ in range(3)
             ]
-            await asyncio.sleep(0.5)  # let all 3 appends land AND the window age past it
+            # POSITIVE WAIT, in two stages — a single fixed 0.5s sleep conflated two
+            # independent races and lost CI run 31356301036 with
+            # `{'claimed': 0, 'items': 0}`:
+            #
+            #   1. the 3 concurrent appends must all be buffered. Polling flush_once()
+            #      directly would be WRONG here: a flush that fires with only 1-2 items
+            #      buffered CLAIMS that partial window, and the claim is consumed — the
+            #      assertion below would then fail as `items: 2` with no way to recover.
+            #      So wait on the buffer's own length first.
+            #   2. the window must age past batch_window_seconds. claim_due's due-check
+            #      is elapsed-time-based, so flush_once() is a legitimate no-op until
+            #      then. Once stage 1 holds, retrying flush_once() is safe by
+            #      construction: all 3 items are already present, so it either claims
+            #      the whole window or claims nothing.
+            items_key = _items_key(uuid.UUID(owner["tenant_id"]))
+
+            async def _buffered_count() -> int:
+                return int(await app.state.redis_client.llen(items_key))
+
+            await poll_until(_buffered_count, lambda n: n == 3)
 
             flusher = _make_flusher(app)
-            result = await flusher.flush_once()
+            result = await poll_until(flusher.flush_once, lambda r: r["claimed"] == 1)
             assert result == {"claimed": 1, "items": 3}, f"expected one claimed group: {result}"
 
             responses = await asyncio.gather(*tasks)
@@ -1014,15 +1040,31 @@ class TestDisableMidWindow:
                 )
                 for _ in range(2)
             ]
-            await asyncio.sleep(0.5)
+            # Wait for BOTH appends to be buffered before disabling the policy — the
+            # test's whole claim is that disabling mid-window does not disturb an
+            # already-open window, so a window that is not yet fully open makes the
+            # assertion measure the wrong thing. STAGE 1 only — never poll flush_once()
+            # to establish this, because a flush firing while 1 of 2 items is buffered
+            # would claim that partial window and consume it.
+            items_key = _items_key(uuid.UUID(owner["tenant_id"]))
+
+            async def _buffered_count() -> int:
+                return int(await app.state.redis_client.llen(items_key))
+
+            await poll_until(_buffered_count, lambda n: n == 2)
 
             disable = await client.put(
                 POLICY, json={"enabled": False}, headers=_bearer(owner["jwt"])
             )
             assert disable.status_code == 200
 
+            # STAGE 2: the window must also AGE past batch_window_seconds before
+            # claim_due considers it, so a single flush_once() right after stage 1 is a
+            # legitimate no-op — that is what `{'claimed': 0, 'items': 0}` means, not a
+            # regression. Retrying is safe by construction now that both items are
+            # buffered: the flush either claims the whole window or claims nothing.
             flusher = _make_flusher(app)
-            result = await flusher.flush_once()
+            result = await poll_until(flusher.flush_once, lambda r: r["claimed"] == 1)
             assert result["items"] == 2, f"pre-existing window must still flush: {result}"
 
             responses = await asyncio.gather(*tasks)

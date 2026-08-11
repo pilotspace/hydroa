@@ -285,9 +285,26 @@ async def active_model(db_session: AsyncSession) -> str:
 
 
 async def _settle_dispatch(
-    redis_client: Any, *, quiet_checks: int = 3, timeout_s: float = 2.0
+    redis_client: Any, *, expect: int, quiet_checks: int = 3, timeout_s: float = 2.0
 ) -> None:
     """Drain the fire-and-forget usage-record dispatch race before flushing.
+
+    `expect` is the number of stream entries the caller's assertion depends on, and it is
+    REQUIRED — the original version took no count and waited only for the length to stop
+    changing, which cannot tell "all dispatches landed" apart from "no dispatch has started
+    yet". A stream still at 0 is trivially stable, so quiescence was declared after ~30 ms
+    and the caller then asserted against an empty table. That is what failed:
+
+        test_case_sensitive_keys_preserved
+        assert [] == [{'Team': 'a', 'team': 'b'}]
+
+    Its docstring sold the count-free design as a feature ("scales to any number of
+    in-flight dispatches without hardcoding a count") — but that flexibility WAS the bug.
+    Stability is only meaningful once the expected entries are actually present, so the
+    quiet window now starts counting at `length >= expect`.
+
+    `expect=0` is the negative case (a rejected request must never be billed): nothing is
+    coming, so stability alone cannot prove anything and only elapsed time can.
 
     `_dispatch_record` (proxy/application/use_cases.py) fires usage recording via
     `asyncio.ensure_future(...)` and returns the HTTP response WITHOUT awaiting it
@@ -304,12 +321,19 @@ async def _settle_dispatch(
     """
     from gateway.usage.infrastructure.redis_stream import STREAM_KEY
 
+    if expect == 0:
+        # NEGATIVE WAIT: the caller asserts COUNT(*) == 0, so there is no arrival to poll
+        # for — only a real window in which a stray billing write could show up. Polling an
+        # empty stream returns on the first iteration and proves nothing.
+        await asyncio.sleep(0.15)
+        return
+
     deadline = asyncio.get_event_loop().time() + timeout_s
     last_len = -1
     stable = 0
     while asyncio.get_event_loop().time() < deadline:
         length = await redis_client.xlen(STREAM_KEY)
-        if length == last_len:
+        if length >= expect and length == last_len:
             stable += 1
             if stable >= quiet_checks:
                 return
@@ -319,10 +343,11 @@ async def _settle_dispatch(
         await asyncio.sleep(0.01)
 
 
-async def _flush(redis_client: Any, app: object) -> None:
+async def _flush(redis_client: Any, app: object, *, expect: int) -> None:
+    """Settle the dispatch race for `expect` usage records, then drain the stream."""
     from gateway.usage.application.flusher import UsageLedgerFlusher
 
-    await _settle_dispatch(redis_client)
+    await _settle_dispatch(redis_client, expect=expect)
     flusher = UsageLedgerFlusher(redis=redis_client, session_factory=app.state.sessionmaker)
     await flusher.flush_once()
 
@@ -361,7 +386,7 @@ async def test_untagged_request_byte_identical(
     assert resp.status_code == 200, f"completion failed: {resp.text}"
     assert resp.json() == fake_upstream.body, "body must be byte-identical to upstream's"
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
 
     rows = (
         await db_session.execute(
@@ -398,7 +423,7 @@ async def test_valid_tags_persisted_non_streaming(
     assert resp.status_code == 200, f"completion failed: {resp.text}"
     assert resp.json() == fake_upstream.body, "tags header must not affect the proxied response"
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
     tags_rows = await _tags_for(db_session, model_id=active_model)
     assert len(tags_rows) == 1
     assert tags_rows[0] == {"team": "platform", "project": "gw"}
@@ -432,7 +457,7 @@ async def test_valid_tags_persisted_streaming_parity(
         async for _ in resp.aiter_bytes():
             pass
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
     tags_rows = await _tags_for(db_session, model_id=active_model)
     assert len(tags_rows) == 1, "stream() must reach the SAME tags-persistence seam as complete()"
     assert tags_rows[0] == {"team": "platform"}
@@ -463,7 +488,7 @@ async def test_explicit_empty_object_accepted(
     )
     assert resp.status_code == 200, f"an explicit empty object must not be rejected: {resp.text}"
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
     tags_rows = await _tags_for(db_session, model_id=active_model)
     assert tags_rows == [{}]
 
@@ -493,7 +518,7 @@ async def test_case_sensitive_keys_preserved(
     )
     assert resp.status_code == 200, f"completion failed: {resp.text}"
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
     tags_rows = await _tags_for(db_session, model_id=active_model)
     assert tags_rows == [{"Team": "a", "team": "b"}], "case must never be folded/merged"
 
@@ -524,7 +549,7 @@ async def test_malformed_json_rejected_before_billing(
     assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
     assert fake_upstream.calls == 0, "upstream must never be called for a malformed header"
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=0)
     rows = (
         await db_session.execute(
             text("SELECT COUNT(*) FROM usage_records WHERE model_id = :m"), {"m": active_model}
@@ -562,7 +587,7 @@ async def test_nested_value_rejected(
     assert_problem(resp, 422, "ERR_PAYLOAD_INVALID")
     assert fake_upstream.calls == 0
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=0)
     rows = (
         await db_session.execute(
             text("SELECT COUNT(*) FROM usage_records WHERE model_id = :m"), {"m": active_model}
@@ -1011,7 +1036,7 @@ async def test_concurrent_tagged_requests_no_contention(
     assert resp1.status_code == 200, resp1.text
     assert resp2.status_code == 200, resp2.text
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=2)
 
     rows = (
         await db_session.execute(

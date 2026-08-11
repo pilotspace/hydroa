@@ -23,6 +23,6 @@ async def test_verify_mixed_case_header_name_still_parsed(
         headers={**auth_key(key), "x-GATEWAY-tags": json.dumps({"team": "mixed"})},
     )
     assert resp.status_code == 200, resp.text
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=1)
     rows = await _tags_for(db_session, model_id=active_model)
     assert rows == [{"team": "mixed"}], f"mixed-case header name must still be parsed, got {rows}"

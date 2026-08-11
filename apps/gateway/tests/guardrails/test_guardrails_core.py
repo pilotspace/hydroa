@@ -84,7 +84,6 @@ Infrastructure:
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
@@ -94,6 +93,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests import _redis_env
+from tests._polling import poll_for_count
 
 # ---------------------------------------------------------------------------
 # Route constants — mirror §3 CONTRACT
@@ -405,14 +405,23 @@ async def test_prompt_injection_block_mode_rejects_payload(
         f"upstream must not be called when guardrail blocks, got calls={upstream.calls}"
     )
 
-    # Verify usage record with status=400 and guardrail_blocked=true
-    await asyncio.sleep(0.15)
-    rows = (
-        await db_session.execute(
-            text("SELECT status, raw FROM usage_records WHERE key_id = :kid"),
-            {"kid": key_info["key_id"]},
+    # Verify usage record with status=400 and guardrail_blocked=true.
+    # POSITIVE WAIT: the usage record is written fire-and-forget after the 400 is
+    # returned, so it may not have landed when the response arrives. A fixed 0.15s
+    # sleep passed on an idle laptop and failed CI run 31356301036 with
+    # "expected at least one usage record, assert 0 >= 1" — the write was simply
+    # still in flight on a loaded 4-vCPU runner. Poll instead of guessing a duration.
+    async def _usage_rows() -> list[Any]:
+        return list(
+            (
+                await db_session.execute(
+                    text("SELECT status, raw FROM usage_records WHERE key_id = :kid"),
+                    {"kid": key_info["key_id"]},
+                )
+            ).fetchall()
         )
-    ).fetchall()
+
+    rows = await poll_for_count(_usage_rows, 1)
     assert len(rows) >= 1, "expected at least one usage record for blocked request"
     status_val, raw_val = rows[-1]
     assert status_val == 400, f"usage record status should be 400, got {status_val}"

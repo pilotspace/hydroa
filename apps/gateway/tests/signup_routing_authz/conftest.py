@@ -29,6 +29,9 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from gateway.core.config import Settings
 from gateway.main import create_app
@@ -49,6 +52,32 @@ ADA = {"tenant_name": "Acme", "email": "ada@acme.io", "password": "correct horse
 
 def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+async def pristine_routing_config() -> AsyncIterator[None]:
+    """Clear the persisted routing-config singleton before every test in this suite.
+
+    `routing_config` holds ONE row for the whole database (`CheckConstraint("id IS TRUE")`),
+    so it is global state, and this suite opts out of the root `app` fixture's per-test
+    DELETE by building its own app. That cuts both ways: a row left by a sibling suite on the
+    same xdist worker is visible here, and the row this suite's own `PUT /admin/routing`
+    persists survives into whatever runs next — the mechanism that cost `tests/routing_admin`
+    five tests (todo #99). Clearing on entry fixes both directions at once.
+
+    Found by `tests/repo_hygiene/test_singleton_row_isolation.py`, which links a suite to the
+    singleton either by name or through the route that reads it.
+    """
+    engine = create_async_engine(TEST_DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("DELETE FROM routing_config"))
+    except (ProgrammingError, OperationalError):
+        # The table may not exist yet on a fresh per-worker DB; nothing to clear then.
+        pass
+    finally:
+        await engine.dispose()
+    yield
 
 
 def build_settings(*, public_signup_enabled: bool, **overrides: Any) -> Settings:

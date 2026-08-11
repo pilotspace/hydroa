@@ -58,7 +58,7 @@ async def test_verify_cache_hit_bills_with_requesting_calls_own_tags(
     assert resp2.status_code == 200, resp2.text
     assert resp2.headers.get("x-cache") == "hit", resp2.headers.get("x-cache")
 
-    await _flush(redis_client, app)
+    await _flush(redis_client, app, expect=2)
 
     rows = (
         await db_session.execute(

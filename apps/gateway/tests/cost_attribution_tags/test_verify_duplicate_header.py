@@ -38,6 +38,6 @@ async def test_verify_duplicate_header_instances(
     )
     print("STATUS:", resp.status_code, resp.text[:300])
     if resp.status_code == 200:
-        await _flush(redis_client, app)
+        await _flush(redis_client, app, expect=1)
         rows = await _tags_for(db_session, model_id=active_model)
         print("STORED TAGS:", rows)

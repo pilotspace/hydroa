@@ -436,6 +436,8 @@ class TestAppendMessage:
 
         import asyncio
 
+        # NEGATIVE WAIT: a real wall-clock gap so `updated_at` can differ — same reasoning
+        # as test_conversation_rename.py. Nothing to poll for; the elapsed time is the point.
         await asyncio.sleep(0.01)  # ensure clock advances
 
         await client.post(

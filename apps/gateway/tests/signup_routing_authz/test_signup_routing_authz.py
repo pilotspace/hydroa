@@ -26,6 +26,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests._polling import poll_until
+
 from gateway.tenants.domain.entities import Role
 
 from .conftest import ADA, ADMIN_INVITES, ADMIN_ROUTING, LOGIN, SIGNUP, bearer, issue_token
@@ -326,7 +328,12 @@ async def test_superadmin_writes_routing_unchanged(
     assert persisted is not None, "PUT must persist a routing_config row"
     assert persisted["model_groups"] == VALID_ROUTING_BODY["model_groups"]
 
-    await asyncio.sleep(0.05)  # let the fire-and-forget audit task complete
+    # MIXED wait: the audit event must APPEAR (positive — fire-and-forget, so poll)
+    # and must appear EXACTLY ONCE (negative — a duplicate audit row for one write
+    # would be a real defect, and polling alone would never give it time to show).
+    await poll_until(lambda: _routing_update_audit_count(db_session), lambda n: n >= 1)
+    # NEGATIVE WAIT: the exactly-once half.
+    await asyncio.sleep(0.05)
     assert await _routing_update_audit_count(db_session) == 1, (
         "routing.update audit event must fire on a successful write"
     )
@@ -362,6 +369,8 @@ async def test_tenant_owner_cannot_write_routing(
     after = await _routing_config_row(db_session)
     assert after == before, f"routing_config row must be UNCHANGED on a 403: {before} -> {after}"
 
+    # NEGATIVE WAIT: proves a 403 writes NO audit event. Only elapsed time can show
+    # absence — polling a zero count returns on iteration one and asserts nothing.
     await asyncio.sleep(0.05)
     assert await _routing_update_audit_count(db_session) == 0, (
         "no routing.update audit event may fire on a rejected write"

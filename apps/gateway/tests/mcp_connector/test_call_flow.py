@@ -48,6 +48,34 @@ pytestmark = pytest.mark.asyncio
 ALLOWED_URL = "https://mcp.acme.example/v1"
 
 
+# How long to wait AFTER the expected observations arrive to prove no EXTRA one follows.
+_SETTLE_SECONDS = 0.3
+
+
+async def _settled_record_count(observer: Any, expected: int) -> int:
+    """Wait for `expected` observations, then prove an extra one does not follow.
+
+    `assert len(observer.records) == N` is a MIXED assertion — not-fewer AND
+    not-more — and the halves need opposite treatment. Not-fewer is a positive
+    wait: the observer is written fire-and-forget after the response returns, so a
+    fixed sleep loses its guess on a loaded runner. Not-more is a negative wait
+    that polling cannot show, because a poll returns the instant the Nth record
+    lands and never gives an N+1th the chance to appear.
+
+    "call_id is generated freshly for EVERY invocation" and "exactly one metering
+    record per call" are real invariants here, so the not-more half is load-bearing.
+    """
+
+    async def _count() -> int:
+        return len(observer.records)
+
+    await poll_until(_count, lambda n: n >= expected)
+    # NEGATIVE WAIT: the not-more half. Deliberate duration, not a guess at how
+    # long the observation takes — that is already handled by the poll above.
+    await asyncio.sleep(_SETTLE_SECONDS)
+    return len(observer.records)
+
+
 async def _request_log_rows(db_session: AsyncSession, tenant_id: str) -> Sequence[Row[Any]]:
     return (
         await db_session.execute(
@@ -696,6 +724,11 @@ async def test_zdr_tenant_suppresses_trace_row_entirely(
     )
     assert resp.status_code == 200, resp.text
 
+    # NEGATIVE WAIT: this sleep IS the test, and the invariant is a SECURITY one —
+    # a ZDR tenant's payload must never be persisted. Only elapsed time can show
+    # that no row was written; poll_until would query an empty table, return
+    # immediately, and assert nothing. Converting this would silently gut a ZDR
+    # regression while leaving the suite green.
     await asyncio.sleep(0.3)
     rows = await _request_log_rows(db_session, owner["tenant_id"])
     assert len(rows) == 0, "a ZDR tenant must never get a trace row written for an MCP call"
@@ -723,8 +756,7 @@ async def test_successful_call_invokes_observer_once_with_call_id(
     )
     assert resp.status_code == 200, resp.text
 
-    await asyncio.sleep(0.3)
-    assert len(observer.records) == 1
+    assert await _settled_record_count(observer, 1) == 1
     record = observer.records[0]
     assert record["call_id"] is not None
     assert isinstance(record["call_id"], uuid.UUID)
@@ -747,8 +779,7 @@ async def test_two_successful_calls_produce_two_distinct_call_ids(
         )
         assert resp.status_code == 200, resp.text
 
-    await asyncio.sleep(0.3)
-    assert len(observer.records) == 2
+    assert await _settled_record_count(observer, 2) == 2
     call_ids = {r["call_id"] for r in observer.records}
     assert len(call_ids) == 2, (
         "call_id must be generated freshly for EVERY invocation — never reused across "
@@ -770,6 +801,9 @@ async def test_refused_call_never_invokes_observer(
     )
     assert resp.status_code == 403
 
+    # NEGATIVE WAIT: proves a denied call is NEVER observed or metered. Polling an
+    # empty list returns on iteration one and asserts nothing — the elapsed time is
+    # the whole test.
     await asyncio.sleep(0.3)
     assert observer.records == []
 
@@ -797,6 +831,8 @@ async def test_blocked_call_never_invokes_observer(
     assert resp.status_code == 200, resp.text
     assert "error" in resp.json()
 
+    # NEGATIVE WAIT: same shape as the 403 case above — the elapsed time is what
+    # demonstrates the absence of a metering record. Do not convert to a poll.
     await asyncio.sleep(0.3)
     assert observer.records == [], "a block-mode-blocked call must NOT be observed/metered"
 
