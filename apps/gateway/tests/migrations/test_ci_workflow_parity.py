@@ -34,24 +34,35 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # this line AND all four manifests together — which is the whole point.
 PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 
-# The gateway job's wall-clock floor, set from a MEASUREMENT. Run 31243949907
-# (2026-08-08) is the first gateway run that ever FINISHED: 4553 passed / 8 failed
-# in 4935s = 1h22m15s, at -n 4 with coverage. This floor is that number x ~1.5.
+# The gateway job's wall-clock floor, set from a MEASUREMENT.
 #
-# Three earlier caps were GUESSED and all three were cancelled mid-suite, so every
-# figure before the measurement was a lower bound and never a runtime:
+# The INVARIANT has never changed: the cap must outlast the unit of work the job
+# actually performs. A cap below that is not a safety bound — it is a guaranteed
+# `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
+#
+# What changed (PR #104) is the UNIT. The job used to run the whole suite; it now runs
+# ONE SHARD of four. So this floor was re-derived, NOT relaxed — 120 was 1.5x the
+# 1h22m15s whole-suite runtime, and 15 is 1.5x the longest measured shard. Holding 120
+# against a 10-minute shard would have been the opposite of safety: a HUNG shard would
+# have burned two hours before reporting, which is why it was todo #112.
+#
+# Measured shard durations, run 31468024262 (N=4, all green):
+#   gateway (1) 9m37s   gateway (2) 9m23s   gateway (3) 9m34s   gateway (4) 9m56s
+# Longest 9m56s -> floor 15 (x1.5). ci.yml itself sets 20 (x2), leaving room to tune
+# down to this floor on evidence without editing this constant.
+#
+# Whole-suite history, all lower bounds because none of these caps ever completed:
 #   30 -> ~30m       serial, every run on main from 2026-07-23
 #   75 -> 74m17s     serial, run 31197251730
 #   60 -> 59m27s     -n 4,   run 31241464171
-# Steps 1-9 cost 32s combined, so the budget is essentially all test time.
+#  120 -> held; the suite ran 1h06m-1h22m unsharded (run 31243949907)
 #
-# Re-derive this constant from an observed run, never from an extrapolation: the 75
+# Re-derive this constant from an OBSERVED run, never from an extrapolation: the 75
 # came from scaling a 12-core dev-host number to a 4-core runner and was wrong, and
 # the 60 that replaced it was wrong too. Each mistake cost a cancelled run.
 #
-# A cap below the suite's own runtime is not a safety bound — it is a guaranteed
-# `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
-MIN_GATEWAY_TIMEOUT_MINUTES = 120
+# If the shard count changes, this changes with it — fewer shards means a longer shard.
+MIN_GATEWAY_TIMEOUT_MINUTES = 15
 
 # `make ci` gates that CI satisfies in a DIFFERENT but equivalent form, so the literal
 # `make <gate>` string is legitimately absent from the workflow.
@@ -316,12 +327,16 @@ def test_every_gate_bearing_job_is_required_by_the_aggregate_gate() -> None:
 
 
 def test_gateway_timeout_outlasts_the_suite() -> None:
-    """The gateway job must be allowed to finish the suite it runs.
+    """The gateway job must be allowed to finish the work it runs.
 
-    A `timeout-minutes` below the suite's own wall-clock is not a safety bound,
-    it is a guaranteed `cancelled`: the runner kills the job mid-suite and the
-    check reports neither pass nor fail. This repo has now proven that twice —
-    at 30 min (every run on `main` from 2026-07-23) and again at 75.
+    Since PR #104 that work is ONE SHARD, not the whole suite, so the floor tracks a
+    shard's measured duration — see MIN_GATEWAY_TIMEOUT_MINUTES for why re-deriving it
+    downward tightened this bound rather than relaxing it.
+
+    A `timeout-minutes` below that wall-clock is not a safety bound, it is a guaranteed
+    `cancelled`: the runner kills the job mid-run and the check reports neither pass nor
+    fail. This repo has now proven that twice — at 30 min (every run on `main` from
+    2026-07-23) and again at 75.
 
     This is the same family as the other guards in this module — a gate that
     looks enforced and enforces nothing — so it is asserted here rather than
@@ -394,3 +409,69 @@ def test_kind_e2e_is_dispatch_only() -> None:
         "['workflow_dispatch']. Per ci-restoration CR v2 it is opt-in and runs "
         "before a release cut — a PR trigger makes it a permanently-red gate."
     )
+
+
+def test_main_runs_are_never_cancelled_by_the_concurrency_group() -> None:
+    """A `concurrency` group must exist, and it must NEVER cancel a run on `main`.
+
+    The group itself is a slot-starvation fix: one run is 5 jobs (4 shards + dashboard)
+    and the Free plan cap is 5 CONCURRENT jobs account-wide, so two runs do not overlap —
+    they serialize. Without cancellation, every re-push to a PR branch left the previous
+    run's 5 jobs occupying every slot while the new one waited (observed 2026-08-11: main's
+    push run for 9279c51 sat `queued` behind PR #102's run).
+
+    The asymmetry is the whole point of this guard. `cancel-in-progress: true` is the
+    obvious "simplification", and it would make MAIN runs cancellable — turning the
+    release-integrity record into a `cancelled` check that reaches no verdict. That is the
+    precise fault this milestone closed, after three caps produced three runs that proved
+    nothing. A cancelled required check is not a failing one, so it does not even announce
+    itself as a regression.
+
+    So this asserts the exclusion by BEHAVIOUR, not by matching a literal string: the
+    expression must evaluate falsey for `refs/heads/main` and truthy for a PR ref.
+    """
+    workflow = _load(CI_WORKFLOW)
+    concurrency = workflow.get("concurrency")
+    assert isinstance(concurrency, dict), (
+        f"ci.yml has no workflow-level `concurrency` block (got {concurrency!r}). Without "
+        "one, a superseded run keeps all 5 concurrency slots until it finishes."
+    )
+
+    group = str(concurrency.get("group", ""))
+    assert "github.ref" in group, (
+        f"`concurrency.group` is {group!r} and does not vary by `github.ref`. A constant "
+        "group serializes EVERY branch against every other — and would let a PR push "
+        "cancel a main run outright."
+    )
+
+    raw = concurrency.get("cancel-in-progress")
+    assert raw is not True, (
+        "`cancel-in-progress: true` cancels MAIN runs too. A cancelled run on main is a "
+        "required check that reaches no verdict — the exact fault R6 closed. Use an "
+        "expression that excludes refs/heads/main."
+    )
+    assert raw not in (None, False), (
+        f"`cancel-in-progress` is {raw!r}, so superseded PR runs are never cancelled and "
+        "keep holding all 5 concurrency slots — the starvation this block exists to fix."
+    )
+
+    expression = str(raw).strip().removeprefix("${{").removesuffix("}}").strip()
+    comparison = re.fullmatch(r"github\.ref\s*(==|!=)\s*'([^']*)'", expression)
+    assert comparison is not None, (
+        f"`cancel-in-progress` is {expression!r}, which this guard cannot evaluate. Keep it "
+        f"to the form `github.ref != 'refs/heads/main'` so the main-exclusion stays "
+        f"mechanically checkable rather than resting on a comment."
+    )
+    operator, literal = comparison.group(1), comparison.group(2)
+
+    def cancels(ref: str) -> bool:
+        return ref != literal if operator == "!=" else ref == literal
+
+    # Assert the SEMANTICS for the only two refs that matter, not a literal string, so any
+    # equivalent spelling passes and any main-cancelling one fails.
+    for ref, must_cancel in (("refs/heads/main", False), ("refs/pull/123/merge", True)):
+        assert cancels(ref) is must_cancel, (
+            f"`cancel-in-progress` evaluates to {cancels(ref)} for {ref!r}, expected "
+            f"{must_cancel}. Main must never be cancelled (it is the release-integrity "
+            f"record); PR refs must be, or superseded runs starve live ones."
+        )
