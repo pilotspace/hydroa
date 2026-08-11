@@ -194,7 +194,7 @@ export function PlanSeatsPage() {
             {plan ? (
               <div className="flex flex-col gap-1 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
                 <span>
-                  Change your plan with the “Upgrade plan” button above — you'll see the exact
+                  Change your plan with the “Upgrade plan” button above — you’ll see the exact
                   price change before anything is applied.
                 </span>
                 <span>Seat pricing coming soon.</span>
