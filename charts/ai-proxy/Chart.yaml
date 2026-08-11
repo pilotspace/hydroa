@@ -2,9 +2,15 @@ apiVersion: v2
 name: ai-proxy
 description: AI Proxy — production stack (gateway, Envoy edge, datastores, dashboard) on Kubernetes
 type: application
-# Chart version is independent of the app; appVersion tracks the released app (v0.4.0).
-version: 0.1.0
-appVersion: "0.4.0"
+# Chart version is independent of the app; appVersion tracks the released app.
+#
+# ⚠ BUMP BOTH OF THESE AT EVERY RELEASE CUT, together with `image.tag` in values.yaml
+# (gateway AND dashboard) and the `values-prod.yaml` override. Nothing enforces it, and
+# they had drifted NINE releases: appVersion sat at 0.4.0 while the gateway shipped
+# 0.13.0, so the documented production deploy would have pulled 0.4.0 images. See
+# todo #110 and the release checklist in RELEASES.md.
+version: 0.2.0
+appVersion: "0.14.0"
 maintainers:
   - name: Pilotspace
 keywords:

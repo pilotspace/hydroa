@@ -18,7 +18,7 @@ import importlib.metadata
 #: Fallback for running from a source tree with no installed distribution metadata (an
 #: editable-install edge). It MUST equal pyproject's version — a fallback that disagrees is
 #: just a fourth version to keep in sync — which is what the §4 guard enforces.
-_FALLBACK_VERSION = "0.13.0"
+_FALLBACK_VERSION = "0.14.0"
 
 try:
     __version__: str = importlib.metadata.version("hydroa-gateway")

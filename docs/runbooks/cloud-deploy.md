@@ -32,13 +32,32 @@ Before you begin, confirm you have:
 
 - A managed Kubernetes cluster (EKS / GKE / AKS / etc.) and a `kubeconfig` whose current context
   points at it (`kubectl config current-context`).
-- A container image registry reachable by the cluster, with both images pushed and tagged to match
-  `image.tag` in `values-prod.yaml` (gateway + dashboard). Build, tag, and push them first:
+- A container image registry reachable by the cluster, with both images built **from the tagged
+  release commit** and pushed under that release's tag.
+
+  ⚠ Tag the image to the RELEASE, then make the chart match — not the other way round. This bullet
+  used to read "tagged to match `image.tag` in `values-prod.yaml`", which inverts the dependency: the
+  chart's tags had drifted nine releases (`0.4.0` while the gateway shipped `0.13.0`), so following it
+  literally would have you build 0.14.0 code and publish it as `0.4.0-prod` — a deployed image tag
+  that lies about what is running, which is precisely what CC8.1 asks you to be able to evidence.
+  Nothing in CI builds or publishes images, so this is entirely manual; see todo #110.
+
   ```bash
-  docker build -t <registry>/ai-proxy-gateway:<tag>   apps/gateway
-  docker build -t <registry>/ai-proxy-dashboard:<tag> apps/dashboard
-  docker push <registry>/ai-proxy-gateway:<tag>
-  docker push <registry>/ai-proxy-dashboard:<tag>
+  # RELEASE must equal the git tag you are deploying, e.g. 0.14.0
+  RELEASE=0.14.0
+  git checkout "v$RELEASE"          # build from the tagged commit, never from a dirty tree
+
+  docker build -t <registry>/ai-proxy-gateway:"$RELEASE-prod"   apps/gateway
+  docker build -t <registry>/ai-proxy-dashboard:"$RELEASE-prod" apps/dashboard
+  docker push <registry>/ai-proxy-gateway:"$RELEASE-prod"
+  docker push <registry>/ai-proxy-dashboard:"$RELEASE-prod"
+  ```
+
+  Then confirm the chart agrees before applying — these four must all name `$RELEASE`:
+  `Chart.yaml` `appVersion`, `values.yaml` `image.tag`, `values.yaml` `dashboard.image.tag`, and both
+  `-prod` overrides in `values-prod.yaml`.
+  ```bash
+  grep -rn "appVersion\|tag:" charts/ai-proxy/Chart.yaml charts/ai-proxy/values.yaml charts/ai-proxy/values-prod.yaml
   ```
 - Managed datastores (or in-cluster equivalents) reachable at the connection strings in
   `values-prod.yaml` (`gateway.env.databaseUrl`, `gateway.env.redisUrl`, the object-store endpoint).
