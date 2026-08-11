@@ -82,16 +82,13 @@ jobs:
         # Makefile's test-ci comment for the full reasoning.
         run: make test-ci
       - name: Migration parity gate
-        # alembic check is only valid on a DB at head (contract §1) — use a fresh
-        # scratch DB, never gateway_test (the test run leaves an unstamped
-        # create_all schema there).
-        run: |
-          PGPASSWORD=gateway psql -h localhost -p 5433 -U gateway -d gateway_test \
-            -c "DROP DATABASE IF EXISTS gateway_parity;" -c "CREATE DATABASE gateway_parity;"
-          make migrate
-          make migrate-check
-        env:
-          GATEWAY_DATABASE_URL: postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_parity
+        # Delegates to `make migrate-parity` — the same target `make ci` runs — so a local
+        # green and a CI green mean the same thing. This step used to inline the shell,
+        # which made it CI-only: `make ci` never ran it, and 16 unregistered ORM modules
+        # sat behind that gap until the first fully-green suite run exposed them.
+        # alembic check is only valid on a DB at head, so the target uses a fresh scratch
+        # DB, never gateway_test (the test run leaves an unstamped create_all schema there).
+        run: make migrate-parity
 
   dashboard:
     runs-on: ubuntu-latest

@@ -104,6 +104,25 @@ migrate:
 migrate-check:
 	cd $(GATEWAY) && uv run alembic check
 
+# Migration parity gate — does the migration chain build the schema the ORM declares?
+#
+# `alembic check` is only meaningful against a database at head, so this uses a FRESH
+# scratch database. Never gateway_test: the test run leaves an unstamped create_all schema
+# there, and checking against that compares the ORM to itself.
+#
+# This lives in the Makefile rather than as inline CI shell so that `make ci` and the CI
+# job cannot drift — which is not hypothetical. It ran ONLY in CI until 2026-08-10, so a
+# local `make ci` was a strict subset of the gate, and 16 unregistered ORM modules
+# (24 tables) sat undetected behind that gap for months. A local green must mean the same
+# thing as a CI green; MILESTONE release-integrity names that as an anchor.
+PARITY_DB ?= gateway_parity
+PARITY_ADMIN_URL ?= postgresql://gateway:gateway@localhost:5433/gateway_test
+PARITY_DB_URL ?= postgresql+asyncpg://gateway:gateway@localhost:5433/$(PARITY_DB)
+migrate-parity:
+	psql "$(PARITY_ADMIN_URL)" -c "DROP DATABASE IF EXISTS $(PARITY_DB);" -c "CREATE DATABASE $(PARITY_DB);"
+	GATEWAY_DATABASE_URL='$(PARITY_DB_URL)' $(MAKE) migrate
+	GATEWAY_DATABASE_URL='$(PARITY_DB_URL)' $(MAKE) migrate-check
+
 # Collation-lineage preflight — run BEFORE any deploy that reuses an existing volume or
 # restores an existing dump. Exit 0 = OK, 1 = FAIL (remedy required), 2 = UNKNOWN
 # ("could not check", never a pass). See docs/runbooks/pgvector-deploy.md.
@@ -112,7 +131,7 @@ pg-preflight:
 	@test -n "$(DATABASE_URL)" || { echo "usage: make pg-preflight DATABASE_URL='postgresql://...'"; exit 2; }
 	cd $(GATEWAY) && uv run python ../../scripts/pg_preflight.py --database-url '$(DATABASE_URL)'
 
-ci: lint typecheck allowlist allowlist-node test-ci
+ci: lint typecheck allowlist allowlist-node test-ci migrate-parity
 	@echo "✅ pipeline green"
 
 # === Full Docker + Envoy edge stack =========================================
