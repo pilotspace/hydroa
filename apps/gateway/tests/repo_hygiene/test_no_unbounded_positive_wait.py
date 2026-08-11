@@ -62,11 +62,53 @@ def _iter_test_modules() -> list[Path]:
     )
 
 
-def _is_fixed_sleep(stmt: ast.stmt) -> bool:
-    """`await asyncio.sleep(<numeric literal greater than zero>)` as a statement on its own.
+def _module_numeric_constants(tree: ast.Module) -> dict[str, float]:
+    """Module-level `NAME = <positive number>` bindings — nothing else.
 
-    A non-literal argument (`asyncio.sleep(interval)`) is a computed wait — a
-    polling loop or a configured duration — and is not this defect.
+    Deliberately shallow. Only assignments directly in the module body count, only to a
+    plain name, and only from a numeric literal. A value that is computed, imported, or
+    rebound inside a function is NOT resolved: this exists to stop a guessed duration
+    hiding behind a constant, not to constant-fold the test suite.
+
+    Rebinding at module level is treated as unresolvable (the name is dropped), because
+    two bindings mean the value at the sleep site depends on order and this helper does
+    not track order.
+    """
+    values: dict[str, float] = {}
+    rebound: set[str] = set()
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if not isinstance(stmt.value, ast.Constant) or not isinstance(
+            stmt.value.value, int | float
+        ):
+            continue
+        if isinstance(stmt.value.value, bool):
+            continue  # `FLAG = True` is not a duration
+        for target in stmt.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id in values:
+                rebound.add(target.id)
+            values[target.id] = float(stmt.value.value)
+    return {k: v for k, v in values.items() if k not in rebound}
+
+
+def _is_fixed_sleep(stmt: ast.stmt, constants: dict[str, float]) -> bool:
+    """`await asyncio.sleep(<positive duration>)` as a statement on its own.
+
+    A duration is either a numeric literal or a MODULE-LEVEL numeric constant. The
+    constant case was added by todo #102: `_is_fixed_sleep` originally required a
+    literal, so `await asyncio.sleep(_SETTLE_SECONDS)` bucketed as computed and was
+    never asked for a declaration. Nothing was flaky then — both live named-constant
+    sites were already declared — but naming a duration is the most natural way to
+    write one, so the exemption was pointed at exactly the next site to be added.
+
+    A LOCAL name (`asyncio.sleep(interval)`, `asyncio.sleep(hold_s)`) is still a
+    computed wait: it is a polling loop's step or a caller-chosen stub latency, its
+    value is not visible here, and resolving it would need dataflow analysis. Note the
+    poll-loop case is doubly safe — a poll's sleep is the last statement in the loop
+    body, so no assertion follows it in the same block either way.
 
     `asyncio.sleep(0)` is EXCLUDED (CR v2, 2026-08-10). This guard catches "someone
     guessed a duration and the guess fails under load"; a zero sleep has no duration
@@ -95,9 +137,13 @@ def _is_fixed_sleep(stmt: ast.stmt) -> bool:
     if not is_sleep or not call.args:
         return False
     arg = call.args[0]
-    if not isinstance(arg, ast.Constant) or not isinstance(arg.value, int | float):
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, int | float):
+        duration = float(arg.value)
+    elif isinstance(arg, ast.Name) and arg.id in constants:
+        duration = constants[arg.id]  # todo #102 — a named duration is still a duration
+    else:
         return False
-    return arg.value > 0  # CR v2: a zero sleep is a loop yield, not a guessed duration
+    return duration > 0  # CR v2: a zero sleep is a loop yield, not a guessed duration
 
 
 def _asserts_after(block: list[ast.stmt], index: int) -> ast.Assert | None:
@@ -132,31 +178,134 @@ def _declared(source_lines: list[str], sleep_line: int) -> bool:
     return any(DECLARATION.search(line) for line in window)
 
 
+def _violations_in_source(source: str, label: str) -> list[str]:
+    """Detection for ONE module, as text — so the predicate is testable without a fixture file.
+
+    Extracted from `_violations()` when todo #102 widened `_is_fixed_sleep`: a guard whose
+    logic can only be exercised by planting a file in `tests/` cannot be shown red for the
+    case it was written to catch, and an unproven guard is the thing this suite distrusts
+    most ([[guard-must-be-red-against-its-motivating-tree]]).
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:  # pragma: no cover — ruff's problem, not ours
+        return []
+    lines = source.splitlines()
+    constants = _module_numeric_constants(tree)
+    found: list[str] = []
+
+    for block in _blocks(tree):
+        for index, stmt in enumerate(block):
+            if not _is_fixed_sleep(stmt, constants):
+                continue
+            assertion = _asserts_after(block, index)
+            if assertion is None:
+                continue  # not an assert-wait — a stub's latency, a loop tick
+            if _declared(lines, stmt.lineno):
+                continue
+            found.append(
+                f"{label}:{stmt.lineno} — fixed sleep, then an assertion at "
+                f"line {assertion.lineno}, with no declared reason"
+            )
+    return found
+
+
 def _violations() -> list[str]:
     found: list[str] = []
     for path in _iter_test_modules():
-        source = path.read_text()
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:  # pragma: no cover — ruff's problem, not ours
-            continue
-        lines = source.splitlines()
         rel = path.relative_to(GATEWAY_ROOT)
-
-        for block in _blocks(tree):
-            for index, stmt in enumerate(block):
-                if not _is_fixed_sleep(stmt):
-                    continue
-                assertion = _asserts_after(block, index)
-                if assertion is None:
-                    continue  # not an assert-wait — a stub's latency, a loop tick
-                if _declared(lines, stmt.lineno):
-                    continue
-                found.append(
-                    f"{rel}:{stmt.lineno} — fixed sleep, then an assertion at "
-                    f"line {assertion.lineno}, with no declared reason"
-                )
+        found.extend(_violations_in_source(path.read_text(), str(rel)))
     return sorted(found)
+
+
+_NAMED_CONSTANT_HIDES_A_GUESS = """
+import asyncio
+
+_SETTLE_SECONDS = 0.15
+
+async def test_thing(session):
+    await asyncio.sleep(_SETTLE_SECONDS)
+    rows = await session.execute("select 1")
+    assert len(rows) == 1
+"""
+
+_NAMED_CONSTANT_DECLARED = """
+import asyncio
+
+_SETTLE_SECONDS = 0.15
+
+async def test_thing(session):
+    # NEGATIVE WAIT: proving no SECOND row appears; polling would return on the first.
+    await asyncio.sleep(_SETTLE_SECONDS)
+    rows = await session.execute("select 1")
+    assert len(rows) == 1
+"""
+
+_POLL_LOOP_INTERVAL = """
+import asyncio, time
+
+_POLL_INTERVAL_S = 0.05
+
+async def _wait_for(fetch, expected, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    row = await fetch()
+    while row != expected and time.monotonic() < deadline:
+        await asyncio.sleep(_POLL_INTERVAL_S)
+        row = await fetch()
+    assert row == expected
+    return row
+"""
+
+_LOCAL_PARAMETER_INTERVAL = """
+import asyncio
+
+async def _hold(hold_s):
+    await asyncio.sleep(hold_s)
+    assert True
+"""
+
+
+def test_a_named_constant_sleep_is_not_invisible_to_the_guard() -> None:
+    """ERR_NAMED_CONSTANT_WAIT — todo #102: a module constant must not launder a guess.
+
+    `_is_fixed_sleep` originally required a numeric LITERAL, so
+    `await asyncio.sleep(_SETTLE_SECONDS)` bucketed as a COMPUTED wait — the same
+    bucket as a polling loop's `interval` — and was never asked for a declaration.
+    Nothing was flaky at the time: both live named-constant sites were already
+    declared. The hole is that the NEXT one would be silently exempt, and hiding a
+    guessed duration behind a constant is the most natural way to write it.
+
+    Red before the fix: the first case below produced no violation.
+    """
+    assert _violations_in_source(_NAMED_CONSTANT_HIDES_A_GUESS, "hides.py"), (
+        "a sleep on a module-level numeric constant, followed by an assertion, with no "
+        "declaration must be reported — otherwise naming the duration exempts it"
+    )
+
+
+def test_a_declared_named_constant_sleep_still_passes() -> None:
+    """Widening the predicate must not invalidate the two real declared sites."""
+    assert not _violations_in_source(_NAMED_CONSTANT_DECLARED, "declared.py")
+
+
+def test_a_poll_loop_interval_constant_is_not_a_guessed_duration() -> None:
+    """The critical non-regression: a poll interval is the OPPOSITE of this defect.
+
+    A bounded poll already sleeps between attempts — that IS the correct pattern this
+    guard steers people toward. Flagging it would tell readers to fix the fix, and a
+    guard that cries wolf on the recommended idiom gets deleted rather than obeyed.
+    """
+    assert not _violations_in_source(_POLL_LOOP_INTERVAL, "poll.py")
+
+
+def test_a_local_variable_duration_is_still_computed() -> None:
+    """Only MODULE-LEVEL constants resolve. A parameter is genuinely computed.
+
+    `async def _hold(hold_s)` is a stub whose latency the CALLER chose; the value is
+    not visible here and may well be derived. Resolving locals would require dataflow
+    analysis and would flag every configurable helper.
+    """
+    assert not _violations_in_source(_LOCAL_PARAMETER_INTERVAL, "local.py")
 
 
 def test_fixed_sleep_before_an_assertion_is_declared_or_polled() -> None:

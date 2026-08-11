@@ -36,6 +36,7 @@ from tests.repo_hygiene.test_no_unbounded_positive_wait import (
     _blocks,
     _is_fixed_sleep,
     _iter_test_modules,
+    _module_numeric_constants,
 )
 
 # A comment ATTEMPTING to be the marker — looser than WELL_FORMED, so a malformed
@@ -72,21 +73,23 @@ ATTACH_WINDOW = 6
 def _sleep_statement_lines(source: str) -> set[int]:
     """Line numbers of every statement-level `await …sleep(…)` in the module.
 
-    Deliberately WIDER than the sibling guard's `_is_fixed_sleep`, which only counts a
-    numeric literal argument. A marker defends whatever sleep sits under it, and two
-    real sites sleep on a named constant (`await asyncio.sleep(_SETTLE_SECONDS)`) —
-    those are properly declared, and reporting them as orphaned would train the next
-    reader to delete a live declaration. `_is_fixed_sleep` is still imported and used
-    for the narrower question the sibling guard asks.
+    Still WIDER than the sibling guard's `_is_fixed_sleep`, but by less than it used to
+    be. Until todo #102 that predicate counted only a numeric literal, so the named
+    constant case (`await asyncio.sleep(_SETTLE_SECONDS)`) was covered ONLY by the
+    fallback below; it now resolves module-level constants itself. The fallback stays,
+    because a marker defends whatever sleep sits under it — including a computed or
+    locally-parameterised one — and reporting a live declaration as ORPHANED would
+    train the next reader to delete it.
     """
     try:
         tree = ast.parse(source)
     except SyntaxError:  # pragma: no cover — ruff's problem, not ours
         return set()
     lines: set[int] = set()
+    constants = _module_numeric_constants(tree)
     for block in _blocks(tree):
         for stmt in block:
-            if _is_fixed_sleep(stmt):
+            if _is_fixed_sleep(stmt, constants):
                 lines.add(stmt.lineno)
                 continue
             if not isinstance(stmt, ast.Expr) or not isinstance(stmt.value, ast.Await):

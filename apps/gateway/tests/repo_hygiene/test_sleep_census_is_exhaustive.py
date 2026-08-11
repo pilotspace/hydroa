@@ -42,6 +42,7 @@ from tests.repo_hygiene.test_no_unbounded_positive_wait import (
     _declared,
     _is_fixed_sleep,
     _iter_test_modules,
+    _module_numeric_constants,
 )
 
 BUCKETS = (
@@ -72,6 +73,12 @@ def _classify_statement_sleeps(tree: ast.Module, lines: list[str]) -> dict[int, 
     """Bucket every statement-level sleep. Keyed by line so callers can diff against
     the full call-site set and attribute the remainder to EMBEDDED."""
     verdicts: dict[int, str] = {}
+    # todo #102: a module-level `NAME = 0.15` is a DURATION, not a computed wait. Resolved
+    # here as well as in the sibling guard, because the census and the guard are two
+    # declarations of one classification — if only the guard learned about named constants,
+    # the census would keep reporting those sites as COMPUTED (i.e. "not this defect") and
+    # the two would disagree about the same line.
+    constants = _module_numeric_constants(tree)
     for block in _blocks(tree):
         for index, stmt in enumerate(block):
             if not isinstance(stmt, ast.Expr):
@@ -82,15 +89,19 @@ def _classify_statement_sleeps(tree: ast.Module, lines: list[str]) -> dict[int, 
             call = inner.value
             assert isinstance(call, ast.Call)  # narrowed by _is_sleep_call
 
-            if not call.args or not isinstance(call.args[0], ast.Constant):
+            if not call.args:
                 verdicts[stmt.lineno] = "COMPUTED"
                 continue
             arg = call.args[0]
-            if not isinstance(arg.value, int | float):
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, int | float):
+                pass  # a literal duration
+            elif isinstance(arg, ast.Name) and arg.id in constants:
+                pass  # a NAMED duration — same thing, spelled differently
+            else:
                 verdicts[stmt.lineno] = "COMPUTED"
                 continue
-            if not _is_fixed_sleep(stmt):
-                # A numeric literal that is not > 0 — i.e. sleep(0).
+            if not _is_fixed_sleep(stmt, constants):
+                # A duration that is not > 0 — i.e. sleep(0) or a constant bound to 0.
                 verdicts[stmt.lineno] = "LOOP_YIELD"
                 continue
             if _asserts_after(block, index) is None:
