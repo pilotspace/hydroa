@@ -53,6 +53,15 @@ PGVECTOR_IMAGE = "pgvector/pgvector:pg16"
 # `cancelled`, a check that never reaches a verdict, and a gate that proves nothing.
 MIN_GATEWAY_TIMEOUT_MINUTES = 120
 
+# `make ci` gates that CI satisfies in a DIFFERENT but equivalent form, so the literal
+# `make <gate>` string is legitimately absent from the workflow.
+#
+# Only `test-ci` is exempt, and the exemption is NOT a hole: the substitution it permits
+# (a 6-way `test-ci-shard` matrix plus a combined-coverage job) is asserted in full by
+# `test_the_sharded_test_gate_is_enforced_in_full`. Adding a name here without a companion
+# assertion would be how a gate quietly stops being enforced — do not.
+_SHARDED_GATES = frozenset({"test-ci"})
+
 
 def _load(path: Path) -> dict[str, Any]:
     return cast(dict[str, Any], yaml.safe_load(path.read_text()))
@@ -172,10 +181,87 @@ def test_ci_enforces_every_make_ci_gate() -> None:
         for raw in step.splitlines()
         if (line := raw.split("#", 1)[0]).strip()
     }
-    missing = [gate for gate in _make_ci_prerequisites() if f"make {gate}" not in invoked]
+    missing = [
+        gate
+        for gate in _make_ci_prerequisites()
+        if not any(inv.startswith(f"make {gate}") for inv in invoked) and gate not in _SHARDED_GATES
+    ]
     assert not missing, (
         f"`make ci` runs {missing} but the gateway job never invokes them as an "
         "unconditional step — these gates are unenforced in CI"
+    )
+
+
+def test_the_sharded_test_gate_is_enforced_in_full() -> None:
+    """`make ci`'s `test-ci` is satisfied by shards PLUS a combined coverage gate.
+
+    `test-ci` itself is deliberately NOT in the gateway job any more: the suite is split
+    across a 6-way matrix (`make test-ci-shard`), because one runner needed 65-82 min. That
+    substitution is only legitimate if BOTH halves are present, so both are asserted here
+    rather than left to the exemption in `_SHARDED_GATES`:
+
+    * every shard runs the tests, and
+    * a separate job re-imposes the 80% coverage threshold on the COMBINED data.
+
+    Without the second half the shards would each carry `--cov-fail-under=0` and the coverage
+    gate would have silently evaporated — a gate relocated is a gate that needs re-proving.
+    """
+    gateway_steps = " ".join(_gateway_unconditional_run_steps())
+    assert "make test-ci-shard" in gateway_steps, (
+        "the gateway job must run `make test-ci-shard`; `test-ci` is exempted from the gate "
+        "parity check only because the sharded form replaces it"
+    )
+
+    workflow = _load(CI_WORKFLOW)
+    matrix = workflow["jobs"]["gateway"].get("strategy", {}).get("matrix", {})
+    shards = matrix.get("shard")
+    assert isinstance(shards, list) and len(shards) > 1, (
+        f"sharding needs a matrix of >1 shard; got {shards!r}"
+    )
+
+    coverage_job = workflow["jobs"].get("coverage")
+    assert coverage_job is not None, (
+        "no `coverage` job — the 80% threshold the shards skip has nowhere to be enforced"
+    )
+    coverage_runs = " ".join(
+        str(step["run"]) for step in coverage_job.get("steps", []) if step.get("run")
+    )
+    assert "make coverage-combine" in coverage_runs, (
+        "the `coverage` job must run `make coverage-combine`, which is what re-imposes "
+        "--cov-fail-under=80 across the combined shard data"
+    )
+
+
+def test_every_gate_bearing_job_is_required_by_the_aggregate_gate() -> None:
+    """The `ci` job must depend on every job that can fail, or that job gates nothing.
+
+    A 6-way matrix turns `gateway` into six status contexts, so branch protection points at
+    one aggregate context (`ci`) instead of a list that must be re-edited whenever the shard
+    count changes. That indirection is only safe while `ci` actually depends on everything:
+    a job missing from `needs` is a job whose failure cannot block a merge, which is the
+    job-level form of the masked gate this repo keeps finding.
+
+    Also asserts `ci` runs unconditionally (`if: always()`). With a bare `needs:` it would be
+    SKIPPED when a dependency fails, and a skipped required check is not a failing one.
+    """
+    workflow = _load(CI_WORKFLOW)
+    jobs = workflow["jobs"]
+    aggregate = jobs.get("ci")
+    assert aggregate is not None, "no aggregate `ci` job for branch protection to require"
+
+    needs = aggregate.get("needs", [])
+    needs = [needs] if isinstance(needs, str) else list(needs)
+
+    expected = {name for name in jobs if name != "ci"}
+    missing = sorted(expected - set(needs))
+    assert not missing, (
+        f"the `ci` gate does not depend on {missing} — a job outside its `needs` cannot "
+        "block a merge, so its failure would be invisible to branch protection"
+    )
+
+    assert str(aggregate.get("if", "")).strip() == "always()", (
+        "the `ci` job must be `if: always()`; otherwise a failed dependency SKIPS it, and a "
+        "skipped required check does not block a merge"
     )
 
 

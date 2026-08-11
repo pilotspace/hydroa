@@ -61,6 +61,41 @@ test:
 test-ci:
 	cd $(GATEWAY) && uv run pytest -n 4 --dist loadscope
 
+# ONE shard of the CI suite — what each `gateway` matrix job in ci.yml runs.
+#
+# WHY: `test-ci` on a single ubuntu-latest took 65-82 min, and `-n 4` bought almost nothing
+# over serial because that runner's 4 vCPUs are shared with the Postgres+Redis service
+# containers while every worker carries a ~1.92x coverage multiplier and all workers contend
+# on ONE database (measured, todo #96). More workers on one box is a dead end; more BOXES is
+# the lever, and each matrix shard is its own runner with its own Postgres and Redis.
+#
+# `-n 4 --dist loadscope` is kept BYTE-IDENTICAL to test-ci on purpose: sharding is the only
+# variable being changed, so if the suite behaves differently the cause is unambiguous.
+#
+# Splitting is FILE-level and balanced by test count (tests/_shard.py). Coverage is written
+# per-shard and combined by `coverage-combine`, so the 80% gate still applies to the WHOLE
+# suite — `--cov-fail-under=0` here defeats only the PER-SHARD check, which would otherwise
+# fail every shard for not covering the other five sixths.
+#
+# PYTHONPATH=. is required: `-p tests._shard` is imported during pytest's preparse, before
+# rootdir lands on sys.path.
+SHARD  ?= 1
+SHARDS ?= 6
+test-ci-shard:
+	cd $(GATEWAY) && PYTHONPATH=. PYTEST_SHARD=$(SHARD) PYTEST_SHARDS=$(SHARDS) \
+	  COVERAGE_FILE=.coverage.shard$(SHARD) \
+	  uv run pytest -n 4 --dist loadscope -p tests._shard \
+	    --cov-report= --cov-fail-under=0
+
+# Combine the per-shard coverage data and enforce the real 80% gate across the whole suite.
+# Fails loudly when no shard data is present, because an empty combine would otherwise
+# "pass" the coverage gate having measured nothing — the masked-gate failure mode.
+coverage-combine:
+	cd $(GATEWAY) && \
+	  ls .coverage.shard* >/dev/null 2>&1 || { echo "❌ no .coverage.shard* files — nothing to combine"; exit 1; }
+	cd $(GATEWAY) && uv run coverage combine .coverage.shard*
+	cd $(GATEWAY) && uv run coverage report --fail-under=80
+
 # Parallel full suite — same tests as `test`, fanned across xdist workers.
 # Isolation: tests/_redis_env.py gives each worker a private Postgres database
 # (gateway_test_gwN, auto-created/dropped by conftest) + a private Redis logical db

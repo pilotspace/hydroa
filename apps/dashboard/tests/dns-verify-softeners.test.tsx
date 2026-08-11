@@ -303,10 +303,20 @@ describe("dns-verify-softeners — bounded / fail-safe poll (M5, Rb, Rc, Rd)", (
       }),
     );
 
+    // Hide the tab BEFORE rendering, so there is no window in which a tick could legally
+    // fire. This used to hide it AFTER `findByText` resolved, which left the 20ms interval
+    // free to fire once in the gap between the claim becoming pollable and the tab going
+    // hidden. That race never lost on a fast dev box (0/20 locally) and DID lose in CI —
+    // `expected 1 to be +0`, run 31464010863, on 4 vCPUs where module import alone took
+    // 111.93s. The property under test is "hidden => no polling", which does not require the
+    // tab to start visible, so removing the window costs the test nothing.
+    setTabHidden(true);
     renderConsole({ intervalMs: 20, ceilingMs: 900_000 });
     await screen.findByText("background.com");
-    setTabHidden(true);
 
+    // NEGATIVE WAIT: 200ms is 10x the 20ms interval, so a missing visibility pause has ample
+    // opportunity to show itself. A negative assertion needs some duration by nature; this
+    // one is bounded and deliberately generous rather than tuned to just-barely-pass.
     await sleep(200);
     expect(verifyCalls).toBe(0);
 
