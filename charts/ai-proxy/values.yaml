@@ -6,7 +6,7 @@
 # Gateway container image (no secret; an env-specific input).
 image:
   repository: ghcr.io/pilotspace/ai-proxy-gateway
-  tag: "0.14.0"
+  tag: "0.14.1"
   pullPolicy: IfNotPresent
 
 gateway:
@@ -245,7 +245,7 @@ dashboard:
   enabled: true
   image:                                            # the dashboard's OWN image
     repository: ghcr.io/pilotspace/ai-proxy-dashboard
-    tag: "0.14.0"
+    tag: "0.14.1"
     pullPolicy: IfNotPresent
   replicas: 2
   service:
