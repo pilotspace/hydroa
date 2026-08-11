@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.14.0 — 2026-08-11 — Release integrity
+
+R6 milestone. **No product features by design** — this release makes the delivery
+substrate attestable, which is the prerequisite for SOC 2 CC8.1 change management.
+
+### Added
+- **An enforceable merge gate on `main`.** Required `ci` + `dashboard` checks with
+  `enforce_admins: true`, `strict: true`, force-pushes and deletions off. Admin-merge is
+  now impossible, not merely discouraged — proven by an admin merge REFUSED with HTTP 405,
+  not by a dry run (a `push --dry-run` never sends the ref update, so the server never
+  evaluates protection and "success" there means nothing).
+  `ci` is a single aggregating job rather than the individual test jobs, because a matrix
+  renames `gateway` to `gateway (1)`…`gateway (N)` and a required-context list that must be
+  re-edited on every shard-count change will eventually be wrong in the dangerous direction:
+  a shard nobody required is a shard whose failure blocks nothing.
+- **`make e2e-edge`** — the Envoy edge e2e suite (TLS termination, bearer authz,
+  `/internal` blocking) is finally reachable; its driver script was invoked by nothing.
+- **A dashboard lint step in CI.** `eslint .` was declared but never run: Next 16 removed
+  ESLint from `next build`, and the gate went dark at that upgrade.
+- **A release checklist** in `RELEASES.md`, plus the missing `v0.9.0` / `v0.10.0` tags and
+  this file's missing 0.13.0 entry.
+
+### Performance
+- **CI wall-clock 65–82 min → 13m41s**, measured. The gateway suite now runs as a 4-way
+  matrix, each shard on its own runner with its own Postgres and Redis. The lever is BOXES,
+  not workers: `-n 4` on one runner bought almost nothing, because its 4 vCPUs are shared
+  with the service containers, every worker carries a ~1.92× coverage multiplier, and all
+  four contend on one database. Affordable because the repo went public — Actions is
+  unmetered for public repositories.
+  **The shard count is set by the concurrency cap, not the suite size.** The Free plan
+  allows 5 concurrent jobs and `dashboard` holds one, so only 4 shards start immediately;
+  a 5th or 6th queues behind a shard and the pipeline gets *slower*. Free is not unlimited.
+- **A `concurrency` group**, so a superseded run stops holding all 5 slots until it
+  finishes. `cancel-in-progress` deliberately excludes `refs/heads/main`: a cancelled run on
+  main is a required check that reaches no verdict, which is the exact fault this release
+  closes.
+- **`timeout-minutes` 120 → 20**, re-derived against a shard (longest measured 10m29s)
+  rather than the old whole-suite runtime. At 120 a *hung* shard burned two hours before
+  reporting, defeating the fast feedback sharding buys.
+
+### Fixed
+- **16 unregistered ORM modules** (24 tables) in `migrations/env.py` that `alembic check`
+  wanted to `DROP`. Invisible for months because the migration parity gate sat *after* a
+  failing test step and had never executed; it now runs in `make ci` too.
+- **Refs written during render** in `useVerifyPoll`, the domain-verification poll hook —
+  under concurrent React a discarded render left those refs holding values that never
+  became UI.
+- **A fixed-window rate-limit flake**: the S2 XFF tests fired 3 requests and assumed all
+  three landed in one wall-clock minute. Straddling a minute boundary reset the counter.
+- The flake tail: 3 consecutive green full-suite runs at `-n 12 --dist loadscope` with no
+  `--reruns`, backed by 8 standing AST guards.
+- The pgvector deploy runbook, walked end to end — the documented `REFRESH COLLATION
+  VERSION` remedy **cannot finish** on a musl-created volume; dump/restore is required.
+- Chart `appVersion` and image tags, drifted nine releases behind at `0.4.0`, and a
+  missing dashboard `-prod` tag override.
+- **Coverage artifacts silently not uploaded.** `upload-artifact@v4` excludes hidden files
+  by default and coverage data files start with a dot, so every shard passed its tests and
+  then failed the upload. Caught loudly only because `if-no-files-found` was set to `error`;
+  at the default `warn` nothing would have uploaded, nothing combined, and the 80% coverage
+  gate would have reported green having measured zero lines.
+- **Silent shard/matrix drift.** The shard total and the matrix job list were two
+  declarations of one number. Drift where the total *exceeds* the matrix length passes every
+  job that exists while the missing indices' tests run nowhere — green shards, green `ci`,
+  a slice of the suite unexecuted. Now guarded, red-checked in both directions.
+
+### Known limitations
+- `required_approving_review_count` is **0** — GitHub forbids self-approval, and any higher
+  value deadlocks a solo-maintainer repo. Tests-ran-green is evidenced; four-eyes review is
+  not. Needs a second human with write access.
+- `kind-e2e` has never passed (0 green in 30 runs) and remains opt-in.
+
+## 0.13.0 — 2026-07-25 — Managed RAG + fine-tune brokering
+
+R5 milestone (PR #89). Recorded retroactively on 2026-08-11: 0.13.0 shipped without a
+CHANGELOG entry, the same provenance gap that left `v0.9.0` and `v0.10.0` untagged.
+
+### Added
+- **Managed vector stores** — pgvector-backed store/file/chunk model with an embeddings
+  cache, and `file_search` retrieval inside Responses and chat calls.
+- **Fine-tune brokering** — jobs brokered to the tenant's own provider on BYOK
+  credentials, with an `ft:*` model registry.
+
+### Fixed
+- A third ZDR TOCTOU, found at PR review as a HARD-STOP and healed in-branch (`3e041e0`):
+  all three `FOR UPDATE` copies collapsed onto one shared primitive.
+
+### Known limitations
+- Shipped with the `pgvector-deploy-runbook` waiver open — see `RELEASES.md`.
+
 ## 0.12.0 — 2026-07-24 — OpenAI API-surface parity
 
 R4 milestone (PR #87). Any application built on the OpenAI SDK can point its base

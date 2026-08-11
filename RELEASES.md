@@ -1,5 +1,33 @@
 # Releases
 
+<!-- RELEASE CHECKLIST (added 0.14.0 — todo #110). Nothing enforces this list; it exists because
+     the Helm chart drifted NINE releases and two tags went missing entirely.
+       1. apps/gateway/pyproject.toml  version
+       1b. apps/gateway/src/gateway/__init__.py  _FALLBACK_VERSION  (the no-metadata fallback;
+           `tests/release_provenance` FAILS if it disagrees with pyproject — it caught this
+           very step being missed during the 0.14.0 cut, which is the guard working)
+       2. charts/ai-proxy/Chart.yaml   version + appVersion
+       3. charts/ai-proxy/values.yaml  image.tag AND dashboard.image.tag
+       4. charts/ai-proxy/values-prod.yaml  both `-prod` overrides
+       5. CHANGELOG.md row   (0.13.0 shipped without one — do not repeat)
+       6. RELEASES.md row    (0.13.0's was added retroactively — do not repeat)
+       7. git tag -a vX.Y.Z on the release commit   (v0.9.0 and v0.10.0 were missing until 0.14.0)
+       8. build + push images FROM THE TAG, per docs/runbooks/cloud-deploy.md -->
+
+## 0.14.0 — 2026-08-11 — Release integrity
+milestones: release-integrity
+loose tasks: dashboard-lint-gate + masked-gate sweep (PR #103, unscaffolded)
+waivers: ci-restoration — RISK-ACCEPTED, owner Tin Dang, expires 2026-08-15 and DISCHARGED 2026-08-11 ahead of it: all three conditions met — todo #68 (the four #89 deps allowlisted WITH written justification; the justification text was verified, not just the green gate) and todo #69 (lint-type-debt-sweep promoted, gated PASS) are closed, and exit #1 is met (branch protection enforces required checks with `enforce_admins: true`) · suite-stability — RISK-ACCEPTED, owner Tin Dang, expires 2026-09-30 (todo #81 unreproduced catalog_refresh_scheduler stall, todo #80 azure egress DNS) · pgvector-deploy-runbook — RISK-ACCEPTED, owner Tin Dang, expires 2026-09-30 (the M3 operator walkthrough on a REAL target is still not done; the 2026-08-10 rehearsal was Docker-on-a-musl-volume, which is not a production dry-run)
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: R6 "release integrity" — 12/12 tasks gated (9 PASS, 3 RISK-ACCEPTED), 6/6 exit criteria. Delivers NO product features by design; it makes the delivery substrate attestable.
+  THE headline: **main is protected and admin-merge is over.** Required `ci` + `dashboard` checks with `enforce_admins: true` (`ci` is a single aggregating job — a shard matrix renames `gateway` to `gateway (1)`…`gateway (N)`, and a required-context list re-edited on every shard-count change is one that will eventually be wrong in the direction where a shard's failure blocks nothing), ending an era that ran 7+ releases in which every merge since 0.8.0 landed by admin-merge on locally-run pytest — the single hardest thing to defend under SOC 2 CC8.1, because you cannot evidence that tests ran on the merged artifact. The blocker had been misdiagnosed as org billing for months; it was actually PLAN + VISIBILITY (protection on a private repo needs a paid plan), resolved by making the repo public after a full-history secret scan of all 1221 commits came back clean. Enforcement is evidenced by a REFUSED admin merge (`HTTP 405` on `PUT /pulls/102/merge`), not by reading config back — and `git push --dry-run` was explicitly rejected as evidence, since it never sends the ref update.
+  Attestation firsts: the gateway CI job reached a verdict for the first time ever, main went green in CI for the first time ever (run 31457920121, gateway 15 steps / 1h06m44s), and PR #103 was the first merge in 7+ releases to land on genuinely green required checks with no admin bypass. Five consecutive merges then landed through the gate with no bypass (#103, #104, #102, #105, #106).
+  Speed, because a gate nobody waits for is a gate that gets bypassed: **65-82 min -> 13m41s**, measured (run 31468024262). The suite is a 4-way shard matrix, each shard on its own runner with its own Postgres and Redis. More xdist workers on ONE box was a measured dead end (4 vCPUs shared with the service containers, a ~1.92x coverage multiplier, one contended database); more BOXES was the lever. The shard count is then set by the CONCURRENCY CAP and not the suite size — the Free plan allows 5 concurrent jobs and `dashboard` holds one, so past 4 shards a job queues behind a shard and the pipeline gets SLOWER. Free is not unlimited. The 80% coverage gate moved to a job that combines the per-shard data (91% on 31348 statements) rather than being weakened, and `timeout-minutes` was re-derived from 120 to 20 against a measured 10m29s shard.
+  Determinism: the flake tail closed with 3 consecutive green full-suite runs at `-n 12 --dist loadscope`, no `--reruns` (824s/694s/332s, 4570 passed each), backed by 8 standing AST guards. The migration parity gate moved into `make ci`, which immediately exposed 16 unregistered ORM modules covering 24 tables that `alembic check` wanted to DROP — invisible for months because the gateway job died at the test step and never reached the gate behind it.
+  Deploy: a fail-closed pgvector boot preflight, and the collation runbook WALKED end to end — which proved the documented §4a (`REINDEX` + `REFRESH COLLATION VERSION`) *cannot finish* on the musl case, so dump/restore is required. The chart's `appVersion` and image tags, drifted nine releases behind at `0.4.0`, are bumped here with a written checklist (todo #110), and `cloud-deploy.md` no longer tells operators to tag the image to match the file.
+  Also shipped: lint/type debt cleared; a masked-gate sweep that found the dashboard ESLint gate had been dark since the Next 16 upgrade (red with 5 errors when first run, 4 of them one real ref-during-render defect), the 1128-line Envoy edge suite reachable from no make target, and `kind-e2e` at 0 green in 30 attempts (todo #109). Backfilled the missing `v0.9.0` and `v0.10.0` tags and the missing 0.13.0 CHANGELOG entry.
+  ⚠ OPEN and deliberately not waived: `required_approving_review_count` is **0**, because GitHub forbids self-approval and any higher value deadlocks a solo-maintainer repo. This release evidences that tests ran green on the merged artifact; it does NOT evidence four-eyes review. That needs a second human with write access — carried to R8 `soc2-groundwork`. Residual flake population in todos #105/#111.
+
 ## 0.13.0 — 2026-07-25
 milestones: managed-rag-finetune
 loose tasks: none
