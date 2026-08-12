@@ -1,7 +1,7 @@
 {
   "project": "ai-proxy",
   "stage": "production",
-  "active_task": null,
+  "active_task": "eval-set-store",
   "active_milestone": "evals-regression-gate",
   "tasks": {
     "ai-feature-pages-redesign": {
@@ -137,6 +137,15 @@
         "email": "tindang.ht97@gmail.com",
         "source": "git"
       }
+    },
+    "eval-set-store": {
+      "title": "Tenant-scoped eval sets and cases, with the ZDR disposition decided and enforced atomically with the write",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "evals-regression-gate",
+      "depends_on": [],
+      "created": "2026-08-12T08:53:40+00:00",
+      "updated": "2026-08-12T08:53:40+00:00"
     }
   },
   "milestones": {
@@ -154,15 +163,36 @@
       "stage": "production",
       "status": "active",
       "created": "2026-08-12T05:40:03+00:00",
-      "updated": "2026-08-12T05:40:03+00:00",
-      "confirmed": false,
-      "confirmed_at": null,
-      "confirmed_by": null,
-      "await_confirm": true
+      "updated": "2026-08-12T08:51:43+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-08-12T08:51:43+00:00",
+      "confirmed_by": "Tin Dang (scope chosen in-session 2026-08-11 via interview: 'R7 evals' + 'regression gate on model swaps'; intake MILESTONE.md reviewed and merged as PR #118; confirm command executed by agent on Tin's 'keep going', 2026-08-12)",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "planned": {
+        "eval-set-store": [],
+        "eval-run-executor": [
+          "eval-set-store"
+        ],
+        "deterministic-scorers": [
+          "eval-set-store"
+        ],
+        "baseline-and-verdict": [
+          "eval-run-executor",
+          "deterministic-scorers"
+        ],
+        "evals-console": [
+          "baseline-and-verdict"
+        ]
+      }
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T08:46:13+00:00",
+  "updated": "2026-08-12T08:53:40+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1349,7 +1379,9 @@
   "active_milestones": [
     "evals-regression-gate"
   ],
-  "active_tasks": {},
+  "active_tasks": {
+    "evals-regression-gate": "eval-set-store"
+  },
   "todos": [
     {
       "id": 1,
@@ -2081,6 +2113,12 @@
       "id": 122,
       "text": "FLAKE (CI-only, 2026-08-12, PR #120 run 31577609140): tests/pii_v2/test_pii_v2.py::test_builtin_iban_masks_pre_call ERRORed with 'Failed: Timeout (>300.0s) from pytest-timeout' AT FIXTURE SETUP on gateway shard 2 \u2014 the loop was parked in epoll.poll(timeout=-1), i.e. blocked forever on a socket with NO timers pending, so something in client/app/active_model/redis_client setup awaited a connection that never answered. Shard reported 1167 passed / 1 error; a --failed re-run went fully green and the suite is 20/20 locally, so the merge was NOT gated on a real defect. Cost: ~10min of a shard plus a blocked merge. NOT the absolute-wall-clock class (todo #105) and not a sleep site \u2014 it is an unbounded await in test SETUP, so the fix shape is a deadline on whichever fixture connects (the lifespan-shutdown-bounded lesson applied to setup), not an AST guard. Next occurrence: capture which fixture with --timeout-method=thread and -o log_cli=true.",
       "created": "2026-08-12T08:46:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 123,
+      "text": "\u26a0 DO NOT run `npx @pilotspace/add@latest update` on this bundle without a decision first (learned 2026-08-12). ADD 3.x is a DIFFERENT bundle format (ABF-1) and does NOT convert 2.x: after updating, `cli.py status --check` says 'this is an ADD 2.x bundle \u2014 3.0 reads a different format and does not convert it \u2026 archive them as the record of how this was built, then start a 3.0 bundle / next: add init'. So the update REPLACES the working engine (add.py becomes an ABF-1 library, add_engine/* deleted) and leaves the project unrunnable until you either roll back or init an EMPTY 3.0 bundle, discarding continuity of 94 archived milestones / 419 tasks / PROJECT.md invariants / 9 personas as a read-only archive. The engine's own `status` nag says 'ACTION REQUIRED before the user's task' \u2014 following it BREAKS the workflow it claims to protect. Rollback recipe: `git checkout -- .add .claude`, delete the untracked additions (.add/personas-index/, .add/tooling/cli.py, .claude/skills/add/{domains,gate,personas,seed,streams}.md, phases/explore.md) \u2014 AND restore .add/tooling from a physical backup, because .add/.gitignore ignores tooling/ so add_engine/search.py is NOT tracked and git alone leaves the engine broken (ModuleNotFoundError: add_engine.search). Take a `cp -R .add` snapshot before ever running it.",
+      "created": "2026-08-12T08:51:36+00:00",
       "status": "open"
     }
   ]
