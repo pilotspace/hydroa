@@ -42,16 +42,36 @@ Before you begin, confirm you have:
   that lies about what is running, which is precisely what CC8.1 asks you to be able to evidence.
   Nothing in CI builds or publishes images, so this is entirely manual; see todo #110.
 
+  ⚠ **Build for the CLUSTER's architecture, not your laptop's.** A bare `docker build` produces an
+  image for the host arch and says nothing about it. Measured 2026-08-12 on an Apple-silicon host:
+  both images built `linux/arm64`. Pushed as `-prod` to a typical amd64 node pool, that image fails
+  at **deploy** time with `exec format error` — *after* the artifact is published and the tag already
+  means the wrong thing. Nothing catches it: the chart declares no arch `nodeSelector`, and no CI job
+  builds or publishes images at all. Use `buildx` with an explicit platform list. See todo #117.
+
   ```bash
-  # RELEASE must equal the git tag you are deploying, e.g. 0.14.0
-  RELEASE=0.14.0
+  # RELEASE must equal the git tag you are deploying, e.g. 0.14.1
+  RELEASE=0.14.1
   git checkout "v$RELEASE"          # build from the tagged commit, never from a dirty tree
 
-  docker build -t <registry>/ai-proxy-gateway:"$RELEASE-prod"   apps/gateway
-  docker build -t <registry>/ai-proxy-dashboard:"$RELEASE-prod" apps/dashboard
-  docker push <registry>/ai-proxy-gateway:"$RELEASE-prod"
-  docker push <registry>/ai-proxy-dashboard:"$RELEASE-prod"
+  # --platform is REQUIRED. --push (not `docker push`) is what publishes a multi-arch
+  # manifest list; a plain `docker push` after a buildx build uploads only one arch.
+  docker buildx build --platform linux/amd64,linux/arm64 \
+    -t <registry>/ai-proxy-gateway:"$RELEASE-prod"   --push apps/gateway
+  docker buildx build --platform linux/amd64,linux/arm64 \
+    -t <registry>/ai-proxy-dashboard:"$RELEASE-prod" --push apps/dashboard
   ```
+
+  Then verify the PUBLISHED manifest actually carries both arches — the build succeeding is not
+  evidence that the right thing was uploaded:
+  ```bash
+  docker buildx imagetools inspect <registry>/ai-proxy-gateway:"$RELEASE-prod" | grep -i platform
+  # expect BOTH linux/amd64 and linux/arm64
+  ```
+
+  ⚠ On an arm64 host the amd64 half is built under QEMU emulation. It is slower, and **"it built"
+  is not "it runs"** — no amd64 host is available locally to execute it, so the first real amd64
+  execution is the deploy itself. Treat the staging apply below as that verification.
 
   Then confirm the chart agrees before applying — these four must all name `$RELEASE`:
   `Chart.yaml` `appVersion`, `values.yaml` `image.tag`, `values.yaml` `dashboard.image.tag`, and both
@@ -88,6 +108,21 @@ kind validation could not exercise.
    a production environment. Until that lands, **manually confirm** the `ai-proxy-*-secrets` Secret
    carries a valid Fernet key (`gateway.providerKeyEncryption`) before the apply, or every `/v1`
    completion will 500 at runtime.
+3. **Postgres collation provider — this one is a DATA-LOSS control.** *Required whenever an existing
+   volume is involved.* The chart ships `datastores.postgres.image: pgvector/pgvector:pg16`, which is
+   **glibc**. Earlier deploys ran `postgres:16-alpine`, which is **musl**. Booting the Debian image on
+   an Alpine-initdb'd PVC is a collation-provider change: every `text` btree index is potentially
+   mis-ordered, and **the database does not complain** — queries silently return wrong rows.
+
+   Do not treat this as a tag bump. Follow **[`pgvector-deploy.md`](./pgvector-deploy.md)** and run
+   its §1 preflight *before* the apply.
+   - ⚠ Its §4a same-volume remedy **cannot complete** on the musl→glibc case: `ALTER DATABASE …
+     REFRESH COLLATION VERSION` errors rather than clearing the preflight (walked 2026-08-10). Plan
+     for **§4b dump/restore** into a database created under the new libc.
+   - ⚠ `make pg-preflight` collapses FAIL into exit 2 — never branch automation on its exit code;
+     read the output.
+   - A genuinely **fresh** volume (first-ever install, no existing data) is unaffected. Confirm which
+     case you are in before applying; "I think it's new" is not confirmation.
 
 ---
 
