@@ -54,8 +54,10 @@ Before you begin, confirm you have:
   RELEASE=0.14.1
   git checkout "v$RELEASE"          # build from the tagged commit, never from a dirty tree
 
-  # --platform is REQUIRED. --push (not `docker push`) is what publishes a multi-arch
-  # manifest list; a plain `docker push` after a buildx build uploads only one arch.
+  # --platform is REQUIRED, and so is --push: buildx publishes the multi-arch manifest list
+  # as part of the build. Do NOT split this into a build step then a separate `docker push`
+  # — a multi-platform result does not land in the classic image store for `docker push` to
+  # pick up, so the two-step form is how you end up publishing a single arch by accident.
   docker buildx build --platform linux/amd64,linux/arm64 \
     -t <registry>/ai-proxy-gateway:"$RELEASE-prod"   --push apps/gateway
   docker buildx build --platform linux/amd64,linux/arm64 \
@@ -66,8 +68,12 @@ Before you begin, confirm you have:
   evidence that the right thing was uploaded:
   ```bash
   docker buildx imagetools inspect <registry>/ai-proxy-gateway:"$RELEASE-prod" | grep -i platform
-  # expect BOTH linux/amd64 and linux/arm64
   ```
+  Expect a `linux/amd64` row **and** an arm64 row. Two things about that output, so you neither
+  miscount nor panic: arm64 may print with its variant suffix (`linux/arm64/v8`), so match on the
+  prefix rather than the exact string; and buildx attaches provenance/SBOM attestations that show
+  up as extra `unknown/unknown` rows — those are expected, not failures. **`linux/amd64` present is
+  the thing being checked.**
 
   ⚠ On an arm64 host the amd64 half is built under QEMU emulation. It is slower, and **"it built"
   is not "it runs"** — no amd64 host is available locally to execute it, so the first real amd64
@@ -119,8 +125,16 @@ kind validation could not exercise.
    - ⚠ Its §4a same-volume remedy **cannot complete** on the musl→glibc case: `ALTER DATABASE …
      REFRESH COLLATION VERSION` errors rather than clearing the preflight (walked 2026-08-10). Plan
      for **§4b dump/restore** into a database created under the new libc.
-   - ⚠ `make pg-preflight` collapses FAIL into exit 2 — never branch automation on its exit code;
-     read the output.
+   - ⚠ **Never branch automation on `make pg-preflight`'s exit code.** The script distinguishes its
+     verdicts — `scripts/pg_preflight.py` returns `0` OK · `1` FAIL · `2` UNKNOWN — but **GNU make
+     maps any recipe failure to exit 2** (verified), and the target's own missing-`DATABASE_URL`
+     usage guard exits `2` as well. So through `make`, a real FAIL, an UNKNOWN, and "you forgot the
+     argument" are **indistinguishable** — and two of those three are "no verdict", which is exactly
+     the shape that gets read as a pass. Read the printed output, or call the script directly when
+     you need the exit code:
+     ```bash
+     cd apps/gateway && uv run python ../../scripts/pg_preflight.py --database-url '…'
+     ```
    - A genuinely **fresh** volume (first-ever install, no existing data) is unaffected. Confirm which
      case you are in before applying; "I think it's new" is not confirmation.
 
