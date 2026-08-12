@@ -343,3 +343,53 @@ async def test_recall_survives_even_when_the_hnsw_path_is_taken(
         " answer and a per_query bill for a partial search"
     )
     assert hits[0].content == "doc-0", "iterative scan must keep the exact ordering"
+
+
+async def test_an_old_pgvector_degrades_instead_of_failing_every_search(
+    db_session: AsyncSession, monkeypatch: Any, caplog: Any
+) -> None:
+    """Design-for-failure: the iterative-scan request must never take retrieval down.
+
+    On pgvector < 0.8 the GUC does not exist, and an unrecognized configuration
+    parameter ABORTS the transaction — so a naive `SET LOCAL` would turn every
+    file_search on that deployment into a 500, replacing a partial-recall bound with a
+    total outage. The probe runs inside a SAVEPOINT for exactly this reason; here the
+    unsupported server is simulated by pointing the statement at a GUC that does not
+    exist, which is the same failure the real one produces.
+    """
+    import logging  # noqa: PLC0415
+
+    from gateway.vector_stores.infrastructure import file_repository as fr  # noqa: PLC0415
+
+    monkeypatch.setattr(fr, "_ITERATIVE_SCAN_SQL", "SET LOCAL hnsw.no_such_setting = 1")
+    monkeypatch.setattr(fr._IterativeScan, "supported", None)  # noqa: SLF001
+
+    tenant_id = uuid.uuid4()
+    store_id = await _seed_store_with_chunks(
+        db_session,
+        tenant_id=tenant_id,
+        chunks=[("first", _unit_vec(0)), ("second", _unit_vec(1))],
+    )
+    repo = VectorStoreFileRepository(db_session)
+
+    with caplog.at_level(logging.ERROR):
+        hits = await repo.search_chunks(
+            tenant_id=tenant_id, store_id=store_id, query_embedding=_unit_vec(0), top_k=5
+        )
+
+    assert [h.content for h in hits] == ["first", "second"], (
+        "retrieval must still work on a server without iterative scan"
+    )
+    assert fr._IterativeScan.supported is False, (  # noqa: SLF001
+        "the capability must be remembered — re-probing per search would abort a"
+        " transaction on every single retrieval"
+    )
+    assert any("iterative_scan_unavailable" in r.getMessage() for r in caplog.records), (
+        "a deployment running with degraded recall must say so, once, loudly"
+    )
+
+    # And the very next search still succeeds (the cached False short-circuits it).
+    again = await repo.search_chunks(
+        tenant_id=tenant_id, store_id=store_id, query_embedding=_unit_vec(0), top_k=5
+    )
+    assert len(again) == 2
