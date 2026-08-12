@@ -19,6 +19,13 @@ name: publish-images
 # INJECTION DISCIPLINE: no ${{ }} expansion appears inside a `run:` body. Every value a user
 # can influence — the dispatch input, the ref name, the actor — is passed through `env:` and
 # read as a quoted shell variable, so a crafted tag or username is data, never code.
+#
+# KNOWN RESIDUE — the half-published window. The two images are pushed by SEQUENTIAL steps, so
+# if the gateway push succeeds and the dashboard push then fails, the tag exists for one image
+# and not the other, and the verify step never runs because `set -e` stopped the job. There is
+# no atomic two-image publish in the registry protocol to fix this properly; the mitigations
+# are that the job fails LOUDLY and that re-running is idempotent. Do not read a failed run as
+# "nothing was published" — check the registry before assuming a clean slate.
 
 on:
   push:
@@ -41,7 +48,11 @@ permissions:
 # you get a tag pointing at a partial manifest. Let the first finish; the second then
 # re-verifies the same content.
 concurrency:
-  group: publish-${{ github.event.inputs.tag || github.ref }}
+  # `ref_name`, NOT `ref`: a tag push gives `refs/tags/v0.14.1` for `github.ref` but plain
+  # `v0.14.1` for `github.ref_name`, while a dispatch supplies `v0.14.1`. Using `ref` put the
+  # two forms in DIFFERENT groups, so a manual re-publish racing the original tag-push run —
+  # the exact collision this group exists to stop — was not serialized at all.
+  group: publish-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
