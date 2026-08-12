@@ -1661,3 +1661,22 @@ RESPONSES_CONTEXT_TOO_LARGE = ErrorSpec(
 RESPONSES_STORE_FAILED = ErrorSpec(
     500, "ERR_RESPONSES_STORE_FAILED", "failed to persist the stored response"
 )
+
+
+# ---------------------------------------------------------------------------
+# Evals — eval sets & cases (eval-set-store PLAN.md §3 — FROZEN @ v1)
+# ---------------------------------------------------------------------------
+
+#: POST/GET .../cases against an unknown OR cross-tenant OR malformed parent set
+#: id — deliberately indistinguishable (M4/M5; never 403, never an enumeration
+#: oracle). Byte-identical for absent and cross-tenant so ownership never leaks.
+EVAL_SET_NOT_FOUND = ErrorSpec(404, "ERR_EVAL_SET_NOT_FOUND", "Eval set not found")
+
+#: POST .../cases whose request_body or assertion is missing / not a non-empty
+#: object — 422, nothing persisted (R:CASE_INVALID). Validated on the caller's own
+#: input BEFORE the parent set is resolved, so it reveals nothing about the set.
+EVAL_CASE_INVALID = ErrorSpec(
+    422,
+    "ERR_EVAL_CASE_INVALID",
+    "request_body and assertion must each be a non-empty object",
+)
