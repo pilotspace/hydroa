@@ -1,7 +1,7 @@
 ---
 type: Task
 title: eval-set-store
-status: direction
+status: done
 milestone: evals-regression-gate
 gives:
   - S1 the eval-set / eval-case persistence contract + the ZDR disposition — the frozen case shape every downstream task hangs off
@@ -9,12 +9,24 @@ generated: { by: add/3.2.0, at: 2026-08-12 }
 verified:
   - { by: "Tin Dang", at: 2026-08-12, act: freeze, authority: process, direction: "sha256:8ea8c0edf0d46051" }
   - { by: "cli", at: 2026-08-12, act: brief, authority: process, brief: "sha256:0fe59aa41c22954f" }
+  - { by: "cli", at: 2026-08-12, act: brief, authority: process, brief: "sha256:0fe59aa41c22954f" }
+  - { by: "Tin Dang", at: 2026-08-12, act: refreeze, authority: process, direction: "sha256:8ea8c0edf0d46051" }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/1.md }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/2.md }
+  - { by: "cli", at: 2026-08-13, act: brief, authority: process, brief: "sha256:0fe59aa41c22954f" }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/3.md }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/4.md }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/5.md }
+  - { by: "Tin Dang", at: 2026-08-13, act: refreeze, authority: process, direction: "sha256:5f9b8e1d63fff8cf" }
+  - { by: "cli", at: 2026-08-13, act: brief, authority: process, brief: "sha256:f746719ca156bd72" }
+  - { by: "process:run", at: 2026-08-13, act: run, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/6.md }
+  - { by: "Tin Dang", at: 2026-08-13, act: gate, authority: process, outcome: PASS, receipt: /tasks/eval-set-store.d/runs/6.md, brief: "sha256:f746719ca156bd72", reason: "Self-driving verify per the frozen contract (refrozen sha256:5f9b8e1d after binding 4 declared probes/edge that the first pass under-covered — including E4 duplicate-name, which was an unimplemented 500 and is now a 409 ERR_EVAL_SET_NAME_CONFLICT). 10 contract tests green binding every Must/Reject/real-edge/probed-assumption; migrations parity green; pyright/ruff clean; 48 adjacent vector-store tests still green. Human four-eyes still owed at the PR gate before merge — this gate is process authority, not independent review." }
 advised_by: appsec-engineer
 ---
 ## CARD
 goal: tenant-scoped eval sets + cases, with the ZDR disposition decided and enforced atomically with the write
 why: the freeze-first, risk-first foundation — an eval case is a persisted request payload (the ZDR HARD-STOP surface), and every other task assumes an answer to how a case is stored
-beat: direction · next: add freeze eval-set-store
+beat: done · next: add status
 > ZDR disposition SETTLED 2026-08-12 (Tin): **refuse a ZDR tenant outright** — an eval-case write by a ZDR tenant is rejected at repository entry with 403 `ERR_ZDR_PAYLOAD_BLOCKED`, atomic with the write, matching the 8 existing payload stores. Assertion-only/payload-hash mode is a later-milestone follow-up, not R7.
 
 ## RULES
@@ -71,17 +83,21 @@ least-sure flag: [spec] whether case reads should EVER echo `request_body` back 
 - E1 ZDR flag flips between the lock and the insert (slow double) — zero rows land; assert on the row, not the 403.
 - E2 A case create names a set owned by another tenant — 404 `ERR_EVAL_SET_NOT_FOUND`, identical to an absent set (never 403).
 - E3 An empty/whitespace `assertion` or an empty `request_body` — 422 `ERR_EVAL_CASE_INVALID`, nothing stored.
-- E4 A duplicate set name for the same tenant — rejected by the unique constraint (ERR_VALIDATION), not a silent second set.
+- E4 A duplicate set name for the same tenant — rejected by the unique constraint (409 ERR_EVAL_SET_NAME_CONFLICT), not a silent second set. (code specific per the house error-catalog idiom; the store translates the IntegrityError, never a bare 500)
 - E5 A ZDR tenant creates a set, then a case — the set succeeds (201, no payload), the case is refused 403; over-blocking the set would be the defect. (appsec lens)
 
 ## CHECKS
 - test_create_set_is_tenant_scoped · covers: M1, M6 · a set created by tenant A is listed for A and absent for B — driven through the injected fake port (zero network), which proves the port+fake exist and work.
 - test_create_case_persists_payload_and_assertion · covers: M2, M6 · a case stores request_body + assertion under the right set/tenant; re-fetch after commit proves the write survived the session boundary (backend-architect: mutation persists past the session).
-- test_zdr_case_write_refused_atomically · covers: M3, R:ZDR_BLOCKED, E1 · a slow double flips zdr_enabled mid-await between the lock and the insert; the write raises 403 and the persisted eval_cases count for that tenant is 0.
+- test_zdr_case_write_refused_atomically · covers: M3, R:ZDR_BLOCKED, E1, A3 · a slow double flips zdr_enabled mid-await between the lock and the insert; the write raises 403 and the persisted eval_cases count for that tenant is 0 (A3: the flag is read fresh + locked per write, never cached across cases).
 - test_zdr_tenant_can_create_set_but_not_case · covers: M7, E5 · a ZDR tenant's set create returns 201 and persists a row; the subsequent case create returns 403 ERR_ZDR_PAYLOAD_BLOCKED and persists nothing.
-- test_cross_tenant_and_absent_set_uniform_404 · covers: M4, M5, R:SET_NOT_FOUND, E2 · a case create against another tenant's set and against a random uuid both return byte-identical 404 ERR_EVAL_SET_NOT_FOUND.
-- test_case_requires_request_and_assertion · covers: R:CASE_INVALID, E3 · a case with empty request_body and one with null assertion both 422, and nothing is stored.
-red-first: every check MUST fail first (the `evals/` module does not exist yet — all six are red at authoring).
+- test_cross_tenant_and_absent_set_uniform_404 · covers: M4, M5, R:SET_NOT_FOUND, E2, A1 · a case create against another tenant's set and against a random uuid both return byte-identical 404 ERR_EVAL_SET_NOT_FOUND (A1: a member of another tenant is refused a set it does not own — the authz surface is tenant-scoped).
+- test_case_requires_request_and_assertion · covers: R:CASE_INVALID, E3, A4 · a case with empty request_body and one with null assertion both 422, and nothing is stored (A4: both fields are required — an unscoreable case is never silently stored).
+- test_duplicate_set_name_rejected · covers: E4 · a second set with a name the tenant already uses returns 409 ERR_EVAL_SET_NAME_CONFLICT (UNIQUE(tenant_id, name), never a bare 500 nor a silent second row); the same name is free for a different tenant.
+- test_unknown_assertion_kind_is_accepted_at_store_time · covers: A2 · an assertion whose kind is in no scorer registry still stores (201) and round-trips — the store does not couple to deterministic-scorers, which owns kind validation at run time.
+- test_cases_listed_in_creation_order · covers: A5 · three cases created in sequence list in creation order, identically on two separate GETs — a stable order to align a run's per-case results against a baseline.
+- test_zdr_refusal_message_is_actionable · covers: A6 · the ZDR 403 body carries a human-readable message naming zero-data-retention, so the operator can act rather than hit a bare code.
+red-first: every check MUST fail first (the `evals/` module does not exist yet — all six original checks are red at authoring; the four probe/edge checks added at the process-authority refreeze were red against the pre-build tree too).
 
 ## EVIDENCE
 receipt: <runs/<n>.md>

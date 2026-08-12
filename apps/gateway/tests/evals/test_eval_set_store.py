@@ -250,3 +250,102 @@ async def test_case_requires_request_and_assertion(
     assert empty_body.json()["error"]["code"] == "ERR_EVAL_CASE_INVALID"
     assert null_assertion.json()["error"]["code"] == "ERR_EVAL_CASE_INVALID"
     assert await _count_cases(app, tenant_a["tenant_id"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# E4 — a duplicate set name for the same tenant is rejected (not a silent second set)
+# ---------------------------------------------------------------------------
+
+
+async def test_duplicate_set_name_rejected(
+    client: Any, tenant_a: dict[str, str], tenant_b: dict[str, str]
+) -> None:
+    """covers: E4 — UNIQUE(tenant_id, name): the 2nd 'dup' for A is 409, never a bare 500 nor a
+    silent 2nd row; the SAME name is free for a DIFFERENT tenant (scoped, not global)."""
+    first = await _create_set(client, tenant_a["key"], name="dup")
+    assert first.status_code == 201, first.text
+    second = await _create_set(client, tenant_a["key"], name="dup")
+    assert second.status_code == 409, f"expected 409, got {second.status_code} {second.text}"
+    assert second.json()["error"]["code"] == "ERR_EVAL_SET_NAME_CONFLICT"
+    # exactly one 'dup' set exists for A (no silent second row)
+    a_list = (await client.get("/v1/evals/sets", headers=_bearer(tenant_a["key"]))).json()
+    assert [s["name"] for s in a_list["data"]].count("dup") == 1
+    # the name is tenant-scoped: B may take 'dup' too
+    b_first = await _create_set(client, tenant_b["key"], name="dup")
+    assert b_first.status_code == 201, b_first.text
+
+
+# ---------------------------------------------------------------------------
+# A2 — the store accepts ANY well-formed assertion; kind validation is scorer-owned (run time)
+# ---------------------------------------------------------------------------
+
+
+async def test_unknown_assertion_kind_is_accepted_at_store_time(
+    client: Any, tenant_a: dict[str, str]
+) -> None:
+    """covers: A2 — an assertion whose kind is NOT in any scorer registry still stores (201);
+    the store does not couple to deterministic-scorers, which owns kind validation at run time."""
+    set_id = (await _create_set(client, tenant_a["key"], name="s")).json()["id"]
+    created = await _create_case(
+        client,
+        tenant_a["key"],
+        set_id,
+        request_body={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+        assertion={"kind": "totally-unknown-scorer-kind", "expected": "x"},
+    )
+    assert created.status_code == 201, f"unknown kind must store, got {created.text}"
+    cases = (
+        await client.get(f"/v1/evals/sets/{set_id}/cases", headers=_bearer(tenant_a["key"]))
+    ).json()
+    assert cases["data"][0]["assertion"]["kind"] == "totally-unknown-scorer-kind"
+
+
+# ---------------------------------------------------------------------------
+# A5 — cases within a set are returned in stable creation order, across repeated calls
+# ---------------------------------------------------------------------------
+
+
+async def test_cases_listed_in_creation_order(client: Any, tenant_a: dict[str, str]) -> None:
+    """covers: A5 — three cases created in sequence list in creation order, identically on two
+    separate GETs (a stable order to align a run's per-case results against a baseline)."""
+    set_id = (await _create_set(client, tenant_a["key"], name="ordered")).json()["id"]
+    ids = []
+    for i in range(3):
+        resp = await _create_case(
+            client,
+            tenant_a["key"],
+            set_id,
+            request_body={"model": "m", "messages": [{"role": "user", "content": str(i)}]},
+            assertion={"kind": "contains", "expected": str(i)},
+        )
+        assert resp.status_code == 201, resp.text
+        ids.append(resp.json()["id"])
+
+    first = (
+        await client.get(f"/v1/evals/sets/{set_id}/cases", headers=_bearer(tenant_a["key"]))
+    ).json()
+    second = (
+        await client.get(f"/v1/evals/sets/{set_id}/cases", headers=_bearer(tenant_a["key"]))
+    ).json()
+    assert [c["id"] for c in first["data"]] == ids
+    assert [c["id"] for c in second["data"]] == ids
+
+
+# ---------------------------------------------------------------------------
+# A6 — a refused ZDR tenant gets an ACTIONABLE 403 (names ZDR, not a bare code)
+# ---------------------------------------------------------------------------
+
+
+async def test_zdr_refusal_message_is_actionable(
+    client: Any, app: Any, tenant_a: dict[str, str]
+) -> None:
+    """covers: A6 — the 403 body carries a human-readable message naming zero-data-retention, so
+    the operator can act (disable ZDR for the tenant) rather than hit an unactionable bare code."""
+    set_id = (await _create_set(client, tenant_a["key"], name="s")).json()["id"]
+    await _set_tenant_zdr(app, tenant_a["tenant_id"])
+    resp = await _create_case(client, tenant_a["key"], set_id, **_valid_case())
+    assert resp.status_code == 403, resp.text
+    body = resp.json()["error"]
+    assert body["code"] == "ERR_ZDR_PAYLOAD_BLOCKED"
+    message = body["message"].lower()
+    assert message and ("zero-data-retention" in message or "zdr" in message), body["message"]

@@ -40,6 +40,7 @@ from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
     AUTH_KEY_INVALID,
     EVAL_CASE_INVALID,
+    EVAL_SET_NAME_CONFLICT,
     EVAL_SET_NOT_FOUND,
     ErrorSpec,
 )
@@ -48,7 +49,7 @@ from gateway.evals.application.use_cases import (
     CreateEvalCaseUseCase,
     CreateEvalSetUseCase,
 )
-from gateway.evals.domain.errors import EvalSetNotFound
+from gateway.evals.domain.errors import EvalSetNameConflict, EvalSetNotFound
 from gateway.evals.infrastructure.orm import EvalCaseRow, EvalSetRow
 from gateway.evals.infrastructure.repository import SqlAlchemyEvalStore
 from gateway.evals.wire_id import parse_set_wire_id, to_case_wire_id, to_set_wire_id
@@ -210,9 +211,14 @@ async def create_eval_set(
     if description is not None and not isinstance(description, str):
         return _err(EVAL_CASE_INVALID)
 
-    row = await CreateEvalSetUseCase(store).execute(
-        tenant_id=authz.tenant_id, name=name, description=description
-    )
+    try:
+        row = await CreateEvalSetUseCase(store).execute(
+            tenant_id=authz.tenant_id, name=name, description=description
+        )
+    except EvalSetNameConflict:
+        # E4: the store already rolled the transaction back on the UNIQUE(tenant_id, name)
+        # violation — nothing to commit, no silent second set.
+        return _err(EVAL_SET_NAME_CONFLICT)
     await session.commit()
     return _eval_set_object(row)
 

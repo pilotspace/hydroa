@@ -15,8 +15,10 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.evals.domain.errors import EvalSetNameConflict
 from gateway.evals.infrastructure.orm import EvalCaseRow, EvalSetRow
 from gateway.tenants.application.retention_policy import raise_if_zdr_locked
 
@@ -32,7 +34,13 @@ class SqlAlchemyEvalStore:
     ) -> EvalSetRow:
         row = EvalSetRow(id=uuid.uuid4(), tenant_id=tenant_id, name=name, description=description)
         self._session.add(row)
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            # E4: UNIQUE(tenant_id, name). Roll back the poisoned transaction and raise a
+            # domain error — the router maps it to 409, never a bare 500 or a silent second set.
+            await self._session.rollback()
+            raise EvalSetNameConflict from exc
         await self._session.refresh(row)
         return row
 

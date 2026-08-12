@@ -1680,3 +1680,12 @@ EVAL_CASE_INVALID = ErrorSpec(
     "ERR_EVAL_CASE_INVALID",
     "request_body and assertion must each be a non-empty object",
 )
+
+#: POST /v1/evals/sets with a name this tenant already uses (E4). UNIQUE(tenant_id, name)
+#: refuses it; the store translates the IntegrityError to this 409 — rejected, never a
+#: silent second set, never a bare 500.
+EVAL_SET_NAME_CONFLICT = ErrorSpec(
+    409,
+    "ERR_EVAL_SET_NAME_CONFLICT",
+    "an eval set with this name already exists for this tenant",
+)
