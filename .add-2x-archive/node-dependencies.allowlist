@@ -1,0 +1,63 @@
+# node-dependencies.allowlist — one package per line (exact names from package.json keys).
+# CI gate: scripts/check_node_deps.py diffs apps/dashboard/package.json dependencies +
+# devDependencies against this file and exits non-zero on any un-allowlisted package.
+# Adding a package = PR that edits this file with justification in the commit body.
+# Baseline generated from apps/dashboard/package.json on 2026-06-11.
+
+# --- runtime (apps/dashboard) ---
+next
+react
+react-dom
+@tanstack/react-query
+zod
+lucide-react
+class-variance-authority
+clsx
+tailwind-merge
+
+# --- design-system foundation (v13 design-system-foundation) ---
+@radix-ui/react-dialog
+@radix-ui/react-select
+@radix-ui/react-slot
+@radix-ui/react-label
+recharts
+tw-animate-css
+
+# --- enterprise UI overhaul (v23) ---
+@tanstack/react-table
+
+# --- Console-grade AI-feature playgrounds (v0.6.0: chat·memory·artifacts·vision·video) ---
+# react-markdown + remark-gfm + rehype-highlight + highlight.js: XSS-safe markdown
+#   rendering (MessageMarkdown — no rehype-raw); fuse.js: client-side fuzzy search
+#   (memory/artifacts/chat); server-only: guards BFF-only modules from client bundles.
+react-markdown
+remark-gfm
+rehype-highlight
+highlight.js
+fuse.js
+server-only
+
+# --- devDependencies (apps/dashboard) ---
+typescript
+@types/react
+@types/react-dom
+@types/node
+tailwindcss
+@tailwindcss/postcss
+postcss
+vitest
+@vitejs/plugin-react
+@testing-library/react
+@testing-library/jest-dom
+@testing-library/user-event
+msw
+jsdom
+@vitest/coverage-v8
+eslint
+eslint-config-next
+vitest-axe
+axe-core
+
+# --- real-browser a11y (v15 feature-coverage, Playwright e2e-a11y) ---
+@playwright/test
+@axe-core/playwright

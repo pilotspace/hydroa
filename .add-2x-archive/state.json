@@ -1,0 +1,2125 @@
+{
+  "project": "ai-proxy",
+  "stage": "production",
+  "active_task": "eval-set-store",
+  "active_milestone": "evals-regression-gate",
+  "tasks": {
+    "ai-feature-pages-redesign": {
+      "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-06-28T14:01:49+00:00",
+      "updated": "2026-06-28T14:46:39+00:00"
+    },
+    "stream-alias-billing": {
+      "title": "Streaming model-group alias must bill on served candidate, not the alias (B1 revenue leak)",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-02T03:39:02+00:00",
+      "updated": "2026-07-02T04:29:54+00:00",
+      "fast": true,
+      "freeze": {
+        "version": "v1",
+        "frozen_at": "2026-07-02T03:46:19+00:00",
+        "approved_by": "Tin Dang",
+        "actor": {
+          "name": "Tin Dang",
+          "email": "tindang.ht97@gmail.com",
+          "source": "git"
+        }
+      },
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "039d170a0e3bcf6f4774286922ba9d43",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "src/gateway/proxy/application/fallback_router.py"
+        ],
+        "snapshot_md5": "9e7f74327f30c6abe48ea8a751078adc"
+      },
+      "heal": {
+        "attempts": 1,
+        "history": [
+          {
+            "at": "2026-07-02T04:28:00+00:00",
+            "reason": "scope_violation: task 'stream-alias-billing' touched outside its declared \u00a75 Scope \u2014 apps/gateway/.ruff_cache/0.15.16/12422214373305498066 \u00b7 apps/gateway/.ruff_cache/0.15.16/6998441178905840490 \u00b7 apps/gateway/src/gateway/proxy/application/use_cases.py \u00b7 apps/gateway/tests/stream_alias_billing/conftest.py \u00b7 apps/gateway/tests/stream_alias_billing/test_stream_alias_billing.py (6 total)",
+            "source": "scope"
+          }
+        ]
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "role-update-persistence-fix": {
+      "title": "Fix silent role-change rollback in self-service user-role update",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T09:21:04+00:00",
+      "updated": "2026-07-03T09:37:03+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "7a6819729ad467f1936ff206da1df990",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          "apps/gateway/src/gateway/tenants/infrastructure/users_repository.py",
+          "apps/gateway/tests/test_users_role.py",
+          "apps/gateway/tests/.pytest_cache",
+          "apps/gateway/tests/.ruff_cache",
+          "apps/gateway/tests/.coverage"
+        ],
+        "snapshot_md5": "f40f056e7f4953a45635bfa21e2cc000"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "batch-observability-scaffolding": {
+      "title": "Batch observability scaffolding: window-latency + placeholder completion metrics",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-03T17:25:21+00:00",
+      "updated": "2026-07-04T08:22:24+00:00",
+      "fast": true,
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "bf1ec333b9b5cc21a392dadf8456ee71",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [],
+        "snapshot_md5": "94c9a96a63f8c730cf016967cfda6326"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "declare-components-registry": {
+      "title": "Declare the components registry for gateway + dashboard",
+      "phase": "done",
+      "gate": "PASS",
+      "milestone": null,
+      "depends_on": [],
+      "created": "2026-07-06T08:08:23+00:00",
+      "updated": "2026-07-06T08:15:14+00:00",
+      "flag_verified": true,
+      "tripwire": {
+        "contract_md5": "31d1a929f6a5845ef667e5679974b0df",
+        "tests": {}
+      },
+      "scope": {
+        "declared": [
+          ".add/tasks/declare-components-registry/src/"
+        ],
+        "snapshot_md5": "60a3d8ad1ce05a6789d0ce3e4d628606"
+      },
+      "gate_actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      }
+    },
+    "eval-set-store": {
+      "title": "Tenant-scoped eval sets and cases, with the ZDR disposition decided and enforced atomically with the write",
+      "phase": "direction",
+      "gate": "none",
+      "milestone": "evals-regression-gate",
+      "depends_on": [],
+      "created": "2026-08-12T08:53:40+00:00",
+      "updated": "2026-08-12T08:53:40+00:00"
+    }
+  },
+  "milestones": {
+    "v58": {
+      "title": "Batch-discounted chat completions: provider integration",
+      "goal": "a tenant can process a set of chat-completion requests as one discounted batch job instead of many synchronous calls, with the existing response cache still applied per item \u2014 real OpenAI/Anthropic Batch API submission, cache pre-filtering, and batch-discount billing",
+      "stage": "production",
+      "status": "queued",
+      "created": "2026-07-03T16:30:16+00:00",
+      "updated": "2026-07-03T16:30:16+00:00"
+    },
+    "evals-regression-gate": {
+      "title": "Evals \u2014 regression gate on model swaps",
+      "goal": "a tenant can run a named eval set against a candidate model and get a scored pass/fail verdict against a pinned baseline, so a model swap is proven safe BEFORE it ships",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-08-12T05:40:03+00:00",
+      "updated": "2026-08-12T08:51:43+00:00",
+      "confirmed": true,
+      "confirmed_at": "2026-08-12T08:51:43+00:00",
+      "confirmed_by": "Tin Dang (scope chosen in-session 2026-08-11 via interview: 'R7 evals' + 'regression gate on model swaps'; intake MILESTONE.md reviewed and merged as PR #118; confirm command executed by agent on Tin's 'keep going', 2026-08-12)",
+      "await_confirm": true,
+      "actor": {
+        "name": "Tin Dang",
+        "email": "tindang.ht97@gmail.com",
+        "source": "git"
+      },
+      "planned": {
+        "eval-set-store": [],
+        "eval-run-executor": [
+          "eval-set-store"
+        ],
+        "deterministic-scorers": [
+          "eval-set-store"
+        ],
+        "baseline-and-verdict": [
+          "eval-run-executor",
+          "deterministic-scorers"
+        ],
+        "evals-console": [
+          "baseline-and-verdict"
+        ]
+      }
+    }
+  },
+  "created": "2026-06-10T08:03:15+00:00",
+  "updated": "2026-08-12T08:53:40+00:00",
+  "setup": {
+    "locked": true,
+    "locked_at": "2026-06-10T08:05:39+00:00",
+    "locked_by": "Tin Dang",
+    "layers": [
+      "foundation",
+      "scope",
+      "contract"
+    ]
+  },
+  "archived": [
+    {
+      "slug": "v1",
+      "title": "MVP: metered multi-tenant AI proxy",
+      "tasks": 9,
+      "task_slugs": [
+        "tenant-identity",
+        "model-catalog",
+        "api-keys",
+        "proxy-completions",
+        "usage-metering",
+        "budgets",
+        "edge-envoy",
+        "dashboard-shell",
+        "dashboard-usage"
+      ],
+      "archived": "2026-06-10"
+    },
+    {
+      "slug": "v2",
+      "title": "Production-ready metered proxy",
+      "tasks": 6,
+      "task_slugs": [
+        "db-migrations",
+        "live-upstream-smoke",
+        "edge-tls",
+        "auth-bff",
+        "observability",
+        "ops-hardening"
+      ],
+      "archived": "2026-06-11"
+    },
+    {
+      "slug": "v3",
+      "title": "V3",
+      "tasks": 6,
+      "task_slugs": [
+        "key-governance",
+        "rate-limits",
+        "spend-windows",
+        "health-alerting",
+        "model-mgmt",
+        "dashboard-govern"
+      ],
+      "archived": "2026-06-11"
+    },
+    {
+      "slug": "v4",
+      "title": "V4",
+      "tasks": 6,
+      "task_slugs": [
+        "teams-core",
+        "team-governance",
+        "response-caching",
+        "guardrails-core",
+        "sso-oidc",
+        "obs-callbacks"
+      ],
+      "archived": "2026-06-11"
+    },
+    {
+      "slug": "v5",
+      "title": "LiteLLM parity slice 3 \u2014 intelligence & hardening",
+      "tasks": 6,
+      "task_slugs": [
+        "oidc-jwks",
+        "team-attribution",
+        "pii-v2",
+        "semantic-cache",
+        "oidc-tenant-config",
+        "rename-hydroa"
+      ],
+      "archived": "2026-06-12"
+    },
+    {
+      "slug": "v6",
+      "title": "Routing & resilience",
+      "tasks": 5,
+      "task_slugs": [
+        "retry-policy",
+        "model-fallbacks",
+        "cooldown-circuit",
+        "routing-admin",
+        "v6-live-verify"
+      ],
+      "archived": "2026-06-12"
+    },
+    {
+      "slug": "v7",
+      "title": "LiteLLM parity slice 5 \u2014 multi-modal & multi-provider",
+      "tasks": 6,
+      "task_slugs": [
+        "provider-seam",
+        "pricing-units",
+        "embeddings-endpoint",
+        "images-endpoint",
+        "audio-endpoints",
+        "v7-live-verify"
+      ],
+      "archived": "2026-06-12"
+    },
+    {
+      "slug": "v8",
+      "title": "LiteLLM parity slice 6 \u2014 router & load-balancing",
+      "tasks": 5,
+      "task_slugs": [
+        "deployment-model",
+        "routing-strategy",
+        "balance-strategies",
+        "deployment-limits",
+        "v8-live-verify"
+      ],
+      "archived": "2026-06-12"
+    },
+    {
+      "slug": "v9",
+      "title": "LiteLLM parity slice 7 \u2014 provider breadth (Anthropic + Google Gemini, chat + embeddings)",
+      "tasks": 4,
+      "task_slugs": [
+        "provider-chat-dispatch",
+        "anthropic-provider",
+        "gemini-provider",
+        "provider-breadth-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v10",
+      "title": "LiteLLM parity slice 8 \u2014 tool-use / function-calling across providers",
+      "tasks": 4,
+      "task_slugs": [
+        "tool-use-contract",
+        "anthropic-tool-use",
+        "gemini-tool-use",
+        "tool-use-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v11",
+      "title": "LiteLLM parity slice 9 \u2014 JSON-mode / structured outputs across providers",
+      "tasks": 4,
+      "task_slugs": [
+        "response-format-contract",
+        "gemini-json-mode",
+        "anthropic-json-mode",
+        "json-mode-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v12",
+      "title": "Billing accuracy + ops hardening \u2014 pay down v7/v9/v11 follow-up debt",
+      "tasks": 5,
+      "task_slugs": [
+        "gemini-embed-tokens",
+        "empty-key-boot-guard",
+        "nonchat-soft-budget-alert",
+        "test-db-isolation",
+        "v12-live-verify"
+      ],
+      "archived": "2026-06-13"
+    },
+    {
+      "slug": "v13",
+      "title": "UI/UX refresh \u2014 highest-value dashboard journeys (usage/cost + key/budget governance)",
+      "tasks": 4,
+      "task_slugs": [
+        "design-system-foundation",
+        "usage-cost-ui",
+        "key-budget-governance-ui",
+        "ui-ux-verify"
+      ],
+      "archived": "2026-06-14"
+    },
+    {
+      "slug": "v15",
+      "title": "Dashboard feature-coverage \u2014 a surface for every backend capability",
+      "tasks": 11,
+      "task_slugs": [
+        "design-system-extension",
+        "model-management-ui",
+        "bff-patch-passthrough",
+        "teams-add-by-email",
+        "teams-governance-ui",
+        "tenant-settings-ui",
+        "routing-health-ui",
+        "governance-completion-ui",
+        "key-cache-enabled-fidelity",
+        "oidc-login-relay",
+        "feature-coverage-verify"
+      ],
+      "archived": "2026-06-14"
+    },
+    {
+      "slug": "v14",
+      "title": "Dependency hardening \u2014 Next.js 16 upgrade + advisory remediation",
+      "tasks": 1,
+      "task_slugs": [
+        "next16-upgrade"
+      ],
+      "archived": "2026-06-14"
+    },
+    {
+      "slug": "v17",
+      "title": "Hardening \u2014 clear carried follow-up debt (v13/v14/v15)",
+      "tasks": 6,
+      "task_slugs": [
+        "bff-test-harness-strict-handlers",
+        "react-hooks-strict-lint",
+        "nav-role-filter",
+        "oidc-callback-relay",
+        "devtool-vitest4-upgrade",
+        "realbrowser-a11y-pass"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v18",
+      "title": "Auth session hardening",
+      "tasks": 1,
+      "task_slugs": [
+        "auth-me-session-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v19",
+      "title": "Reliability \u2014 uniform retries, error-aware fallback, response & semantic caching",
+      "tasks": 6,
+      "task_slugs": [
+        "retry-seam-unify",
+        "error-aware-fallback",
+        "cache-controls",
+        "streaming-resilience",
+        "semantic-cache",
+        "reliability-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v20",
+      "title": "Enterprise provider: AWS Bedrock (SigV4 \u00b7 Converse chat/stream/tools \u00b7 Titan embeddings)",
+      "tasks": 6,
+      "task_slugs": [
+        "bedrock-sigv4-auth",
+        "bedrock-chat",
+        "bedrock-streaming",
+        "bedrock-tools",
+        "bedrock-embeddings",
+        "bedrock-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v21",
+      "title": "Enterprise provider: Azure OpenAI",
+      "tasks": 6,
+      "task_slugs": [
+        "azure-auth-routing",
+        "azure-chat",
+        "azure-streaming-passthrough",
+        "azure-aad-auth",
+        "azure-embeddings",
+        "azure-verify"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v22",
+      "title": "Provider security & config hardening",
+      "tasks": 2,
+      "task_slugs": [
+        "provider-secret-chain-hardening",
+        "azure-ad-authority-config"
+      ],
+      "archived": "2026-06-15"
+    },
+    {
+      "slug": "v23",
+      "title": "Enterprise UI Overhaul",
+      "tasks": 6,
+      "task_slugs": [
+        "design-system-enterprise-ext",
+        "app-shell-sidebar",
+        "overview-home",
+        "console-surfaces-redesign",
+        "admin-surfaces-redesign",
+        "auth-pages-redesign"
+      ],
+      "archived": "2026-06-16"
+    },
+    {
+      "slug": "v24",
+      "title": "UI polish & a11y follow-ups",
+      "tasks": 1,
+      "task_slugs": [
+        "overview-heading-a11y-fix"
+      ],
+      "archived": "2026-06-16"
+    },
+    {
+      "slug": "v25",
+      "title": "Tenant-managed provider credentials (BYOK)",
+      "tasks": 7,
+      "task_slugs": [
+        "provider-credential-store",
+        "credential-resolution-seam",
+        "dynamic-auth-byok",
+        "provider-config-admin-api",
+        "provider-config-ui",
+        "byok-live-verify",
+        "openai-chat-complete"
+      ],
+      "archived": "2026-06-17"
+    },
+    {
+      "slug": "v26",
+      "title": "Provider config cleanup \u2014 v25 follow-ups",
+      "tasks": 2,
+      "task_slugs": [
+        "openai-retry-parity",
+        "retire-empty-key-guard"
+      ],
+      "archived": "2026-06-17"
+    },
+    {
+      "slug": "v27",
+      "title": "Billing precision \u2014 true per-tier cost on every call",
+      "tasks": 4,
+      "task_slugs": [
+        "tiered-token-billing",
+        "provider-cost-reconciliation",
+        "stt-duration-derivation",
+        "stream-usage-completeness"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v28",
+      "title": "Billing & passthrough robustness",
+      "tasks": 3,
+      "task_slugs": [
+        "stream-disconnect-billing",
+        "stt-duration-cap",
+        "stt-nonfinite-passthrough"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v29",
+      "title": "Billing reconciliation \u2014 provider cost vs billed, with drift alert",
+      "tasks": 3,
+      "task_slugs": [
+        "reconciliation-aggregate",
+        "reconciliation-endpoint",
+        "drift-alert"
+      ],
+      "archived": "2026-06-18"
+    },
+    {
+      "slug": "v30",
+      "title": "Reconciliation hardening \u2014 make leak-detection trustworthy",
+      "tasks": 10,
+      "task_slugs": [
+        "drift-threshold-validation",
+        "reconcile-cost-basis-filter",
+        "disconnect-provider-cost",
+        "incremental-sse-translation",
+        "bedrock-incremental-stream",
+        "openrouter-cost-recovery",
+        "openrouter-generation-client",
+        "provider-generation-id-capture",
+        "openrouter-cost-recovery-wiring",
+        "openrouter-recovery-sweep"
+      ],
+      "archived": "2026-06-22"
+    },
+    {
+      "slug": "v32",
+      "title": "Writable routing configuration",
+      "tasks": 3,
+      "task_slugs": [
+        "routing-config-write",
+        "routing-config-store",
+        "routing-config-editor"
+      ],
+      "archived": "2026-06-23"
+    },
+    {
+      "slug": "v33",
+      "title": "Reconciliation & disconnect-billing hardening",
+      "tasks": 4,
+      "task_slugs": [
+        "passthrough-nonfinite-sanitize",
+        "reconcile-cost-basis-filter",
+        "disconnect-provider-cost",
+        "drift-threshold-validation"
+      ],
+      "archived": "2026-06-23"
+    },
+    {
+      "slug": "v34",
+      "title": "Helios agent-coding integration readiness",
+      "tasks": 7,
+      "task_slugs": [
+        "agent-coding-stub-harness",
+        "reasoning-passthrough",
+        "prompt-cache-passthrough",
+        "parallel-tool-streaming-verify",
+        "disconnect-billing-all-providers",
+        "concurrency-load-guard",
+        "helios-live-smoke"
+      ],
+      "archived": "2026-06-23"
+    },
+    {
+      "slug": "v35",
+      "title": "Agent-loop error fidelity",
+      "tasks": 4,
+      "task_slugs": [
+        "upstream-ratelimit-passthrough",
+        "stream-upstream-error-frame",
+        "error-fidelity-live-verify",
+        "stream-graceful-close-mapping"
+      ],
+      "archived": "2026-06-24"
+    },
+    {
+      "slug": "v36",
+      "title": "Per-key bandwidth pacing",
+      "tasks": 4,
+      "task_slugs": [
+        "bandwidth-token-bucket",
+        "stream-bandwidth-pacing",
+        "bandwidth-usage-reconcile",
+        "bandwidth-counter-view"
+      ],
+      "archived": "2026-06-24"
+    },
+    {
+      "slug": "v37",
+      "title": "Dashboard observability parity",
+      "tasks": 3,
+      "task_slugs": [
+        "bandwidth-panel",
+        "routing-editor-feedback",
+        "sso-login-polish"
+      ],
+      "archived": "2026-06-24"
+    },
+    {
+      "slug": "v38",
+      "title": "Enterprise readiness",
+      "tasks": 13,
+      "task_slugs": [
+        "marketing-shell",
+        "landing-page",
+        "pricing-page",
+        "legal-pages",
+        "docs-blog-scaffold",
+        "trust-status-page",
+        "rbac-roles",
+        "audit-log-store",
+        "data-retention-controls",
+        "audit-log-surface",
+        "rbac-admin-ui",
+        "slo-metrics",
+        "slo-dashboard"
+      ],
+      "archived": "2026-06-25"
+    },
+    {
+      "slug": "v39",
+      "title": "Headless agent authentication (OAuth device flow)",
+      "tasks": 6,
+      "task_slugs": [
+        "agent-oauth-grant-store",
+        "device-authorization-endpoint",
+        "device-approval-flow",
+        "agent-token-endpoint",
+        "agent-token-authn-seam",
+        "agent-oauth-harness-e2e"
+      ],
+      "archived": "2026-06-25"
+    },
+    {
+      "slug": "v40",
+      "title": "Chat workspace + streaming",
+      "tasks": 4,
+      "task_slugs": [
+        "streaming-bff",
+        "chat-workspace-page",
+        "chat-model-controls",
+        "chat-cost-readout"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v41",
+      "title": "Web search augmentation",
+      "tasks": 2,
+      "task_slugs": [
+        "websearch-grounding-passthrough",
+        "chat-websearch-toggle"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v42",
+      "title": "Voice breadth (multi-provider STT/TTS)",
+      "tasks": 4,
+      "task_slugs": [
+        "azure-audio-provider",
+        "tts-input-guardrails",
+        "audio-translations-endpoint",
+        "voice-playground"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v43",
+      "title": "Remote sessions / conversations",
+      "tasks": 2,
+      "task_slugs": [
+        "conversations-backend",
+        "chat-history-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v44",
+      "title": "Remote memory (tenant-scoped semantic memory store)",
+      "tasks": 2,
+      "task_slugs": [
+        "memory-backend",
+        "memory-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v45",
+      "title": "Artifacts / files (tenant-scoped file store)",
+      "tasks": 2,
+      "task_slugs": [
+        "artifacts-backend",
+        "artifacts-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v46",
+      "title": "Video & image understanding (Gemini multimodal)",
+      "tasks": 2,
+      "task_slugs": [
+        "gemini-multimodal",
+        "vision-understanding-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v47",
+      "title": "Realtime voice (turn-based WebSocket session)",
+      "tasks": 1,
+      "task_slugs": [
+        "realtime-voice"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v48",
+      "title": "Video generation (async jobs)",
+      "tasks": 2,
+      "task_slugs": [
+        "video-jobs-backend",
+        "video-jobs-ui"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v49",
+      "title": "Durable video-job processing (Redis queue + restart recovery)",
+      "tasks": 1,
+      "task_slugs": [
+        "durable-video-queue"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "ui-fidelity",
+      "title": "UI visual fidelity",
+      "tasks": 3,
+      "task_slugs": [
+        "visual-language",
+        "landing-fidelity",
+        "admin-fidelity"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v50",
+      "title": "Production hardening \u2014 landing & admin UI",
+      "tasks": 9,
+      "task_slugs": [
+        "resilient-bff-fetch",
+        "security-headers-csp",
+        "bff-input-validation",
+        "failure-state-segments",
+        "motion-primitives",
+        "a11y-ci-coverage",
+        "harden-marketing",
+        "harden-admin",
+        "harden-auth"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v52",
+      "title": "Full-duplex realtime voice relay (provider-agnostic seam)",
+      "tasks": 5,
+      "task_slugs": [
+        "realtime-relay-port",
+        "openai-realtime-adapter",
+        "gemini-live-adapter",
+        "realtime-relay-endpoint",
+        "realtime-relay-live-verify"
+      ],
+      "archived": "2026-06-26"
+    },
+    {
+      "slug": "v53",
+      "title": "Kubernetes deployment + full e2e validation",
+      "tasks": 10,
+      "task_slugs": [
+        "helm-chart-scaffold",
+        "datastore-statefulsets",
+        "envoy-edge-manifests",
+        "dashboard-chart",
+        "migration-and-secrets",
+        "kind-bootstrap",
+        "e2e-core-flow",
+        "e2e-platform-features",
+        "e2e-ui",
+        "ci-e2e-pipeline"
+      ],
+      "archived": "2026-06-27"
+    },
+    {
+      "slug": "chat-playground",
+      "title": "Chat \u2014 Console-grade playground",
+      "tasks": 6,
+      "task_slugs": [
+        "chat-playground-shell",
+        "chat-parameters-panel",
+        "chat-tools-functions",
+        "chat-attachments",
+        "chat-run-metadata-cost",
+        "chat-conversation-mgmt"
+      ],
+      "archived": "2026-06-30"
+    },
+    {
+      "slug": "v55",
+      "title": "Capability-aware model management",
+      "tasks": 4,
+      "task_slugs": [
+        "model-input-capabilities",
+        "unsupported-input-guard",
+        "artifact-upload-validation",
+        "capabilities-admin-surface"
+      ],
+      "archived": "2026-07-01"
+    },
+    {
+      "slug": "gateway-health",
+      "title": "Gateway Health",
+      "tasks": 4,
+      "task_slugs": [
+        "pyright-errors-clean",
+        "ruff-format-and-lint-clean",
+        "fix-stale-failing-tests",
+        "deterministic-test-isolation"
+      ],
+      "archived": "2026-07-01"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "catalog-pricing-detail",
+      "task_slugs": [
+        "catalog-pricing-fields"
+      ],
+      "tasks": 1,
+      "title": "Catalog pricing detail (OpenAI-compatible per-1M cost fields)"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "minimax-provider",
+      "task_slugs": [
+        "minimax-adapter-registry",
+        "minimax-catalog-seed",
+        "minimax-live-verify"
+      ],
+      "tasks": 3,
+      "title": "MiniMax provider integration"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v31",
+      "task_slugs": [
+        "operator-wide-reconciliation",
+        "sso-login-button",
+        "alerts-events-viewer",
+        "catalog-sync-trigger",
+        "upstream-health-view",
+        "ratelimit-counter-view"
+      ],
+      "tasks": 6,
+      "title": "Operator-wide reconciliation + UI\u2194BE coverage"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v51",
+      "task_slugs": [
+        "object-store-port",
+        "artifacts-s3-live-verify",
+        "artifacts-s3-persistence"
+      ],
+      "tasks": 3,
+      "title": "Artifacts on real object storage (MinIO)"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "v54",
+      "task_slugs": [
+        "model-catalog-paging-search",
+        "responsive-app-shell",
+        "aurora-polish-tokens",
+        "monitoring-pages-redesign",
+        "governance-pages-redesign"
+      ],
+      "tasks": 5,
+      "title": "UI refinement \u2014 polished, responsive, scalable app pages"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "voice-playground",
+      "task_slugs": [
+        "voice-playground-shell",
+        "voice-mic-capture-deferrals"
+      ],
+      "tasks": 2,
+      "title": "Voice Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "memory-playground",
+      "task_slugs": [
+        "memory-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Memory Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "artifacts-playground",
+      "task_slugs": [
+        "artifacts-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Artifacts Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "vision-playground",
+      "task_slugs": [
+        "vision-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Vision Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "video-playground",
+      "task_slugs": [
+        "video-console-rebuild"
+      ],
+      "tasks": 1,
+      "title": "Video Playground"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "proxy-correctness",
+      "task_slugs": [
+        "adapter-correctness-fixes"
+      ],
+      "tasks": 1,
+      "title": "Proxy Correctness"
+    },
+    {
+      "archived": "2026-07-01",
+      "slug": "openrouter-embeddings",
+      "task_slugs": [
+        "openrouter-embeddings-routing"
+      ],
+      "tasks": 1,
+      "title": "OpenRouter embeddings routing"
+    },
+    {
+      "slug": "gpt-realtime-pricing",
+      "title": "GPT-Realtime cache-discount pricing",
+      "tasks": 3,
+      "task_slugs": [
+        "gpt-realtime-pricing-fields",
+        "gpt-realtime-relay-billing",
+        "gpt-realtime-schema-migration"
+      ],
+      "archived": "2026-07-02"
+    },
+    {
+      "slug": "v56",
+      "title": "Per-tenant model presets",
+      "tasks": 5,
+      "task_slugs": [
+        "tenant-preset-store",
+        "preset-resolution-ingress",
+        "preset-admin-surface",
+        "preset-capability-validation",
+        "chat-modality-guard"
+      ],
+      "archived": "2026-07-02"
+    },
+    {
+      "slug": "platform-identity",
+      "title": "Platform Identity Foundation",
+      "tasks": 5,
+      "task_slugs": [
+        "platform-tenant-seed",
+        "superadmin-role",
+        "ops-platform-job-identity",
+        "superadmin-login",
+        "superadmin-audit-foundation"
+      ],
+      "archived": "2026-07-03"
+    },
+    {
+      "slug": "v57",
+      "title": "Batch-discounted chat completions",
+      "tasks": 5,
+      "task_slugs": [
+        "batch-job-store",
+        "batch-dashboard-surface",
+        "batch-auto-grouping",
+        "batch-window-grouping",
+        "batch-claim-drain-del"
+      ],
+      "archived": "2026-07-03"
+    },
+    {
+      "slug": "platform-console-flat-redesign",
+      "title": "Platform console flat/borderless visual redesign",
+      "tasks": 5,
+      "task_slugs": [
+        "console-flat-visual-pass",
+        "tenant-overview-strip",
+        "overview-strip-plan-display-name",
+        "command-palette",
+        "tenant-activity-tab"
+      ],
+      "archived": "2026-07-06"
+    },
+    {
+      "slug": "enterprise-hardening",
+      "title": "Enterprise Hardening",
+      "tasks": 7,
+      "task_slugs": [
+        "cache-alias-billing",
+        "usage-flusher-durability",
+        "realtime-relay-governance",
+        "edge-input-hardening",
+        "signup-and-routing-authz",
+        "provider-circuit-breakers",
+        "tiered-rate-cards"
+      ],
+      "archived": "2026-07-10"
+    },
+    {
+      "slug": "logs-explorer-guardrails-v2",
+      "title": "Request Logs Explorer + Guardrails v2",
+      "tasks": 8,
+      "task_slugs": [
+        "payload-capture-store",
+        "per-key-guardrail-policies",
+        "ml-moderation-layer",
+        "output-schema-validation",
+        "logs-explorer-api",
+        "logs-explorer-ui",
+        "guardrail-analytics",
+        "request-log-metering-fields"
+      ],
+      "archived": "2026-07-11"
+    },
+    {
+      "slug": "enterprise-identity-compliance",
+      "title": "Enterprise Identity & Compliance Pack",
+      "tasks": 6,
+      "task_slugs": [
+        "scim-provisioning",
+        "saml-sso",
+        "tenant-retention-zdr",
+        "compliance-export-api",
+        "domain-capture",
+        "enterprise-identity-admin-ui"
+      ],
+      "archived": "2026-07-11"
+    },
+    {
+      "slug": "monetization-core",
+      "title": "Monetization core \u2014 bill your tenants",
+      "tasks": 7,
+      "task_slugs": [
+        "cost-attribution-tags",
+        "invoice-generation",
+        "credits-ledger",
+        "plan-enforcement",
+        "seat-billing",
+        "margin-dashboard",
+        "billing-ui"
+      ],
+      "archived": "2026-07-12"
+    },
+    {
+      "slug": "residency-service-tiers",
+      "title": "Data-residency & service-tier routing",
+      "tasks": 7,
+      "task_slugs": [
+        "region-catalog-dimension",
+        "residency-policy",
+        "region-pricing",
+        "service-tiers",
+        "residency-tiers-ui",
+        "vertex-adapter",
+        "residency-bedrock-region-guard"
+      ],
+      "archived": "2026-07-13"
+    },
+    {
+      "slug": "platform-key-default",
+      "title": "Platform Key Default Credential",
+      "tasks": 2,
+      "task_slugs": [
+        "platform-credential-fallback",
+        "fallback-usage-marker"
+      ],
+      "archived": "2026-07-16"
+    },
+    {
+      "slug": "model-catalog-db",
+      "title": "DB-backed model catalog: SQL seed + provider refresh",
+      "tasks": 2,
+      "task_slugs": [
+        "catalog-db-seed",
+        "catalog-celery-refresh"
+      ],
+      "archived": "2026-07-17"
+    },
+    {
+      "slug": "dashboard-hallmark-restyle",
+      "title": "Whole-dashboard restyle to the Airier enterprise AI-SaaS theme",
+      "tasks": 1,
+      "task_slugs": [
+        "airier-theme-restyle"
+      ],
+      "archived": "2026-07-17"
+    },
+    {
+      "slug": "commercial-self-serve",
+      "title": "Commercial Self Serve",
+      "tasks": 5,
+      "task_slugs": [
+        "activation-quickstart",
+        "transactional-email",
+        "device-activate-page",
+        "self-serve-checkout",
+        "self-serve-plans-catalog"
+      ],
+      "archived": "2026-07-18"
+    },
+    {
+      "slug": "account-tiers-billing",
+      "title": "Account tiers & billing: personal/individual + business/enterprise base fee + payer of record",
+      "tasks": 4,
+      "task_slugs": [
+        "account-type-discriminator",
+        "plan-tiers-and-base-fee",
+        "billing-owner-of-record",
+        "billing-owner-signup-population"
+      ],
+      "archived": "2026-07-18"
+    },
+    {
+      "slug": "enterprise-domain-onboarding",
+      "title": "Enterprise domain onboarding: unified email-domain routing + auto-assign + domain-claims console",
+      "tasks": 3,
+      "task_slugs": [
+        "domain-routing-unification",
+        "domain-auto-assign-login",
+        "domain-claims-console"
+      ],
+      "archived": "2026-07-19"
+    },
+    {
+      "slug": "domain-onboarding-softening",
+      "title": "Domain onboarding softening: progressive trust ladder (soft member-verified rung + invite-by-domain + DNS-flow softeners)",
+      "tasks": 7,
+      "task_slugs": [
+        "dns-verify-softeners",
+        "domain-verify-notify",
+        "registrar-hint",
+        "member-verified-recognition",
+        "member-verified-code-entry",
+        "invite-by-domain",
+        "invite-by-domain-ui"
+      ],
+      "archived": "2026-07-20"
+    },
+    {
+      "slug": "frontdoor-persona-routing",
+      "title": "Front-door persona routing",
+      "tasks": 9,
+      "task_slugs": [
+        "scoped-self-serve-signup",
+        "signup-refusal-router",
+        "homepage-integration-proof",
+        "homepage-price-anchor",
+        "homepage-cta-intent-split",
+        "domain-aware-auth-routing",
+        "unified-signin-entry",
+        "pricing-tier-ladder",
+        "sso-login-oracle-closure"
+      ],
+      "archived": "2026-07-21"
+    },
+    {
+      "slug": "frontdoor-polish",
+      "title": "Frontdoor Polish",
+      "tasks": 2,
+      "task_slugs": [
+        "merge-login-email-field",
+        "login-global-error-position"
+      ],
+      "archived": "2026-07-23"
+    },
+    {
+      "slug": "agent-gateway-v1",
+      "title": "Agent-era gateway \u2014 MCP governance, tool metering, Messages ingress",
+      "tasks": 6,
+      "task_slugs": [
+        "anthropic-messages-ingress",
+        "mcp-connector-passthrough",
+        "agent-identity-governance",
+        "claude-gateway-protocol-compat",
+        "tool-call-metering",
+        "agents-console"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "eu-ai-act-readiness",
+      "title": "EU AI Act readiness pack",
+      "tasks": 3,
+      "task_slugs": [
+        "art12-record-keeping-preset",
+        "compliance-report-center",
+        "ai-act-marketing-page"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "platform-admin-console",
+      "title": "Platform Admin Console",
+      "tasks": 5,
+      "task_slugs": [
+        "platform-tenant-directory",
+        "cross-tenant-config-budget",
+        "cross-tenant-keys-members",
+        "admin-console-audit",
+        "admin-console-ui"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "platform-access-plan",
+      "title": "Platform Access Subscription Plan",
+      "tasks": 4,
+      "task_slugs": [
+        "plan-catalog",
+        "plan-admin-ui",
+        "plan-seat-cap",
+        "plan-rate-enforcement"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "team-member-invite",
+      "title": "Team Member Invite",
+      "tasks": 3,
+      "task_slugs": [
+        "member-invite-issuance",
+        "member-invite-acceptance",
+        "member-invite-ui"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "tenant-impersonation",
+      "title": "Tenant Impersonation",
+      "tasks": 3,
+      "task_slugs": [
+        "impersonation-session-lifecycle",
+        "impersonation-ui",
+        "impersonation-live-session-guard"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "api-surface-parity",
+      "title": "OpenAI API-surface parity",
+      "tasks": 6,
+      "task_slugs": [
+        "responses-api-core",
+        "responses-state-store",
+        "files-uploads-api",
+        "moderations-endpoint",
+        "image-edits-variations",
+        "tenant-usage-costs-api"
+      ],
+      "archived": "2026-07-24"
+    },
+    {
+      "slug": "release-integrity",
+      "title": "Release integrity: restore CI, close the deploy blockers, clear lint/type/suite debt",
+      "tasks": 12,
+      "task_slugs": [
+        "ci-restoration",
+        "lint-type-debt-sweep",
+        "suite-stability",
+        "pgvector-deploy-runbook",
+        "vector-extension-preflight",
+        "suite-infra-tripwire",
+        "breaker-4xx-classification",
+        "date-bomb-sweep",
+        "release-provenance",
+        "ci-timeout-and-e2e-scope",
+        "ci-flake-classification",
+        "flake-tail-burndown"
+      ],
+      "archived": "2026-08-11"
+    },
+    {
+      "slug": "managed-rag-finetune",
+      "title": "Managed RAG + fine-tune brokering",
+      "tasks": 6,
+      "task_slugs": [
+        "vector-store-core",
+        "finetune-broker",
+        "vector-store-files",
+        "file-search-tool",
+        "finetune-model-registry",
+        "zdr-ingest-lock-heal"
+      ],
+      "archived": "2026-08-11"
+    }
+  ],
+  "active_milestones": [
+    "evals-regression-gate"
+  ],
+  "active_tasks": {
+    "evals-regression-gate": "eval-set-store"
+  },
+  "todos": [
+    {
+      "id": 1,
+      "text": "fix sidebar full height",
+      "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 2,
+      "text": "paging model catalog with fuzzy search",
+      "created": "2026-06-28T06:35:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 3,
+      "text": "upgrade UI of each page",
+      "created": "2026-06-28T06:35:36+00:00",
+      "status": "open"
+    },
+    {
+      "id": 4,
+      "text": "PROGRAM 'AI feature depth (Console-grade)' roadmap after voice: m3 memory-playground \u00b7 m4 artifacts-playground \u00b7 m5 vision-playground \u00b7 m6 video-playground \u00b7 m7 proxy-correctness-vs-docs (audit every gateway adapter against provider API docs). Create each just-in-time.",
+      "created": "2026-06-30T10:57:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 5,
+      "text": "DialogContent (components/ui/dialog.tsx) has no entrance/exit animation of its own -- only DialogOverlay fades. Every Dialog consumer (AppShell mobile nav sheet, command-palette) snaps the panel open/closed. Existing motion system (Reveal in motion.tsx + the global reduced-motion net in globals.css) already establishes the right pattern (motion-safe: opt-in, unconditional render, global reduced-motion backstop) -- extending DialogContent to match is a good small follow-up. Also worth revisiting: tenant-overview-strip's 4 tiles currently just appear as each query resolves, no progressive-reveal of their own. Raised by Tin 2026-07-06; deferred rather than touching the shared dialog.tsx primitive mid-build of command-palette.",
+      "created": "2026-07-06T09:35:41+00:00",
+      "status": "open"
+    },
+    {
+      "id": 6,
+      "text": "margin-dashboard follow-on (P2, Tin approved 2026-07-12): clearly-labeled 'estimated margin (catalog list-price basis)' column \u2014 separate task, never blended with authoritative provider-cost margin",
+      "created": "2026-07-12T11:43:20+00:00",
+      "status": "open"
+    },
+    {
+      "id": 7,
+      "text": "billing-ui F1 (verify \ud83d\udfe1, spec delta seeded): Plan&seats live roster count 403-degrades to '\u2014' for operator/billing_admin/viewer/member \u2014 decide (a) ungated tenant-self count-only read vs (b) document degrade as accepted; Tin design call at observe/M-close",
+      "created": "2026-07-12T12:44:50+00:00",
+      "status": "open"
+    },
+    {
+      "id": 8,
+      "text": "billing-ui F2 (\ud83d\udcad): evidence-drawer per-line context subtitle from DESIGN.md dropped in build \u2014 cosmetic fast-follow or backlog",
+      "created": "2026-07-12T12:44:50+00:00",
+      "status": "open"
+    },
+    {
+      "id": 9,
+      "text": "plan-seat-cap seeded delta: SCIM PATCH active:true reactivation bypasses seat cap (confirmed repro in test_verify_adversarial) \u2014 gate reactivation via assert_seat_available in a follow-on task",
+      "created": "2026-07-12T12:47:23+00:00",
+      "status": "open"
+    },
+    {
+      "id": 10,
+      "text": "margin-dashboard delta: /summary has_provider_cost_data uses a heuristic, not by-tenant-model/trend's honest COUNT(cost_basis='provider') \u2014 align in follow-on",
+      "created": "2026-07-12T12:48:15+00:00",
+      "status": "open"
+    },
+    {
+      "id": 11,
+      "text": "repo-wide hardening (from margin verify \ud83d\udfe1): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible \u2014 pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
+      "created": "2026-07-12T12:48:15+00:00",
+      "status": "done"
+    },
+    {
+      "id": 12,
+      "text": "housekeeping (from seat-billing build): migrations/env.py ORM-import gap causes false alembic-check drift \u2014 pre-existing, file a fix",
+      "created": "2026-07-12T13:23:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 13,
+      "text": "housekeeping (from seat-billing build): ~72-file repo-wide ruff format baseline drift predates milestone \u2014 decide one-shot format commit vs leave",
+      "created": "2026-07-12T13:23:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 14,
+      "text": "seat-billing observe: record \u00a72 prose correction (reactivation-gap arithmetic 24 -> 16 per M6, implemented+tested as 16, disclosed) + decide narrowing join_verified_tenant_domain broad IntegrityError catch (defect-masking, left additive-safe)",
+      "created": "2026-07-12T13:23:30+00:00",
+      "status": "open"
+    },
+    {
+      "id": 15,
+      "text": "seat-billing delta F1: contract prose says seat prices tenant-overridable via rate-card resolver \u2014 no such code path (_load_seat_price reads plans only). Tin: build override or fix prose",
+      "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 16,
+      "text": "seat-billing delta F2/F3: document seat-evidence live-re-derivation drift vs frozen totals + add DB append-only trigger to seat_membership_events (mirror invoice_lines trigger)",
+      "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 17,
+      "text": "seat-billing delta F5 (cutover caveat): pre-migration deactivate->reactivate cycles invisible to backfill \u2014 first post-cutover invoice can over-bill (5-day demo in probes). Tin: accept as documented Non-goal or manual reconciliation pass",
+      "created": "2026-07-12T13:44:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 18,
+      "text": "region-catalog residue: add coded id-namespace guard \u2014 dynamic-sourced CatalogModel.id must never collide with static-seed prefixes (us./eu./apac.); safety today rests on incidental OpenRouter slash-format + composite processing order (verify 2026-07-12)",
+      "created": "2026-07-12T16:14:48+00:00",
+      "status": "open"
+    },
+    {
+      "id": 19,
+      "text": "region-catalog docs: \u00a73 DDL prose still shows 3-value VALID_REGIONS literal; DECIDED addendum (4-value incl ap) is authoritative \u2014 fold to one canonical statement next contract touch",
+      "created": "2026-07-12T16:14:48+00:00",
+      "status": "open"
+    },
+    {
+      "id": 20,
+      "text": "region-pricing SPEC: DELETE /admin/region-pricing/{region} should case-normalize region before matching \u2014 a typo'd DELETE (EU vs eu) returns 204 but silently leaves the override active, still billing the old rate (verify live-probed 2026-07-12)",
+      "created": "2026-07-12T16:59:57+00:00",
+      "status": "open"
+    },
+    {
+      "id": 21,
+      "text": "region-pricing SPEC: flag 'global' as a high-blast-radius override target in admin docs/UI \u2014 one PUT .../global reprices EVERY default-region model for that tenant (global is the model default region)",
+      "created": "2026-07-12T16:59:57+00:00",
+      "status": "open"
+    },
+    {
+      "id": 22,
+      "text": "region-pricing TDD: add a direct parity assertion between rate_card_resolver._REGION_MULTIPLIER_SEEDS and catalog/repository.py's CASE literal (hand-synced seed drift currently caught only by one integration test, eu-only)",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 23,
+      "text": "vertex-adapter SPEC (defense-in-depth): harden all *_ad.py token providers' httpx except-clauses to catch httpx.RequestError broadly (not just Timeout|NetworkError) \u2014 ProtocolError/ProxyError propagate unhandled, retaining signed assertion in __context__; systemic pattern shared with azure_ad.py",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 24,
+      "text": "vertex-adapter SPEC (defense-in-depth): validate GoogleServiceAccountCredential.project_id against GCP project-id charset before _build_url f-string interpolation \u2014 non-exploitable for host-hijack today (host is fixed literal) but worth tightening",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 25,
+      "text": "vertex-adapter: before shipping, optionally run scripts/live_vertex_verify.py against a real GCP service account (manual smoke, outside automated gate \u2014 no live creds were available at build/verify time)",
+      "created": "2026-07-12T16:59:58+00:00",
+      "status": "open"
+    },
+    {
+      "id": 26,
+      "text": "ADD anti-pattern (verify): when re-running a security exploit as an independent probe, model the adversary's dependency on the SECRET (private_key/client_secret), not just the public identity \u2014 a fake IDP/factory that ignores the secret can manufacture a false-positive HARD-STOP (self-caught in vertex re-verify 2026-07-13)",
+      "created": "2026-07-13T03:09:32+00:00",
+      "status": "open"
+    },
+    {
+      "id": 27,
+      "text": "SECURITY (M2 EU-pin gap, Bedrock BYOK): BedrockCredential.region (tenant-supplied via PUT /admin/provider-keys/bedrock) drives the physical dial endpoint bedrock-runtime.{region}.amazonaws.com, DECOUPLED from the catalog region tag residency-policy filters on. An EU-pinned tenant with a us-east-1 Bedrock cred has its PROMPT sent to a US endpoint (payload transit = the breach) even if AWS then rejects the eu.-profile invocation. Vertex avoided this (fixed prefix\u2192location map). Options: (a) pre-dial structural guard validating cred region vs candidate catalog-region prefix [RECOMMENDED, mirrors vertex], (b) live-AWS ValidationException test, (c) signed RISK-ACCEPTED. ESCALATED to Tin 2026-07-13 \u2014 do NOT treat M10/EU-pin as closed for Bedrock until resolved.",
+      "created": "2026-07-13T03:14:19+00:00",
+      "status": "open"
+    },
+    {
+      "id": 28,
+      "text": "service-tiers R5 rounding boundary: priority_cap+standard_cap can exceed cluster_cap by 1 when priority_pct+standard_pct near 1.0 (R5 only rejects sum>1.0); non-default config only, per-pool caps still enforced. Consider clamp or tighten R5.",
+      "created": "2026-07-13T08:40:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 29,
+      "text": "service-tiers check_and_hold: self._holds[request_id] overwritten if called twice for same request_id (not currently reachable \u2014 single call site). Guard against double-hold if a second call site is ever added.",
+      "created": "2026-07-13T08:40:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 30,
+      "text": "bedrock-region-guard case-sensitivity coupling: _assert_region_consistent is case-sensitive by design; uppercase-prefix bypass (EU.) is unreachable ONLY because model_checker.py:64 does a case-sensitive catalog PK match first. If that lookup is ever relaxed (citext/case-insensitive), the region guard becomes a live bypass. Add a cross-file invariant test or a comment pinning the coupling. (from security verify A)",
+      "created": "2026-07-13T08:49:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 31,
+      "text": "residency BYOK region cross-check (from security verify B): BedrockCredential.region (tenant-supplied BYOK) is NOT validated against tenants.residency_region at credential create/update time. For an UNPREFIXED bedrock model that passes residency-policy (catalog region=eu), a pinned tenant who registered their own Bedrock credential with region=us-east-1 would still dial US. Tenant self-misconfiguration only (not cross-tenant/attacker-reachable, outside bedrock-region-guard's frozen M3 scope). Fix = validate BedrockCredential.region vs tenants.residency_region at BYOK registration for pinned tenants. Candidate residency-policy follow-on.",
+      "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 32,
+      "text": "bedrock-region-guard defense-in-depth (verify B, low-pri): normalize model_id prefix casing/whitespace before _PROFILE_PREFIX_TO_GEO lookup \u2014 currently protected solely by the catalog exact-match dispatch gate; cheap insurance vs a future refactor decoupling model_id sourcing from routing.",
+      "created": "2026-07-13T08:51:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 33,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): residency-picker radios use min-h-11 (44px hit target) but lack a dedicated hit-target assertion test (TierSelector has one). Add for parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 34,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): TierSelector.tsx line 38 (standard-after-priority toggle) untested \u2014 symmetric to tested line 50, low-risk. Add test for coverage parity.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 35,
+      "text": "residency-tiers-ui (observe, \ud83d\udcad): no live screen-reader (VoiceOver/NVDA) pass on new residency/tier surfaces \u2014 axe + native semantics + live keyboard trace substitute but aren't equivalent. Consider a manual SR pass pre-GA.",
+      "created": "2026-07-13T09:07:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 36,
+      "text": "Pre-existing ruff-format debt (NOT from M2): tests/guardrails/test_guardrails_core.py + tests/migrations/test_migrations.py are format-dirty at HEAD (predate a ruff config/version change; ~40 + ~9 lines would reflow). A strict 'make ci' ruff format --check would flag them. Milestones have been merging past this via admin-merge on pytest evidence (org-billing CI block). Clean up in a dedicated format-only sweep, not mixed into feature commits.",
+      "created": "2026-07-13T09:37:19+00:00",
+      "status": "done"
+    },
+    {
+      "id": 37,
+      "text": "semantic_cache flake instance (2026-07-13 M2 pre-merge): test_semantic_hit_ledger_cached_true_cost_zero + test_semantic_cache_normalized_variant_hits failed in the full suite (shared Redis :6380 db 9 cross-test contamination \u2014 a prior test's cache entry made 'first' request a hit, cost 0). Pass 15/15 isolated. Known flake class. The xdist CI work (task #11) should give each worker its own Redis db/namespace to KILL this class permanently.",
+      "created": "2026-07-13T11:01:06+00:00",
+      "status": "open"
+    },
+    {
+      "id": 38,
+      "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times \u2014 worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
+      "created": "2026-07-13T11:09:33+00:00",
+      "status": "done"
+    },
+    {
+      "id": 39,
+      "text": "test-parallel -n 12 can stall near completion on shared-Postgres DDL contention (12-way per-test drop_all/create_all + pg_catalog autovacuum, all workers wait_event_type=IO). 2/4 full runs finished 5:37-6:19, 2 stalled. Follow-up: replace per-test drop_all/create_all with a template-DB clone (CREATE DATABASE ... TEMPLATE) or transaction-rollback isolation, or cap -n to ~8, to remove the DDL-per-test cost.",
+      "created": "2026-07-14T03:02:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 40,
+      "text": "agent-identity: decide whether agent-principal OAuth tokens should authenticate to /v1/realtime (today they silently cannot \u2014 realtime_ws/realtime_relay_ws build bare SqlAlchemyKeyAuthenticator, not CompositeKeyAuthenticator). Verify-surfaced spec-delta, 2026-07-14.",
+      "created": "2026-07-14T06:21:26+00:00",
+      "status": "open"
+    },
+    {
+      "id": 41,
+      "text": "agent-budget: add a chat-pipeline live test mirroring test_disconnect_correction_reaches_agent_principal_counter_via_recovery_sweep step-4 against CompletionUseCase._check_agent_principal_budget via a real /v1/chat/completions call (currently only NonChatGovernance.authorize path is live-tested; chat copy verified by code-diff parity). Low priority, 2026-07-14.",
+      "created": "2026-07-14T06:21:27+00:00",
+      "status": "open"
+    },
+    {
+      "id": 42,
+      "text": "compliance-report-center (verify a854c67d, \ud83d\udfe1\u2192ticket): RetentionSweeper.should_start_retention_sweep gates ONLY on the 3 original knobs (usage/alert/audit days) \u2014 if an operator zeroes all three, the whole sweeper loop never starts, INCLUDING the new compliance_report_runs window + ZDR purge passes (pre-existing from tenant-retention-zdr, surfaced by R1). Fix: start-gate should also consider new-payload-window/ZDR-purge applicability.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 43,
+      "text": "compliance-report-center (verify open-Q + TASK.md \u00a71 low-conf flag): generated compliance EVIDENCE (compliance_report_runs) is swept on the SAME retention_window_days as operational logs \u2014 an Art.12 bundle may need LONGER retention than a tenant's short log window. Consider a separate retention_report_runs_days knob (carve-out) if EU-tenant demand shows (monitor: rising skipped_zdr / never-success share).",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 44,
+      "text": "tool-call-metering (accepted v1 residual follow-on): exactly-once is fail-open under Redis outage (SETNX dedupe in MeteringToolCallObserver, not recorder ON CONFLICT \u2014 frozen recorder sig has no call_id passthrough). Add a DB-level UNIQUE backstop on a call_id-derived tag so a duplicate record() during a Redis outage can't double-bill. NOT a 0.9.0 blocker (disclosed).",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 45,
+      "text": "mcp-connector-passthrough budget CR (deferred at freeze): NonChatGovernance.check_budgets() enforces the per-key/team/agent-principal/tenant $ ladder but NOT RPM/TPM rate limits or credit-hold \u2014 deferred because there is no MCP settle hook yet. Wire RPM/TPM + credit-hold for /v1/mcp/call once a settle/refund path exists.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 46,
+      "text": "agents-console (follow-on CR): ManageTokensDialog / the agent-tokens endpoint enumerate ONLY tokens already ATTACHED to a principal; a token created-but-unattached is invisible. Decide whether to surface unattached tokens (broaden the enumeration) or document the attach-first flow explicitly.",
+      "created": "2026-07-14T09:27:16+00:00",
+      "status": "open"
+    },
+    {
+      "id": 47,
+      "text": "ADD docs-check (R1 milestone-close gap): runbooks 02-admin-guide / 03-api-client-guide / 06-dashboard-ui do NOT yet cover the new agent-gateway surfaces (/v1/messages ingress, MCP connector allow-lists, Agents console, Compliance report center). R1 was additive so nothing is stale-WRONG, only incomplete. Add sections in a docs-only sweep.",
+      "created": "2026-07-14T09:27:17+00:00",
+      "status": "open"
+    },
+    {
+      "id": 48,
+      "text": "core/config.py:848 comment points to deleted catalog/infrastructure/gpt_realtime_seed.py (catalog-db-seed retired it). Repoint to migration 9cdca76231c6 during model-catalog-db milestone-close docs sweep \u2014 out of catalog-db-seed's frozen scope.",
+      "created": "2026-07-16T11:47:34+00:00",
+      "status": "done"
+    },
+    {
+      "id": 49,
+      "text": "CatalogModel.cached_input_usd_per_token + audio_* fields are typed float|None while pricing/unit fields are Decimal|None \u2014 money-is-Decimal is non-uniform across CatalogModel's own fields (pre-existing, flagged in catalog-db-seed \u00a70, NOT introduced by it). Follow-up: migrate those to Decimal for uniformity. Out of catalog-db-seed's frozen scope.",
+      "created": "2026-07-16T11:56:17+00:00",
+      "status": "open"
+    },
+    {
+      "id": 50,
+      "text": "PRE-EXISTING lint debt in uncommitted platform-key-default work: config.py:407 E501 (105>100, the platform_credential_fallback_enabled comment). NOT B2's change; never CI'd (platform-key held for Tin). Fix before the platform-key/bundle commits \u2014 make ci will fail otherwise.",
+      "created": "2026-07-16T18:20:01+00:00",
+      "status": "done"
+    },
+    {
+      "id": 51,
+      "text": "self-serve-checkout F1: amend frozen M3 to thread the checkout session PK (not the tenant-chosen idempotency_key) into topup_service \u2014 the credit_ledger GLOBAL unique index makes the tenant key a cross-tenant existence oracle + squatting-DoS surface (fail-closed, non-exploitable with UUID keys today). Contract change-request.",
+      "created": "2026-07-17T18:40:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 52,
+      "text": "self-serve-checkout: enforce checkout_sessions.expires_at at confirm (or a sweeper) so pending sessions become 'expired' past TTL; add the failed-state transition + the confirm-expired-session scenario/test. Today expires_at is write-only and expired/failed are unreachable.",
+      "created": "2026-07-17T18:40:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 53,
+      "text": "self-serve-checkout: stripe_provider.py behavioral tests via a stub httpx transport (retry+backoff, timeout, happy-path capture) \u2014 coverage 48%, only the breaker-open path is asserted. Also add a Stripe Idempotency-Key header on the create POST before stripe goes live (retried create can spawn duplicate hosted sessions, not charges).",
+      "created": "2026-07-17T18:40:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 54,
+      "text": "commercial-self-serve: seat_change checkout variant (deferred at self-serve-checkout freeze) \u2014 additive CheckoutIntent variant + proration/seat invoice-line interplay; and tenant-name enrichment for the invite email (transactional-email observe delta).",
+      "created": "2026-07-17T18:40:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 55,
+      "text": "dashboard: 13 pre-existing Airier design-token test failures (design-system/aurora-classic-blue, premium-console, tokens, enterprise-ext, marketing-seo) expect the retired Classic-Blue palette \u2014 route to the design-foundation owner; not commercial-self-serve debt.",
+      "created": "2026-07-17T18:40:03+00:00",
+      "status": "done"
+    },
+    {
+      "id": 56,
+      "text": "Pre-existing pyright debt on main (not wave-1): mcp_connector/application/use_cases.py:496 candidate_body possibly-unbound; tenants/application/domain_invite_link_use_cases.py:21 unused UTC import. Billing-blocked CI let these slip. Fix in a dedicated cleanup, not a feature milestone.",
+      "created": "2026-07-20T17:18:51+00:00",
+      "status": "done"
+    },
+    {
+      "id": 57,
+      "text": "R5 candidate: multi-provider moderation detectors \u2014 second adapter behind the ml-moderation verdict seam (Llama Guard 3 via OpenRouter/Bedrock, or Gemini safety classifier); enterprise differentiator vs OpenAI-only; approved-in-principle by Tin 2026-07-24",
+      "created": "2026-07-24T04:40:27+00:00",
+      "status": "open"
+    },
+    {
+      "id": 58,
+      "text": "Pagination tiebreaker: list_active endpoints (vector_stores, files, +siblings) ORDER BY created_at DESC with no secondary key \u2014 rows sharing a timestamp can paginate unstably. Inherited from the files module template; a cross-module consistency pass, not task-specific. Refute-read note from vector-store-core verify 2026-07-24.",
+      "created": "2026-07-24T09:20:02+00:00",
+      "status": "done"
+    },
+    {
+      "id": 59,
+      "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:136 \u2014 provider-controlled fine_tuned_model lands as the shared models PK with NO shape validation, while its sibling provider_job_id IS validated via is_valid_provider_job_id for exactly this threat. Apply the same regex before INSERT.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 60,
+      "text": "PR#89 residue (R7 pr89-residue): circuit breakers trip on 4xx \u2014 openai_client.py:126,153,176 + embedding_client.py:106 catch httpx.HTTPStatusError broadly and call on_upstream_error(). A revoked BYOK key (401) or bad training file (400) trips the tenant's OWN breaker after 5 calls -> 502 on legit traffic; poll also burns 3 attempts on a 404. Count only 5xx/transport toward the breaker; never retry 4xx.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 61,
+      "text": "PR#89 residue (R7 pr89-residue): file_search.py:201 silently ignores vector_store_ids[1:] \u2014 takes ids[0] only. OpenAI's wire is an array; two stores in, partial results out, no signal. Either 422 on len>1 in v1 or search across all supplied stores.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 62,
+      "text": "PR#89 residue (R7 pr89-residue) SCALE: file_repository.py:265 search_chunks \u2014 pgvector HNSW applies the tenant/store WHERE filter AFTER index traversal, so as vector_store_chunks grows across tenants a small tenant's top-k silently returns fewer than top_k (or zero). Needs hnsw.ef_search tuning + partitioning by vector_store_id at scale. Publish as a known monitored bound with an alert.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 63,
+      "text": "PR#89 residue (R7 pr89-residue) PERF: vector_stores/api/router.py:288 \u2014 N+1 on GET /v1/vector_stores (file_counts per row inside the page loop, up to 100 round-trips). Replace with one GROUP BY (vector_store_id, status) over the page's ids.",
+      "created": "2026-07-25T07:33:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 64,
+      "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:55 _SELECT_MISSED_JOBS_SQL has no LIMIT \u2014 permanently-unresolvable jobs are re-swept in full every 300s forever. Bound the sweep.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "done"
+    },
+    {
+      "id": 65,
+      "text": "PR#89 residue (R7, low): ingest_worker._read_bytes maps an ObjectStore outage to last_error.code='file_empty' (infra failure shown as a user data problem); ingest_worker.py:259 key_id falls back to tenant_id (tenant UUID in a key_id column); file_search._last_user_text embeds an empty string when no user message exists.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "done"
+    },
+    {
+      "id": 66,
+      "text": "R6 pgvector-deploy-runbook DEPLOY BLOCKER: infra/docker-compose.prod.yml + charts/ai-proxy/values.yaml swap postgres:16-alpine -> pgvector/pgvector:pg16 = musl->glibc. Booting the Debian image on an Alpine-initdb'd volume is a collation-provider change: text btree indexes potentially mis-ordered until REINDEX. Needs dump/restore or REINDEX DATABASE + ALTER DATABASE ... REFRESH COLLATION VERSION in the runbook, not a silent tag bump.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 67,
+      "text": "R6 pgvector-deploy-runbook: migration 55dc3f920a38 runs CREATE EXTENSION IF NOT EXISTS vector \u2014 on RDS/Aurora/Cloud SQL this needs rds_superuser + an allow-listed extension or the migration hard-fails at deploy. Document the prereq AND add a boot-time preflight that fails loudly when the vector extension is absent.",
+      "created": "2026-07-25T07:33:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 68,
+      "text": "R6: dependency allowlist gate has been RED since #89 \u2014 dnspython, pgvector, pytest-rerunfailures, pytest-xdist entered without the justified PR .add/dependencies.allowlist demands. Tin approved allowlisting all four WITH written justification; owned by lint-type-debt-sweep.",
+      "created": "2026-07-25T10:11:43+00:00",
+      "status": "done"
+    },
+    {
+      "id": 69,
+      "text": "R6: promote lint-type-debt-sweep from wave 2 to run IMMEDIATELY after ci-restoration \u2014 it is a hard prerequisite for ci-restoration M4 (make ci is red on 37 ruff + 3 pyright + 4 allowlist).",
+      "created": "2026-07-25T10:11:43+00:00",
+      "status": "done"
+    },
+    {
+      "id": 70,
+      "text": "R7: 410 pre-existing per-line '# noqa: CODE' directives across apps/gateway carry NO written reason (143 do). lint-type-debt-sweep fixed only the 3 it added; a guard requiring justification on all of them would be a real scope of its own. Consider a ratchet: new noqas must be justified, existing ones grandfathered.",
+      "created": "2026-07-25T12:34:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 71,
+      "text": "ruff EXCLUDE list is a lint blind spot: the 63 test files excluded by lint-type-debt-sweep CR v2 get NO ruff check at all, so a missing import in one reads as 'All checks passed'. Hit for real on 2026-07-26 editing tests/semantic_cache (missing 'import time', caught only by reading the imports). Options: re-include with per-file format-only ignores, or add a syntax/name-resolution check that covers excluded files.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 72,
+      "text": "pytest-timeout (suite-stability M8) bounds a TEST, not the SESSION: a stall in session teardown, after the last test, is still silent. If a teardown hang ever shows up, add an outer wall-clock kill in the CI job rather than widening the plugin's remit.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 73,
+      "text": "tests/realtime bootstraps its own schema and bypasses the shared conftest app/_schema fixtures entirely (own settings, own drop_all/create_all, own TestClient). It now does that BEFORE the lifespan starts, but it is still a second, divergent isolation mechanism. Fold it onto the shared session-scoped _schema + DELETE reset so there is one reset path, not two.",
+      "created": "2026-07-28T10:35:54+00:00",
+      "status": "open"
+    },
+    {
+      "id": 74,
+      "text": "Fixed-sleep-then-assert flake class, 7 files still carrying it: guardrails/test_guardrails_core, health_alerting, mcp_connector/test_budget_governance, mcp_connector/test_call_flow, obs_callbacks, payload_capture/{test_payload_capture_store,test_verify_repro_scrub_gap}, request_log_metering_fields. They sleep a fixed 0.1s then assert on a fire-and-forget write \u2014 passes idle, fails under -n 6 on a loaded host. Both semantic_cache instances were converted to bounded polls in suite-stability (they actually failed); the rest are latent. Same class as [[fire-and-forget-audit-test-flake]]. Convert to poll-until-present per file.",
+      "created": "2026-07-28T10:37:37+00:00",
+      "status": "open"
+    },
+    {
+      "id": 75,
+      "text": "MIXED CLOCK SOURCES on updated_at \u2014 real product defect, found by suite-stability run 3 (2026-07-28). ORM columns default to func.now() (POSTGRES clock, transaction-start time); explicit bumps write datetime.now(tz=UTC) (APPLICATION clock). When the app host clock trails the Postgres container's, a bump writes a timestamp EARLIER than the value it replaces \u2014 observed 22ms backwards, failing conversations::test_append_bumps_updated_at and test_conversation_rename::test_rename_bumps_updated_at. Not cosmetic: conversations/infrastructure/orm.py:55 indexes updated_at DESC for the list view, so a just-touched row can sort BELOW untouched ones. Same pattern in 7 repositories: conversations, video, compliance, finetune, batches, credits/{api/router,ledger_store}. Fix direction: make the bump use func.now() so one clock owns the column, or move the bump into a DB trigger. PRE-EXISTING \u2014 the suite speed-up only exposed it.",
+      "created": "2026-07-28T16:17:26+00:00",
+      "status": "done"
+    },
+    {
+      "id": 76,
+      "text": "MIXED CLOCK SOURCES on updated_at \u2014 PARTIALLY FIXED in suite-stability CR v3 (2026-07-28): 9 write sites in batches/conversations/finetune/video now use func.now(), guarded by repo_hygiene::test_timestamp_columns_have_one_clock_owner. REMAINING: (a) compliance/infrastructure/repository.py:54-55 takes 'now' as a PARAMETER, so the guard cannot see the clock at the call site \u2014 audit its callers; (b) created_at is only covered where it is written explicitly, and the guard's scope is */infrastructure/ so a write from an application-layer service would be missed. Two candidates were checked and REJECTED as false positives: credits/api/router.py:211 (response field, not a column) and credits/infrastructure/ledger_store.py (already SQL now()).",
+      "created": "2026-07-28T17:05:03+00:00",
+      "status": "open"
+    },
+    {
+      "id": 77,
+      "text": "Tests ordering by a func.now() column cannot break ties: usage_records.created_at is server_default=func.now() (transaction-START time), so rows written in one flusher transaction share a timestamp and ORDER BY created_at is nondeterministic. Fixed in tests/semantic_cache SC1+SC9 by identifying rows by their cached marker. No repo_hygiene guard exists for this class \u2014 a naive ban on 'ORDER BY created_at' in tests would false-positive on the many suites that order across separate transactions. Needs a smarter guard (e.g. flag ORDER BY created_at where the test also asserts on rows[0]/rows[1] positionally).",
+      "created": "2026-07-29T04:47:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 78,
+      "text": "finetune repository writes two clocks into ONE row: set_status/cancel now use updated_at=func.now() (M9) but keep finished_at=datetime.now(tz=UTC). Contract-compliant (M9 scopes to created_at/updated_at) and currently harmless (nothing orders by or compares finished_at), but it is the same latent class CR v3 removed \u2014 a terminal row can carry finished_at EARLIER than its own updated_at. Fix: finished_at=func.now() in src/gateway/finetune/infrastructure/repository.py (2 sites).",
+      "created": "2026-07-29T05:13:32+00:00",
+      "status": "done"
+    },
+    {
+      "id": 79,
+      "text": "Fixed-sleep-then-assert remains the suite's largest flake class: 250 asyncio.sleep sites in tests/, of which ~83 are positive waits (pollable via tests/_polling.py), 29 are NEGATIVE (the sleep proves something never happens \u2014 polling would make the assert vacuous, do NOT convert), 89 need per-site judgement. suite-stability converted 21. The rest still fail randomly under -n 6 on a loaded host \u2014 each full run surfaced a DIFFERENT subset. Sweep the remaining positive waits; the classifier is at scratchpad/classify.py and the conservative converter at scratchpad/convert.py (note: convert.py's import insertion breaks multi-line parenthesized imports \u2014 fix before reuse).",
+      "created": "2026-07-29T06:54:01+00:00",
+      "status": "open"
+    },
+    {
+      "id": 80,
+      "text": "tests/azure_aad + tests/azure_audio resolve real hostnames (r.openai.azure.com, login.microsoftonline.com) because EgressPolicy.check() resolves the target as the SSRF/DNS-rebinding control. So the suite still needs a working resolver for 14 tests. A blanket DNS block was tried in suite-stability M11 and reverted: blocking or synthesising DNS makes a SECURITY control observe harness-chosen answers. Right fix is to give those suites an injected resolver/policy double, not a global socket patch. Owner: Tin Dang",
+      "created": "2026-07-29T10:50:34+00:00",
+      "status": "done"
+    },
+    {
+      "id": 81,
+      "text": "suite-stability M14 residual: tests/catalog_refresh_scheduler::test_default_off_not_wired stalled 300s once under -n 6 (2026-07-29 ev1) and did NOT reproduce in the next full run. Evidence brackets it to late lifespan STARTUP or the first shutdown cancel-join; the join is now bounded (M14), the startup branch is not. Suspected mechanism: a startup DB read queued behind per-test DDL (pg sampler caught real relation-lock waits of 0.5s and 3.7s on gw3). If it recurs, the stallwatch plugin recipe is in the task notes. Owner: Tin Dang",
+      "created": "2026-07-29T11:45:44+00:00",
+      "status": "open"
+    },
+    {
+      "id": 82,
+      "text": "todo #79 concrete sites: tests/response_caching/test_response_caching.py:393 and :1074/:1089 still use bare asyncio.sleep(0.1/0.15) with the comment 'allow fire-and-forget recording'. Failed as 'expected 2 usage rows, found 1' in a slow full run (12m59s vs the usual 6m19s) on 2026-07-29; passes in isolation. Convert to tests._polling.poll_until, the same fix suite-stability M10 applied to the four usage/team_attribution sites. Owner: Tin Dang",
+      "created": "2026-07-29T16:28:55+00:00",
+      "status": "open"
+    },
+    {
+      "id": 83,
+      "text": "make ci has no precondition check: if the dev Postgres/Redis dies mid-run the suite emits thousands of 'Connect call failed (127.0.0.1, 5433)' errors 40min in, indistinguishable from a real regression (hit for real 2026-08-05: 131 failed/2130 errors, all infra). Add a fail-fast preflight to the make test/ci target \u2014 Postgres reachable, gateway_test present, Redis PING \u2014 that aborts at second zero with a named error.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 84,
+      "text": "Date-bomb test class: tests seeding an ABSOLUTE date then querying a RELATIVE window (bare window=month, resolved from the wall clock) pass until the month rolls over. Fired 2026-08-01 in tests/margin_dashboard (6 tests, fixed in #92 via INSIDE_CURRENT_MONTH). ~20 other test files carry hardcoded 2026-07/2026-08 dates and have NOT been audited for this specific pattern. Sweep them; consider a guard that flags an absolute seed constant used with a bare relative window.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 85,
+      "text": "release-integrity exit criterion 4 NOT DELIVERED and unowned: a gateway started against a Postgres lacking the vector extension still boots and serves /v1/vector_stores. scripts/pg_preflight.py is a COLLATION preflight (todo #66); the boot-time EXTENSION preflight (todo #67 second half, milestone 'the preflight fails CLOSED') was never built, and the pgvector-deploy-runbook RISK-ACCEPTED note covers M6 + the unwalked runbook, not this. Needs a lifespan check before the ingest worker starts.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 86,
+      "text": "Release provenance is broken across 4 sources: git tags stop at v0.11.0 (0.9.0, 0.10.0, 0.12.0, 0.13.0 untagged); RELEASES.md has no 0.13.0 entry though #89 merged; apps/gateway/pyproject.toml says 0.7.0; main.py hardcodes FastAPI(version='0.1.0') which is what /openapi.json advertises to every API consumer; dashboard package.json 0.1.0. Under SOC 2 CC8.1 'what version is in production' has no defensible answer. Single-source the version + backfill tags + add a drift guard test.",
+      "created": "2026-08-05T05:10:29+00:00",
+      "status": "done"
+    },
+    {
+      "id": 87,
+      "text": "Dev-stack port 5433 is contended with the real-estate-management repo's infra project (which also holds 5432 and 5434). Only one of the two stacks can run at a time, and Docker will NOT re-publish a port after a failed bind \u2014 the loser comes back healthy with an EMPTY Ports column (docker port returns nothing, NetworkSettings.Ports is {}), which reads as working and is unreachable. Only fix is docker compose up -d --force-recreate from that project. Make hydroa's host port configurable (POSTGRES_PORT:-5433 in infra/docker-compose.dev.yml + GATEWAY_TEST_DATABASE_URL) so the two stacks can coexist. NOTE retargeting via env alone does NOT work: tests/ops/test_probes.py builds a bare Settings() hardcoded to localhost:5433, and adding GATEWAY_DATABASE_URL breaks 42 migration tests with DuplicateTableError.",
+      "created": "2026-08-07T04:01:12+00:00",
+      "status": "open"
+    },
+    {
+      "id": 88,
+      "text": "release-integrity exit #6 (three CONSECUTIVE green make ci) BROKEN at run 3 of 3, 2026-08-07. Runs 1+2 were clean (4531 passed); run 3 = 4530 passed + 1 ERROR at setup of tests/per_key_guardrail_policies::test_put_rejects_invalid_mode \u2014 asyncio.exceptions.CancelledError inside asyncpg.connect (connect_utils.py:977), i.e. pytest-timeout's 300s signal fired while the fixture was still WAITING FOR A CONNECTION. NOT an infra dropout: 0 'Connect call failed', 0 tripwire fires, and the other 4530 tests passed either side of it. Same family as todo #81 (catalog_refresh_scheduler stalled 300s once under -n 6, never reproduced) \u2014 a startup/fixture DB connect queued behind per-test DDL. Note the host was running FOUR postgres containers at the time (hydroa + three from the real-estate repo, see todo #87), so contention is a live hypothesis. Next: decide whether #6 is re-run until 3 consecutive greens land, or whether this stall class is fixed first \u2014 it is the thing actually blocking the criterion.",
+      "created": "2026-08-07T05:39:32+00:00",
+      "status": "done"
+    },
+    {
+      "id": 89,
+      "text": "release-integrity exit #6 (three CONSECUTIVE green make ci) BROKEN at run 3, 2026-08-07. Runs 1+2 clean (4531 passed); run 3 = 4530 passed + 1 ERROR at setup of tests/per_key_guardrail_policies::test_put_rejects_invalid_mode. SUPERSEDES todo #88, whose diagnosis (pytest-timeout's 300s signal) was WRONG \u2014 the log contains ZERO pytest-timeout reports. VERIFIED mechanism: the top frame is asyncpg connection.py:2443 'async with compat.timeout(timeout)' = asyncpg's own DEFAULT 60s CONNECT timeout, not 300s. It fired at connect_utils.py:977, inside _create_ssl_connection, on 'await pr.on_data' \u2014 i.e. TCP was ESTABLISHED and the SSLRequest byte was written, and Postgres never answered the SSL probe within 60s (asyncpg sslmode defaults to 'prefer', so SSL is always attempted first). It surfaced as a raw CancelledError instead of TimeoutError because SQLAlchemy's greenlet bridge (_concurrency_py3k.py:201) re-raised it across the boundary. Caller is tests/conftest.py:331 \u2014 the app fixture's per-test DELETE reset opening a pooled connection. Server side shows NO trace: no 'too many clients', no fork failure, max_connections=100 with 6 in use; the only FATALs in the postgres log are the vector_extension_preflight fixture's own deliberate absent-DB probe and its DROP DATABASE WITH FORCE teardown. So: a backend that accepted the socket but never got scheduled to reply. Contention is the live hypothesis (four postgres containers on the host, todo #87). Same family as todo #81. NOT an infra dropout \u2014 0 'Connect call failed', 0 tripwire fires.",
+      "created": "2026-08-07T07:49:18+00:00",
+      "status": "open"
+    },
+    {
+      "id": 90,
+      "text": "atomicity: date-bomb-sweep \u2014 \u00a73 scope reads as 2 Parts (catch-all, drain); consider new-milestone + one task per Part.",
+      "created": "2026-08-07T08:23:28+00:00",
+      "status": "open"
+    },
+    {
+      "id": 91,
+      "text": "breaker 4xx residue (promised by breaker-4xx-classification PLAN.md \u00a73 but never filed): objectstore/s3.py:115 calls self._breaker.on_upstream_error() BEFORE reading the status, so an S3 403 from bad/expired credentials counts toward the breaker \u2014 5 of them open the object-store breaker for 30s on a caller error. _mutate (s3.py:136) counts every ClientError the same way. email/infrastructure/smtp_email_sender.py counts every failure DELIBERATELY (comment says so) \u2014 confirm that is still wanted. Same bug class as todo #60, different subsystems, own decisions.",
+      "created": "2026-08-07T12:53:21+00:00",
+      "status": "open"
+    },
+    {
+      "id": 92,
+      "text": "Collapse the ~10 bare '>= 500' breaker literals onto status_counts_as_upstream_failure (added by breaker-4xx-classification). azure_embeddings.py:206/261/322, gemini_upstream.py:964/1126, openrouter_upstream.py:335, vertex_upstream.py:314, azure_upstream.py:238, anthropic_upstream.py:991 all gate the breaker on 'status >= 500' and call record_success() otherwise \u2014 so they treat 408 and 429 as SUCCESS while the four sites fixed in #96 count them as upstream failure. Both directions are defensible; having both in one codebase is not. The predicate's own docstring names collapsing RetryPolicy.classify_status onto it as the right end state.",
+      "created": "2026-08-07T12:53:36+00:00",
+      "status": "open"
+    },
+    {
+      "id": 93,
+      "text": "CI gateway job can NEVER go green: .github/workflows/ci.yml sets timeout-minutes: 30 but the gateway suite takes ~37min (4559 tests), so GitHub cancels every run \u2014 main has been cancelled/failed on every run since 2026-07-23. Raise to 60. Separately, kind-e2e has 0 green runs in 15 attempts since 2026-07-20 across every branch; decide whether to fix it or stop running it on every PR, because a permanently-red check trains everyone to ignore checks. Relates to #91 (no enforceable merge gate).",
+      "created": "2026-08-07T12:53:37+00:00",
+      "status": "done"
+    },
+    {
+      "id": 94,
+      "text": "kind-e2e is now workflow_dispatch-only (PR #98), honoring ci-restoration CR v2 \u2014 but NOTHING enforces the other half of that decision, 'runs before a release cut'. It is a manual step with no reminder and no entry in any release checklist, and it has 0 green runs in 15 attempts, so its first on-demand run should be expected to need debugging rather than to yield a verdict. Either add it to the milestone Release steps checklist or give it a tag/schedule trigger. Filed during the #98 self-review.",
+      "created": "2026-08-07T16:22:08+00:00",
+      "status": "open"
+    },
+    {
+      "id": 95,
+      "text": "CI gateway timeout is temporarily 180 min as a MEASURING INSTRUMENT, not a target (PR #98). Three caps were guessed and all three cancelled without the suite finishing: 30 -> ~30m, 75 -> 74m17s serial (run 31197251730), 60 -> 59m27s at -n 4 (run 31241464171). Once ONE run completes, set timeout-minutes to ~1.5x the observed wall-clock and raise MIN_GATEWAY_TIMEOUT_MINUTES in tests/migrations/test_ci_workflow_parity.py to match \u2014 today's floor of 60 is now known to be BELOW the real runtime, so the guard is currently under-protecting. If the measured number is still large, the structural fix is matrix-sharding (needs per-shard coverage artifacts combined in a final job, or the 80% floor is silently weakened) or a bigger runner. Measured context: coverage instrumentation costs +64% wall / +72% CPU, ~39% of runtime; ubuntu-latest's 4 vCPUs are shared with the Postgres and Redis service containers, so -n 4 oversubscribes the box.",
+      "created": "2026-08-08T06:25:56+00:00",
+      "status": "done"
+    },
+    {
+      "id": 96,
+      "text": "MEASURED 2026-08-08, run 31243949907 \u2014 the gateway suite's first EVER completed CI run: 8 failed, 4553 passed, 7 skipped, 1 xfailed in 4935s (1h22m15s) at -n 4 with coverage. Key numbers: (a) set timeout-minutes to ~120 (82m * 1.5) and raise MIN_GATEWAY_TIMEOUT_MINUTES to match \u2014 supersedes the 180 instrument in todo #95; (b) -n 4 bought almost NOTHING vs serial (serial was cancelled at 74m17s still running; -n 4 completed at 82m25s), because ubuntu-latest's 4 vCPUs are shared with the Postgres+Redis service containers and every worker carries 39% coverage overhead while contending on ONE database. Adding workers to this runner is a dead end; the only real fixes are matrix-sharding with a DB per shard, or a bigger runner. All 8 failures are PRE-EXISTING (PR #98 touches zero production source): 5 map to already-filed issues (#74 names guardrails/test_guardrails_core and request_log_metering_fields; the Makefile test-parallel comment names the realtime DDL deadlock; v58 flags the batch claim/drain lifecycle). The other 3 (agent_identity_governance kill-race, s3_egress_policy IPv6-mapped literal, tool_call_metering/test_di_wiring) all pass locally in isolation and need classification.",
+      "created": "2026-08-08T07:52:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 97,
+      "text": "SECURITY-ADJACENT (fail-closed, NOT a bypass) + REPRODUCIBILITY: the egress SSRF control's behavior depends on the CPython PATCH version, and the patch version is unpinned in every environment. ROOT CAUSE, verified by running both interpreters: ipaddress.ip_address('::ffff:10.20.30.40').is_reserved is True on 3.12.3 but False on 3.12.13 (CVE-2024-4032 / gh-113171 revised the special-purpose network lists in 3.12.4). core/egress_policy.py::_is_denied_ip denies unconditionally on is_reserved BEFORE the RFC1918/ULA allow-list rescue can run, so on 3.12.3 an IPv4-mapped private address is denied and on 3.12.13 it is allowed. This is what failed CI run 31243949907 as test_write_time_opt_in_relaxes_only_private_class[[::ffff:10.20.30.40]-False] \u2014 a REAL deterministic version difference, NOT the timing flake it first looked like. Risk direction is fail-closed (more restrictive on old Python), and metadata/SSRF protection holds on BOTH versions (::ffff:169.254.169.254 is caught by the unconditional _METADATA_IPS check plus its embedded link-local), so there is NO bypass. The defect is that three environments run three interpreters: Docker ghcr.io/astral-sh/uv:python3.12-bookworm-slim (moving tag), CI setup-uv python-version '3.12' -> resolved 3.12.3, dev 3.12.13, requires-python '>=3.12'. A rebuild could silently change egress decisions in production. FIX: pin the patch version across Dockerfile + ci.yml + a .python-version file, and consider making the is_reserved deny not fire on the canonical IPv4-mapped spelling so the control is version-independent by construction.",
+      "created": "2026-08-08T15:27:54+00:00",
+      "status": "done"
+    },
+    {
+      "id": 98,
+      "text": "Dockerfile Python is still UNPINNED at the patch level: ARG UV_IMAGE=ghcr.io/astral-sh/uv:python3.12-bookworm-slim is a moving tag, and a patch-pinned variant does NOT exist (verified: ghcr.io/astral-sh/uv:python3.12.13-bookworm-slim returns MISSING, the minor tag EXISTS). CI and dev are now pinned to 3.12.13 via apps/gateway/.python-version + ci.yml, guarded by test_ci_python_version_is_patch_pinned_and_matches_dev \u2014 but the DEPLOYED image can still drift to a different 3.12.x on any rebuild, which changes ipaddress predicates the egress SSRF policy reads (todo #97). Two options: (a) digest-pin the base image (ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:...), which also freezes the uv version and needs a periodic bump, or (b) let uv provision the interpreter from .python-version inside the image so the base image's python is irrelevant. Either way the change must be verified by an actual docker build + a runtime assertion of sys.version, which is why it was NOT bundled into the flake-fix commit. Extend the parity guard to cover the Dockerfile once pinned.",
+      "created": "2026-08-09T09:19:19+00:00",
+      "status": "done"
+    },
+    {
+      "id": 99,
+      "text": "tests/routing_admin (ra1/ra2/ra3/ra4/ra7) failed 5-of-8 in CI run 31306357309 with cross-test state leakage \u2014 'model_groups mismatch: {gpt: [a]}' and KeyError on expected candidates, i.e. it saw ANOTHER suite's routing config. This is the same suite the 0.9.0 release notes already call out as an xdist flake ('routing_admin xdist flakes green in isolation'), so it is recurring, not new. NOT reproduced locally after four probes: passes 3/3 in isolation WITH random ordering enabled (so not intra-file order dependence), and passes when run in one process directly after tests/routing_config_write + tests/routing_config_store, which are the only two suites that set the exact leaked value gpt->['a']. Its conftest builds an app with 'no DB schema needed', so the leak is app.state/Settings-level rather than the documented DB-schema collision. Next probes: run routing_admin at -n 4 alongside the full tests/routing_* tree to let loadscope co-schedule it with an unknown sibling; or add an xdist_group marker pinning routing_admin + routing_config_* to one worker; or have its conftest assert a pristine routing config at setup so the polluter is named at failure time instead of inferred. Relates to todo #79 (the failure set ROTATES between runs \u2014 run 31243949907 and 31306357309 each had 8 failures but only 3 in common).",
+      "created": "2026-08-09T10:43:34+00:00",
+      "status": "done"
+    },
+    {
+      "id": 100,
+      "text": "R7 PERF (supersedes the closed #39, whose premise was already fixed): the gateway suite's dominant per-test cost is FIXTURE SETUP, not the DB reset. MEASURED 2026-08-10 on a 12-core/24GB host: (a) create_app() costs 194ms every call (5 iterations, first 220ms, min 154ms) and tests/conftest.py::app calls it PER TEST -> 4559 x 194ms = ~15min of pure app construction per full run, before coverage; (b) coverage is a 1.92x multiplier, NOT the 39% recorded in todo #96 -- same 182 tests took 82.04s with --cov vs 42.70s with --no-cov at -n 4 --dist loadscope; (c) --durations on tests/conversations shows per-test setup at 0.43-1.20s while ZERO 'call' entries clear a 50ms threshold, so test bodies are not the cost; (d) the per-test DELETE sweep is 11ms (suite-stability's own measurement, conftest.py:294) and is NOT worth optimizing; (e) the unaccounted ~225ms/test is per-test create_async_engine + engine.dispose(), i.e. a fresh Postgres connection pool per test. FIX DIRECTION: widen the app fixture's scope (module or session) with an explicit app.state reset, and/or reuse one engine per worker. HAZARD, why this was NOT done in flake-tail-burndown: tests mutate app.state directly to inject fakes (app.state.completion_upstream = fake), and app.state-level bleed across tests is exactly todo #99's UNEXPLAINED routing_admin cross-suite leak -- widening app sharing before #99 is grounded would make that class worse in a way that only surfaces weeks later. Sequence #99 first. Not needed for release-integrity exit #6: running the proving runs with --no-cov already halves them, and exit #6 says 'full gateway suite', not 'make ci'.",
+      "created": "2026-08-10T08:08:05+00:00",
+      "status": "open"
+    },
+    {
+      "id": 101,
+      "text": "Test-hygiene, DETERMINISTIC class (residual risk accepted by flake-tail-burndown CR v2, 2026-08-10): 35 tests/ sites use 'await asyncio.sleep(0)' as a one-shot event-loop yield before asserting on a fire-and-forget result. That is CORRECT and load-independent when the awaited coroutine has no internal awaits -- verified for the billing path: use_cases.py:543 fires asyncio.ensure_future(usage_recorder.record(**kwargs)) and the SpyRecorder double is 'async def record(...): self.calls.append(...)', zero awaits, so it completes on its FIRST scheduling step. All 10 sites in tests/image_edits_variations are this shape and none has ever appeared in a CI failure. BUT the property is a fact about the CALLEE, not the test: if any of the 35 sites' fire-and-forget target ever gains a real await (a DB write, a Redis call, an HTTP hop), one yield stops being sufficient and the assertion breaks DETERMINISTICALLY -- on an idle laptop too, so it would be a hard red rather than a rotating flake, which is exactly why M7's guard deliberately does NOT cover it (M7 targets guessed DURATIONS). The 35 are enumerated by inverting the M7 guard's own literal>0 filter. Right fix if it ever bites: convert that specific site to tests._polling.poll_until like a positive wait; do NOT widen M7 to flag sleep(0) globally, which would mark 35 correct sites as debt and dilute the guard's signal.",
+      "created": "2026-08-10T08:15:47+00:00",
+      "status": "open"
+    },
+    {
+      "id": 102,
+      "text": "M7 guard blind spot: a NAMED-CONSTANT sleep duration escapes it. test_no_unbounded_positive_wait's _is_fixed_sleep requires a numeric LITERAL, so 'await asyncio.sleep(_SETTLE_SECONDS)' buckets as COMPUTED and is never asked for a declaration. The 2 live sites (obs_callbacks, mcp_connector/test_call_flow) ARE correctly declared, so nothing is flaky today \u2014 but a future site can hide a guessed duration behind a module constant. Found while building the M2 guard (which had to widen its own attachment predicate to avoid reporting those 2 as ORPHANED). Fix = treat a module-level float constant as a literal; needs a CR since the guard is a frozen \u00a74 test.",
+      "created": "2026-08-10T10:27:59+00:00",
+      "status": "done"
+    },
+    {
+      "id": 103,
+      "text": "tests/credits_ledger/conftest.py exports its OWN poll_until with a DIFFERENT signature (single truthy predicate) that shadows tests._polling.poll_until on import. The new flake-sweep call site is spelled _polling.poll_until(...) with a note rather than rebinding a name 3 other tests in that suite depend on. Collapse the duplicate onto the shared primitive.",
+      "created": "2026-08-10T10:27:59+00:00",
+      "status": "open"
+    },
+    {
+      "id": 104,
+      "text": "GUARD GAP from flake-tail-burndown: the 4 repo_hygiene guards only cover asyncio.sleep sites, but the first proving run's 6 failures were BOTH non-sleep isolation defects. Two guards worth adding: (a) a suite whose Settings point at the shared test DB must clear the GLOBAL/singleton rows it reads (routing_config is one row per database; routing_admin bypasses the root app fixture's per-test DELETE) \u2014 see closed todo #99; (b) an Azure/HTTP provider constructed in tests must inject egress_policy= (azure_audio omitted it and performed a LIVE DNS lookup in a suite documented as 'no network required'; every sibling Azure suite already injects AllowAllEgressPolicy). Both classes are 'a fix that did not propagate', the same meta-pattern M6 exists for.",
+      "created": "2026-08-10T10:41:20+00:00",
+      "status": "done"
+    },
+    {
+      "id": 105,
+      "text": "Class 10 \u2014 absolute wall-clock latency budgets in tests are flakes with an alibi. scoped_self_serve_signup asserted 'response < 0.5s' against an injected 1.5s mail delay to prove dispatch is off the request path; under -n 12 it measured 0.586s, so the structural property held by ~2.5x and the assertion failed anyway (signup's cost IS the deliberate Argon2 timing mask). Fixed there by parking the send on an Event so the passing path has no wall-clock at all. NOT guarded and NOT enumerated: sweep tests/ for absolute-duration thresholds (elapsed <, duration_ms <, time.monotonic deltas) and convert each to a causal proof or a delay-relative one.",
+      "created": "2026-08-10T12:06:51+00:00",
+      "status": "done"
+    },
+    {
+      "id": 106,
+      "text": "migrations/env.py is a HAND-MAINTAINED manifest of ORM modules with nothing enforcing it \u2014 16 modules covering 24 tables had drifted out of it, and 'alembic check' proposed DROP TABLE for all of them. The rate-card import already carried a comment warning of exactly this ('mass rate-card loss') and it drifted 16 more times anyway, which is the proof that a written warning is not a guard. Two candidate fixes, deliberately NOT taken now (Tin chose the minimal hand-add 2026-08-10): (a) a test asserting every module defining __tablename__ is imported by env.py \u2014 same AST manifest-guard pattern as tests/repo_hygiene/, would have caught all 16; (b) replace the hand list with a package walk. Note the drift was invisible for months because the gateway CI job failed at the test step and never reached the migration parity guard \u2014 fixing the flakes is what exposed it.",
+      "created": "2026-08-11T02:46:28+00:00",
+      "status": "done"
+    },
+    {
+      "id": 107,
+      "text": "MASKED GATE 1 \u2014 dashboard eslint never runs in CI and is RED. apps/dashboard/package.json declares \"lint\": \"eslint .\" but .github/workflows/ci.yml's dashboard job runs only vitest + next build. Next 16 REMOVED eslint-during-build, so this gate has silently not run since the Next 16 upgrade (#3). It fails today with 5 errors: 4x react-hooks/refs 'Cannot access refs during render' in components/settings/useVerifyPoll.ts:77-80 (the domain-verification poll hook \u2014 a discarded concurrent render leaves the latest-value refs holding values that never committed; fix = move the 4 assignments into an effect), and 1x react/no-unescaped-entities in components/plan/PlanSeatsPage.tsx:197. Fix the 5, THEN add 'npm run lint' to the dashboard job so it cannot regress. Verified NOT masked: next.config.ts sets neither ignoreBuildErrors nor ignoreDuringBuilds, so TypeScript IS genuinely checked by next build.",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "done"
+    },
+    {
+      "id": 108,
+      "text": "MASKED GATE 2 \u2014 the Envoy edge suite (1128 lines) has NO automated home and is unreachable from make. apps/gateway/tests/edge/{test_e2e_edge,test_e2e_tls,test_authz_bearer}.py are @pytest.mark.e2e, which pyproject addopts deselects from EVERY run (-m 'not e2e and not kind_e2e'). Their driver scripts/e2e_edge.sh (infra/docker-compose.e2e.yml) is invoked by NO Makefile target \u2014 grep 'e2e_edge' Makefile returns nothing, so even a human cannot run it without knowing the script path. This surface covers TLS termination, bearer authz and /internal blocking, i.e. it is security-relevant, and nothing has exercised it automatically. Minimum fix: add a make target that runs e2e_edge.sh so it is discoverable and runnable; deciding whether it can be gated in CI is separate (it needs the compose stack).",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "done"
+    },
+    {
+      "id": 109,
+      "text": "MASKED GATE 3 \u2014 kind-e2e has NEVER passed: 30 runs, 30 failures, 0 success, ever (gh run list --workflow=kind-e2e.yml). Its own header admits '0 green in 15 attempts'; the true figure is now 0/30. It is workflow_dispatch-only, so it reports nothing on PRs. This matters because kind-e2e is the DECLARED automated proof of the e2e exit criterion \u2014 a criterion whose proof surface has never once produced a pass. Either make it green or stop describing it as the proof; a permanently-red opt-in job is indistinguishable from no job. R7-sized (45-min k8s pipeline, needs real debugging), not a quick fix.",
+      "created": "2026-08-11T04:54:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 110,
+      "text": "RELEASE-PROVENANCE DRIFT \u2014 the Helm chart has not been bumped in 9 releases and the release checklist has no step that would. charts/ai-proxy/Chart.yaml carries appVersion \"0.4.0\" (chart version 0.1.0), values.yaml pins BOTH image tags to \"0.4.0\", and values-prod.yaml overrides only the GATEWAY tag to \"0.4.0-prod\" \u2014 the dashboard tag is not overridden for prod at all, so it falls back to plain \"0.4.0\". Meanwhile apps/gateway/pyproject.toml says 0.13.0. Nothing in .github/workflows builds or publishes images (only ci.yml + kind-e2e.yml exist), so images are entirely hand-built per docs/runbooks/cloud-deploy.md:35-41. The trap: that runbook tells the operator to build and push images 'tagged to match image.tag in values-prod.yaml' \u2014 i.e. match the image to the FILE, not the file to the release. Followed literally at 0.14.0 you push an image tagged 0.4.0-prod containing 0.14.0 code, and the deployed tag then LIES about what is running, which is exactly the kind of thing SOC 2 CC8.1 asks you to evidence. Fix: (a) bump Chart.yaml appVersion + both values.yaml tags + the values-prod override as part of the release cut, (b) add the dashboard tag override to values-prod.yaml, (c) write the bump into a release checklist so it cannot drift again, (d) consider a publish workflow so the image is built from the tagged commit rather than a laptop. Found during 0.14.0 release prep. Note CHANGELOG.md ALSO has no 0.13.0 entry \u2014 same provenance family as the missing v0.9.0/v0.10.0 tags.",
+      "created": "2026-08-11T05:14:41+00:00",
+      "status": "done"
+    },
+    {
+      "id": 111,
+      "text": "FLAKE CLASS 10, SECOND POPULATION \u2014 fixed-window rate-limit tests that assume N requests land in ONE wall-clock minute. Distinct from todo #105 (absolute elapsed-time thresholds): here nothing measures duration at all \u2014 the test fires 3 requests and asserts the 3rd is 429, which silently assumes no minute boundary falls between them. Every fixed-window limiter buckets on int(time.time() // 60): agent_oauth/infrastructure/ip_rate_limiter.py, scim/infrastructure/rate_limiter.py, domain_capture/infrastructure/rate_limiter.py, plus the signup / access-request / invite-preview per-IP knobs in core/config.py. Population: 19 '== 429' assertions across 13 test files; 3 of them (S2.1/S2.2/S2.3 in edge_input_hardening/test_s2_xff_trust.py) FIXED 2026-08-11 by freezing the limiter clock inside the low_rpm_app_and_client fixture. The other ~16 need the same PER-SITE judgement \u2014 some use a single request or a mocked limiter and are inert. REPRODUCTION RECIPE (do NOT re-run and hope): load an EXTERNAL -p plugin that replaces the limiter module's time with a stand-in advancing 40s per call; the boundary crossing then happens every run and the CI failure reproduces in under a second. This class likely accounts for part of the rotating flake tail that needed 7 attempts to yield 3 green runs \u2014 a DIFFERENT boundary-sensitive file can lose the race each run, which is exactly the 'rotates between runs' signature. Candidate guard: an AST check that a test asserting 429 against a fixed-window limiter also pins the clock. Motivating evidence: PR #102 gateway FAILED on a docs-only diff (1 failed / 4569 passed) while the identical commit passed on main minutes earlier.",
+      "created": "2026-08-11T05:31:35+00:00",
+      "status": "done"
+    },
+    {
+      "id": 112,
+      "text": "CI: tighten the gateway timeout-minutes to the measured SHARD wall-clock. The 120 cap and its MIN_GATEWAY_TIMEOUT_MINUTES=120 floor were both sized against the WHOLE 82-min suite; after the 6-way shard matrix each job runs ~1/6 of it, so a hung shard now burns 2 hours before reporting and defeats the fast-feedback the sharding bought. Do NOT guess the new number \u2014 every timeout figure in that comment block is MEASURED. Take the slowest shard duration from the first few PR runs, set the cap to ~1.5x it, and lower the guard floor in the same commit (the floor's own rationale, 'a timeout below the suite's wall-clock is a flake generator', is still right; only the relevant wall-clock changed).",
+      "created": "2026-08-11T06:57:43+00:00",
+      "status": "done"
+    },
+    {
+      "id": 113,
+      "text": "Pin container image digests, prod first. Verified 2026-08-11: infra/docker-compose.prod.yml floats pgvector/pgvector:pg16 and redis:7-alpine; dev additionally runs minio/minio:latest and minio/mc:latest (:latest is unpinned by construction). The prod pgvector float is not hygiene, it is the DOCUMENTED corruption mechanism: a floating minor can swap the glibc/musl base under a live data volume, which is exactly the collation-version mismatch the pgvector runbook rehearsal (PR #102) proved corrupts indexes SILENTLY -- and REFRESH COLLATION VERSION errors on the musl case, so the documented same-volume remedy CANNOT clear the preflight; only dump/restore finishes. So an unattended prod pull can produce an unrecoverable-in-place database. Pin by sha256 digest, not by a longer tag (tags are mutable). SOC 2 CC8.1 also wants reproducible deploys, and this is on the audit path. Order: prod pgvector first, then prod redis, then the dev minio pair.",
+      "created": "2026-08-11T06:59:56+00:00",
+      "status": "done"
+    },
+    {
+      "id": 114,
+      "text": "CLOSED NEGATIVE, do not re-try: COVERAGE_CORE=sysmon cannot remove the ~1.92x coverage multiplier here. Tested 2026-08-11 on coverage 7.14.1 / Python 3.12.13. coverage.py REFUSES the sys.monitoring core whenever concurrency=greenlet is set, which apps/gateway/pyproject.toml [tool.coverage.run] sets because SQLAlchemy's async bridge runs ORM code inside greenlet switches: 'CoverageWarning: Cant use core=sysmon: it doesnt support concurrency=greenlet, using default core (no-sysmon)'. Note the failure mode -- it FALLS BACK with a warning rather than erroring, so setting the env var in CI and judging by wall-clock alone would show no improvement with no visible reason. Dropping concurrency=greenlet would let sysmon engage but would under-report every async DB code path, i.e. buying speed by weakening the measurement the 80% gate depends on -- not acceptable. The remaining real levers stay: shard/concurrency-slot tuning, and the create_app + per-test-engine fixture work in todo #100 (still sequenced behind todo #99).",
+      "created": "2026-08-11T07:05:29+00:00",
+      "status": "open"
+    },
+    {
+      "id": 115,
+      "text": "list",
+      "created": "2026-08-11T14:57:11+00:00",
+      "status": "done"
+    },
+    {
+      "id": 116,
+      "text": "flake class 10 residue OUTSIDE the #111 pin: tests/edge/test_e2e_edge.py:369 asserts 'elapsed < 3.0' over 60 real HTTP round-trips through Docker+Envoy, as a proxy for 'all 60 landed inside one rate-limit window'. #111's in-process clock pin CANNOT reach it \u2014 the limiter there is Envoy's http_local_rate_limit filter in a SEPARATE process, not a Python class, so there is no __init__ to wrap and no injectable now. The causal replacement is to read Envoy's own counter instead of the wall clock: GET the admin /stats endpoint and assert http_local_rate_limit.rate_limited equals 60 - max_tokens, which is a fact about the filter rather than a bet on network speed. Deferred, not forgotten: the edge suite is dispatch-only (make e2e-edge), has never run under -n 12, and reaching Envoy admin from the test needs a port publish in infra/docker-compose.edge.yml \u2014 a real change in a suite that is not part of the default gate. Until then the site stays explicitly marked NOT MEASURED rather than given a fabricated margin.",
+      "created": "2026-08-11T14:57:35+00:00",
+      "status": "open"
+    },
+    {
+      "id": 117,
+      "text": "RELEASE ARTIFACT ARCH GAP \u2014 docs/runbooks/cloud-deploy.md builds images with a bare `docker build`, which produces an image for the OPERATOR'S HOST ARCH. MEASURED 2026-08-12: on an Apple-silicon host both images built `linux/arm64` (gateway + dashboard, from tag v0.14.1). Pushed as 0.14.1-prod to a typical amd64 EKS/GKE/AKS node pool that image fails at DEPLOY time with 'exec format error', not at build time \u2014 so the defect surfaces after the artifact is published and the tag already means the wrong thing. NOTHING catches it at any layer: the runbook has zero mention of platform/arch/buildx, charts/ai-proxy declares no nodeSelector or arch affinity, and no CI job builds or publishes images at all (todo #110). Same class as the defects R6 closed: a release artifact that lies about what it is. FIX APPLIED to the runbook (buildx multi-arch, linux/amd64+linux/arm64). REMAINING, not done here: (a) nothing ENFORCES the fix \u2014 a guard should assert the published manifest lists amd64, but there is no publish step in CI to hang it off, so this stays a human discipline until #110 lands an image-publish workflow; (b) decide whether the chart should declare an arch nodeSelector so a wrong-arch image is rejected at schedule time rather than at container start; (c) the amd64 half is built under QEMU emulation on arm64 hosts \u2014 slow, and 'it built' is not 'it runs', since no amd64 host here can execute it. The first real amd64 execution will be the deploy itself.",
+      "created": "2026-08-12T02:20:38+00:00",
+      "status": "open"
+    },
+    {
+      "id": 118,
+      "text": "NO CI IMAGE-PUBLISH WORKFLOW \u2014 release images are still hand-built. .github/workflows has only ci.yml and kind-e2e.yml; nothing builds or publishes container images, so every release depends on an operator running docker buildx correctly on their own laptop. This is the root cause of the arch defect in #117: because there is no publish step, there is nowhere to hang a guard that asserts the published manifest lists linux/amd64, and #117's remaining item (a) is blocked on this. NOTE #110 is CLOSED and was about Helm chart version drift, not publishing \u2014 #117's prose points at #110 as the future home of a publish step, which is wrong; this todo is that home. Deliverable: a workflow that on a v* tag builds gateway + dashboard with buildx --platform linux/amd64,linux/arm64 --push, and then VERIFIES the pushed manifest actually lists both (docker buildx imagetools inspect), failing the job if amd64 is absent \u2014 'the build succeeded' must not be allowed to stand in for 'the right artifact was published'.",
+      "created": "2026-08-12T05:13:57+00:00",
+      "status": "done"
+    },
+    {
+      "id": 119,
+      "text": "list",
+      "created": "2026-08-12T07:38:10+00:00",
+      "status": "open"
+    },
+    {
+      "id": 120,
+      "text": "R7 contract-surface deltas from the PR#89 residue batch (branch fix/vector-store-residue, PRs after #119): THREE reject/error codes were ADDED to closed, frozen \u00a73 contracts rather than editing the frozen PLAN.md files. file-search-tool: 'file_search_multiple_vector_stores_unsupported' (422, todo #61 \u2014 >1 vector_store_ids was silently served from ids[0]) and 'file_search_query_missing' (422, todo #65 \u2014 a body with no user text embedded \"\" and billed a per_query). vector-store-files: last_error.code 'storage_unavailable' (todo #65 \u2014 an ObjectStore outage reported as file_empty). Each is documented in-code with the reasoning and in the PR body. If either task is ever re-opened or re-frozen, its \u00a73 must absorb these; a client-facing error-code list must list them too.",
+      "created": "2026-08-12T07:54:53+00:00",
+      "status": "open"
+    },
+    {
+      "id": 121,
+      "text": "R7 SCALE follow-up from todo #62: vector_store_chunks retrieval recall now depends on THREE things nothing enforces at deploy time \u2014 (1) ix_vector_store_chunks_store existing (guarded in CI by tests/file_search_tool/test_retrieval_repo.py, NOT in prod), (2) current table statistics (a bulk ingest without ANALYZE can flip a selective store onto the HNSW post-filter plan), (3) pgvector >= 0.8 for hnsw.iterative_scan (an older server logs file_search_iterative_scan_unavailable once and silently degrades). Wire the alert: file_search_topk_shortfall (WARNING, gateway.vector_stores.infrastructure.file_repository) has no alert rule anywhere yet \u2014 the bound is published in docs/runbooks/pgvector-deploy.md \u00a77 but nothing pages on it. Also unbuilt: partitioning vector_store_chunks by vector_store_id, the documented escape hatch for a store large enough to exceed hnsw.max_scan_tuples (needs a migration).",
+      "created": "2026-08-12T07:55:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 122,
+      "text": "FLAKE (CI-only, 2026-08-12, PR #120 run 31577609140): tests/pii_v2/test_pii_v2.py::test_builtin_iban_masks_pre_call ERRORed with 'Failed: Timeout (>300.0s) from pytest-timeout' AT FIXTURE SETUP on gateway shard 2 \u2014 the loop was parked in epoll.poll(timeout=-1), i.e. blocked forever on a socket with NO timers pending, so something in client/app/active_model/redis_client setup awaited a connection that never answered. Shard reported 1167 passed / 1 error; a --failed re-run went fully green and the suite is 20/20 locally, so the merge was NOT gated on a real defect. Cost: ~10min of a shard plus a blocked merge. NOT the absolute-wall-clock class (todo #105) and not a sleep site \u2014 it is an unbounded await in test SETUP, so the fix shape is a deadline on whichever fixture connects (the lifespan-shutdown-bounded lesson applied to setup), not an AST guard. Next occurrence: capture which fixture with --timeout-method=thread and -o log_cli=true.",
+      "created": "2026-08-12T08:46:13+00:00",
+      "status": "open"
+    },
+    {
+      "id": 123,
+      "text": "\u26a0 DO NOT run `npx @pilotspace/add@latest update` on this bundle without a decision first (learned 2026-08-12). ADD 3.x is a DIFFERENT bundle format (ABF-1) and does NOT convert 2.x: after updating, `cli.py status --check` says 'this is an ADD 2.x bundle \u2014 3.0 reads a different format and does not convert it \u2026 archive them as the record of how this was built, then start a 3.0 bundle / next: add init'. So the update REPLACES the working engine (add.py becomes an ABF-1 library, add_engine/* deleted) and leaves the project unrunnable until you either roll back or init an EMPTY 3.0 bundle, discarding continuity of 94 archived milestones / 419 tasks / PROJECT.md invariants / 9 personas as a read-only archive. The engine's own `status` nag says 'ACTION REQUIRED before the user's task' \u2014 following it BREAKS the workflow it claims to protect. Rollback recipe: `git checkout -- .add .claude`, delete the untracked additions (.add/personas-index/, .add/tooling/cli.py, .claude/skills/add/{domains,gate,personas,seed,streams}.md, phases/explore.md) \u2014 AND restore .add/tooling from a physical backup, because .add/.gitignore ignores tooling/ so add_engine/search.py is NOT tracked and git alone leaves the engine broken (ModuleNotFoundError: add_engine.search). Take a `cp -R .add` snapshot before ever running it.",
+      "created": "2026-08-12T08:51:36+00:00",
+      "status": "open"
+    }
+  ]
+}
