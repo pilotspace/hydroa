@@ -6,7 +6,9 @@ milestone: evals-regression-gate
 gives:
   - S1 the eval-set / eval-case persistence contract + the ZDR disposition — the frozen case shape every downstream task hangs off
 generated: { by: add/3.2.0, at: 2026-08-12 }
-verified: []
+verified:
+  - { by: "Tin Dang", at: 2026-08-12, act: freeze, authority: process, direction: "sha256:8ea8c0edf0d46051" }
+  - { by: "cli", at: 2026-08-12, act: brief, authority: process, brief: "sha256:0fe59aa41c22954f" }
 advised_by: appsec-engineer
 ---
 ## CARD
