@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live OpenRouter smoke — contract: .add/tasks/live-upstream-smoke/TASK.md §3.
+"""Live OpenRouter smoke — contract: .add-2x-archive/tasks/live-upstream-smoke/TASK.md §3.
 
 Operator-run (requires a real key + the e2e TLS stack):
     export GATEWAY_OPENROUTER_API_KEY=sk-or-...

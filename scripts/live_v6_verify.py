@@ -36,10 +36,10 @@ Shape sources per check:
       apps/gateway/tests/cooldown_circuit/ (circuit scenarios)
       apps/gateway/src/gateway/proxy/infrastructure/redis_cooldown_gate.py
   C4  routing-admin (GET /admin/routing shape):
-      .add/tasks/routing-admin/TASK.md §3 FROZEN contract
+      .add-2x-archive/tasks/routing-admin/TASK.md §3 FROZEN contract
       apps/gateway/tests/routing_admin/test_routing_admin.py
   C5  mid-stream:
-      .add/milestones/v6/MILESTONE.md §"Streaming is the hard boundary"
+      .add-2x-archive/milestones/v6/MILESTONE.md §"Streaming is the hard boundary"
   C6  TLS + isolation:
       infra/docker-compose.e2e.v6.yml (overlay with TLS edge :8443)
       scripts/v6_fault_stub.py (stub on :9920)
