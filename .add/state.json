@@ -150,7 +150,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T04:07:45+00:00",
+  "updated": "2026-08-12T05:20:50+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2038,6 +2038,12 @@
       "text": "RELEASE ARTIFACT ARCH GAP \u2014 docs/runbooks/cloud-deploy.md builds images with a bare `docker build`, which produces an image for the OPERATOR'S HOST ARCH. MEASURED 2026-08-12: on an Apple-silicon host both images built `linux/arm64` (gateway + dashboard, from tag v0.14.1). Pushed as 0.14.1-prod to a typical amd64 EKS/GKE/AKS node pool that image fails at DEPLOY time with 'exec format error', not at build time \u2014 so the defect surfaces after the artifact is published and the tag already means the wrong thing. NOTHING catches it at any layer: the runbook has zero mention of platform/arch/buildx, charts/ai-proxy declares no nodeSelector or arch affinity, and no CI job builds or publishes images at all (todo #110). Same class as the defects R6 closed: a release artifact that lies about what it is. FIX APPLIED to the runbook (buildx multi-arch, linux/amd64+linux/arm64). REMAINING, not done here: (a) nothing ENFORCES the fix \u2014 a guard should assert the published manifest lists amd64, but there is no publish step in CI to hang it off, so this stays a human discipline until #110 lands an image-publish workflow; (b) decide whether the chart should declare an arch nodeSelector so a wrong-arch image is rejected at schedule time rather than at container start; (c) the amd64 half is built under QEMU emulation on arm64 hosts \u2014 slow, and 'it built' is not 'it runs', since no amd64 host here can execute it. The first real amd64 execution will be the deploy itself.",
       "created": "2026-08-12T02:20:38+00:00",
       "status": "open"
+    },
+    {
+      "id": 118,
+      "text": "NO CI IMAGE-PUBLISH WORKFLOW \u2014 release images are still hand-built. .github/workflows has only ci.yml and kind-e2e.yml; nothing builds or publishes container images, so every release depends on an operator running docker buildx correctly on their own laptop. This is the root cause of the arch defect in #117: because there is no publish step, there is nowhere to hang a guard that asserts the published manifest lists linux/amd64, and #117's remaining item (a) is blocked on this. NOTE #110 is CLOSED and was about Helm chart version drift, not publishing \u2014 #117's prose points at #110 as the future home of a publish step, which is wrong; this todo is that home. Deliverable: a workflow that on a v* tag builds gateway + dashboard with buildx --platform linux/amd64,linux/arm64 --push, and then VERIFIES the pushed manifest actually lists both (docker buildx imagetools inspect), failing the job if amd64 is absent \u2014 'the build succeeded' must not be allowed to stand in for 'the right artifact was published'.",
+      "created": "2026-08-12T05:13:57+00:00",
+      "status": "done"
     }
   ]
 }

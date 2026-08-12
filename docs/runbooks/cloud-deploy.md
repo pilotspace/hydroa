@@ -46,8 +46,27 @@ Before you begin, confirm you have:
   image for the host arch and says nothing about it. Measured 2026-08-12 on an Apple-silicon host:
   both images built `linux/arm64`. Pushed as `-prod` to a typical amd64 node pool, that image fails
   at **deploy** time with `exec format error` — *after* the artifact is published and the tag already
-  means the wrong thing. Nothing catches it: the chart declares no arch `nodeSelector`, and no CI job
-  builds or publishes images at all. Use `buildx` with an explicit platform list. See todo #117.
+  means the wrong thing. The chart declares no arch `nodeSelector`, so nothing rejects a wrong-arch
+  image at schedule time either. See todo #117.
+
+  ### Normally you do NOT run these commands
+
+  **Pushing the tag publishes the images.** `.github/workflows/publish-images.yml` builds both
+  images from the tagged commit for `linux/amd64,linux/arm64`, pushes the manifest list, and then
+  reads the manifest **back from the registry** and fails the job if either architecture is
+  missing. It also prints the published digests to the job summary. So the normal path is:
+
+  ```bash
+  git tag v0.14.1 && git push origin v0.14.1     # publishing is a consequence of tagging
+  ```
+
+  Watch the run, and do not deploy a tag whose publish job did not go green. If a run failed part
+  way, re-run it (`workflow_dispatch` with the tag) rather than hand-building — publishing is
+  idempotent, and the workflow is the only path with the manifest verification attached.
+
+  The manual commands below are a **fallback** for when CI is unavailable. They are kept because
+  the automation is young and an operator must be able to publish without it, but they carry no
+  verification of their own beyond the inspect step you have to remember to run.
 
   ```bash
   # RELEASE must equal the git tag you are deploying, e.g. 0.14.1
