@@ -149,13 +149,17 @@ class SlowChunkEmbedder:
         return vectors, {"prompt_tokens": n_tokens, "total_tokens": n_tokens}
 
 
-def _build_worker(app: Any) -> Any:
+def _build_worker(app: Any, *, object_store: Any = None, sessionmaker: Any = None) -> Any:
     """Construct queue + worker from app.state — the batches-suite fixture shape.
 
     Imported INSIDE the helper so each async-lifecycle test fails individually with
     ModuleNotFoundError (missing implementation), not a collection-time error.
     Wires the queue onto app.state so the router's attach enqueue targets the same
     Redis list the worker drains (mirrors app.state.batch_job_queue).
+
+    ``object_store`` / ``sessionmaker`` default to the production wiring (None object
+    store, app.state.sessionmaker) — the todo #65 tests below override them to stage
+    an object-store outage and a store-deleted-mid-drive race.
     """
     from gateway.vector_stores.application.ingest_worker import (  # noqa: PLC0415
         RedisVectorStoreIngestQueue,
@@ -165,10 +169,11 @@ def _build_worker(app: Any) -> Any:
     queue = RedisVectorStoreIngestQueue(app.state.redis_client)
     app.state.vector_store_ingest_queue = queue
     return VectorStoreIngestWorker(
-        sessionmaker=app.state.sessionmaker,
+        sessionmaker=sessionmaker if sessionmaker is not None else app.state.sessionmaker,
         queue=queue,
         settings=app.state.settings,
         get_embedder=lambda: getattr(app.state, "vector_store_embedder", None),
+        object_store=object_store,
     )
 
 
@@ -1052,3 +1057,253 @@ async def test_non_zdr_ingest_completes_unchanged_after_lock_heal(
     assert obj["status"] == "completed", f"majority path must be unchanged: {obj}"
     assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) > 0
     assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# todo #65 — an INFRA failure reported as a USER data problem
+# ---------------------------------------------------------------------------
+# `_read_bytes` swallowed BOTH object-store failure modes (absent adapter, and a
+# raising `ObjectStore.get`) and returned b"" — which chunks to nothing, which the
+# caller reads as "the file has no content" and writes as
+# `last_error.code = "file_empty"`. So a tenant whose s3-backed file never ingested
+# because OUR object store was down was told THEIR file was empty: they re-upload,
+# it fails again, and the one party who could act on the truth (us) never sees it.
+# The worker's own constructor docstring already promised the honest behaviour
+# ("None honest-degrades an s3-backed file to a READ FAILURE") — the code did not.
+#
+# ⚠ CONTRACT NOTE: vector-store-files' frozen §3 contract enumerates four
+# `last_error.code` values (embedding_unavailable | zdr_blocked | file_empty |
+# file_too_large). This adds a FIFTH, `storage_unavailable`, deliberately and on the
+# record (same treatment as todo #61's file_search reject) rather than quietly
+# re-pointing an existing code. Reusing `embedding_unavailable` would have been a
+# different lie; keeping `file_empty` is the defect itself.
+#
+# NOT changed here, deliberately: the `file_row is None` branch (a source file the
+# tenant deleted, or a soft-deleted row) also reports `file_empty`, with the message
+# "Source file is no longer available". That one is a statement about the TENANT's
+# data, its message already says so, and separating it would need a second contract
+# addition for no change in what anybody can do about it.
+
+
+class _UnavailableObjectStore:
+    """An ObjectStore whose get() raises the port's CONTRACTED outage error.
+
+    `ObjectStore.get` documents exactly two failure types (ObjectNotFoundError,
+    ObjectStoreUnavailableError); this double raises the latter, which is what the
+    real S3 adapter raises when the bucket is unreachable.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        raise AssertionError("the ingest worker must never WRITE to the object store")
+
+    async def get(self, key: str) -> bytes:
+        from gateway.objectstore.errors import ObjectStoreUnavailableError  # noqa: PLC0415
+
+        self.calls.append(key)
+        raise ObjectStoreUnavailableError("bucket unreachable (fake outage)")
+
+    async def delete(self, key: str) -> None:
+        raise AssertionError("the ingest worker must never DELETE from the object store")
+
+    async def health(self) -> bool:
+        return False
+
+
+async def _make_file_s3_backed(app: Any, *, file_id: str) -> None:
+    """Flip an uploaded file row onto the s3 byte path (content NULL, object_key set).
+
+    Uploads in this suite land inline (BYTEA) because no object store is configured
+    for tests, and the inline path can never reach the outage branch — so the s3
+    backing is staged directly, exactly as a prod row looks.
+    """
+    from gateway.files.wire_id import parse_wire_id as _parse_file_wire_id  # noqa: PLC0415
+
+    async with app.state.sessionmaker() as session:
+        result = await session.execute(
+            text(
+                "UPDATE files SET storage_backend = 's3', object_key = :key, content = NULL"
+                " WHERE id = :fid"
+            ),
+            {"key": f"files/{_parse_file_wire_id(file_id)}", "fid": str(_parse_file_wire_id(file_id))},
+        )
+        assert result.rowcount == 1, "the file row to back with s3 was not found"
+        await session.commit()
+
+
+async def test_object_store_outage_is_not_reported_as_an_empty_file(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: Any
+) -> None:
+    """An unreachable object store must NOT tell the tenant their file was empty."""
+    outage = _UnavailableObjectStore()
+    worker = _build_worker(app, object_store=outage)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _make_file_s3_backed(app, file_id=file_id)
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _drain(worker)
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed", f"an unreadable file must not look ingested: {obj}"
+    err = obj["last_error"] or {}
+    assert err.get("code") != "file_empty", (
+        "our object store being down was reported to the tenant as THEIR file being"
+        f" empty: {err!r}"
+    )
+    assert err.get("code") == "storage_unavailable", f"unexpected last_error: {err!r}"
+    assert outage.calls, "the object store was never consulted — the test staged nothing"
+    # Fail-closed: no chunks at rest, no embed spend, no bill for work never done.
+    assert fake_embedder.calls == [], "an unreadable file must never reach the embedder"
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 0
+
+
+async def test_absent_object_store_is_not_reported_as_an_empty_file(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: Any
+) -> None:
+    """The MISCONFIGURATION half: an s3-backed file with no ObjectStore wired at all.
+
+    This is the case the worker's constructor docstring already described as an
+    honest "read failure" — a deployment that lost its object-store config still
+    accepts attaches, and every one of them used to come back as `file_empty`.
+    """
+    worker = _build_worker(app, object_store=None)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _make_file_s3_backed(app, file_id=file_id)
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _drain(worker)
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed"
+    err = obj["last_error"] or {}
+    assert err.get("code") == "storage_unavailable", (
+        f"a missing object-store config is ours, not the tenant's: {err!r}"
+    )
+    assert fake_embedder.calls == []
+    assert await _count(app, "usage_records", tenant_a["tenant_id"]) == 0
+
+
+async def test_a_genuinely_empty_file_still_reports_file_empty(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: Any
+) -> None:
+    """Don't-cry-wolf half: `file_empty` must keep meaning what it says.
+
+    A whitespace-only upload chunks to nothing — a real statement about the
+    tenant's data. A fix that renamed every zero-chunk outcome to
+    `storage_unavailable` would pass the two tests above and be just as wrong;
+    this is the test that catches it.
+    """
+    worker = _build_worker(app)
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"], filename="blank.txt", data=b"   \n\t  \n ")
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _drain(worker)
+
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] == "failed"
+    err = obj["last_error"] or {}
+    assert err.get("code") == "file_empty", (
+        f"an actually-empty file is still file_empty, not an infra excuse: {err!r}"
+    )
+    assert fake_embedder.calls == []
+
+
+# ---------------------------------------------------------------------------
+# todo #65 (second half) — a tenant UUID billed as an api-key id
+# ---------------------------------------------------------------------------
+# `key_id = store_row.key_id if store_row is not None else tenant_id` — when the
+# store lookup came back empty the worker invented a key_id out of the TENANT's id
+# and billed against it, and invented an embedding model
+# (_DEFAULT_EMBEDDING_MODEL) to embed with. Both are fabrications: a tenant id is
+# not an api-key id, and the store's model is the only correct one to embed for a
+# store whose existing chunks were written under it.
+#
+# Reachability, stated honestly: vector_store_files.vector_store_id is
+# ON DELETE CASCADE, so a deleted store takes the attach row with it and today's
+# drive() would usually stop at its earlier row-is-None guard. That makes the
+# fallback near-unreachable rather than a live billing bug — and is exactly why it
+# is worth removing instead of leaving: the day the FK becomes SET NULL, or the
+# store grows a soft-delete, the phantom key_id goes live silently.
+
+
+class _SessionProxy:
+    """A real AsyncSession, except `get(VectorStoreRow, ...)` yields None."""
+
+    def __init__(self, session: Any) -> None:
+        self._session = session
+
+    async def get(self, entity: Any, ident: Any, **kwargs: Any) -> Any:
+        from gateway.vector_stores.infrastructure.orm import VectorStoreRow  # noqa: PLC0415
+
+        if entity is VectorStoreRow:
+            return None
+        return await self._session.get(entity, ident, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._session, name)
+
+
+class _VanishedStoreSessionCtx:
+    def __init__(self, ctx: Any) -> None:
+        self._ctx = ctx
+
+    async def __aenter__(self) -> Any:
+        return _SessionProxy(await self._ctx.__aenter__())
+
+    async def __aexit__(self, *exc: Any) -> Any:
+        return await self._ctx.__aexit__(*exc)
+
+
+class _VanishedStoreSessionmaker:
+    """The real sessionmaker with ONE seam faulted: the store load comes back empty.
+
+    This stages the store-deleted-mid-drive race the fallback claimed to handle. It
+    cannot be staged through Postgres — deleting the store CASCADE-deletes the
+    attach row, so drive() would return at its earlier guard and never reach the
+    branch under test. Faulting the one deciding read is the only way to observe it.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return _VanishedStoreSessionCtx(self._inner(*args, **kwargs))
+
+
+async def test_a_vanished_store_never_bills_a_tenant_uuid_as_a_key_id(
+    client: Any, app: Any, tenant_a: dict[str, str], fake_embedder: Any
+) -> None:
+    """No fabricated key_id, no fabricated embedding model, no bill."""
+    worker = _build_worker(app, sessionmaker=_VanishedStoreSessionmaker(app.state.sessionmaker))
+    vsid = await _create_store(client, tenant_a["key"])
+    file_id = await _upload(client, tenant_a["key"])
+    await _attach(client, tenant_a["key"], vsid, file_id)
+    await _drain(worker)
+
+    async with app.state.sessionmaker() as session:
+        key_ids = (
+            (
+                await session.execute(
+                    text("SELECT key_id FROM usage_records WHERE tenant_id = :tid"),
+                    {"tid": tenant_a["tenant_id"]},
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert str(tenant_a["tenant_id"]) not in {str(k) for k in key_ids}, (
+        "a TENANT id was written into usage_records.key_id — a key that does not exist"
+    )
+    assert key_ids == [], f"nothing was ingested, so nothing may be billed: {key_ids!r}"
+    # And it must not have embedded against a guessed model, nor written chunks into
+    # a store it could not read.
+    assert fake_embedder.calls == [], (
+        "the worker embedded against a DEFAULT model for a store it could not load:"
+        f" {fake_embedder.calls!r}"
+    )
+    assert await _count(app, "vector_store_chunks", tenant_a["tenant_id"]) == 0
+    obj = (await _get_file(client, tenant_a["key"], vsid, file_id)).json()
+    assert obj["status"] != "completed", f"an unresolvable store must not look ingested: {obj}"
