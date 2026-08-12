@@ -70,7 +70,7 @@ class MemoryRepository:
                 MemoryRow.tenant_id == tenant_id,
                 MemoryRow.deleted_at.is_(None),
             )
-            .order_by(MemoryRow.created_at.desc())
+            .order_by(MemoryRow.created_at.desc(), MemoryRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

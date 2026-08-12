@@ -231,7 +231,7 @@ class SqlAlchemyScimUserRepository:
         rows = (
             (
                 await self._session.execute(
-                    stmt.order_by(UserRow.created_at).limit(count).offset(offset)
+                    stmt.order_by(UserRow.created_at, UserRow.id).limit(count).offset(offset)
                 )
             )
             .scalars()

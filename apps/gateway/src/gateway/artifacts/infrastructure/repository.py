@@ -121,7 +121,7 @@ class ArtifactRepository:
                 ArtifactRow.tenant_id == tenant_id,
                 ArtifactRow.deleted_at.is_(None),
             )
-            .order_by(ArtifactRow.created_at.desc())
+            .order_by(ArtifactRow.created_at.desc(), ArtifactRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

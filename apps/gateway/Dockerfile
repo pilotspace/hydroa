@@ -128,6 +128,15 @@ ENV VIRTUAL_ENV="/app/.venv"
 # Production environment — GATEWAY_JWT_SECRET must be provided at runtime
 ENV GATEWAY_ENVIRONMENT=production
 
+# Timezone is DECLARED, not inherited (todo #11). Measured in this image before the pin:
+# TZ was unset and time.tzname was ('UTC','UTC') — i.e. UTC by ACCIDENT, because
+# python:*-slim-bookworm ships no /etc/localtime and the C library falls back to UTC. A base-image
+# change, or a node that mounts /etc/localtime in, would move every naive datetime to local time
+# with no error and no failing test. Defence in depth rather than a bug fix: src currently has
+# zero naive clock reads, and tests/repo_hygiene/test_utc_is_not_implicit.py keeps both halves
+# true — this pin, and the absence of anything that would depend on it.
+ENV TZ=UTC
+
 EXPOSE 8000
 
 USER gateway

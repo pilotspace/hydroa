@@ -90,7 +90,7 @@ class VideoJobRepository:
         stmt = (
             select(VideoGenerationJobRow)
             .where(VideoGenerationJobRow.tenant_id == tenant_id)
-            .order_by(VideoGenerationJobRow.created_at.desc())
+            .order_by(VideoGenerationJobRow.created_at.desc(), VideoGenerationJobRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

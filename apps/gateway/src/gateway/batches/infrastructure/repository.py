@@ -144,7 +144,7 @@ class BatchJobRepository:
         stmt = (
             select(BatchJobRow)
             .where(BatchJobRow.tenant_id == tenant_id)
-            .order_by(BatchJobRow.created_at.desc())
+            .order_by(BatchJobRow.created_at.desc(), BatchJobRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

@@ -223,7 +223,7 @@ class VectorStoreFileRepository:
                 VectorStoreFileRow.tenant_id == tenant_id,
                 VectorStoreFileRow.vector_store_id == vector_store_id,
             )
-            .order_by(VectorStoreFileRow.created_at.desc())
+            .order_by(VectorStoreFileRow.created_at.desc(), VectorStoreFileRow.id.desc())
             .limit(limit)
             .offset(offset)
         )
