@@ -2,7 +2,7 @@
   "project": "ai-proxy",
   "stage": "production",
   "active_task": null,
-  "active_milestone": null,
+  "active_milestone": "evals-regression-gate",
   "tasks": {
     "ai-feature-pages-redesign": {
       "title": "Redesign AI-feature pages (chat\u00b7voice\u00b7memory\u00b7artifacts\u00b7vision\u00b7video) to the refreshed standard",
@@ -147,10 +147,22 @@
       "status": "queued",
       "created": "2026-07-03T16:30:16+00:00",
       "updated": "2026-07-03T16:30:16+00:00"
+    },
+    "evals-regression-gate": {
+      "title": "Evals \u2014 regression gate on model swaps",
+      "goal": "a tenant can run a named eval set against a candidate model and get a scored pass/fail verdict against a pinned baseline, so a model swap is proven safe BEFORE it ships",
+      "stage": "production",
+      "status": "active",
+      "created": "2026-08-12T05:40:03+00:00",
+      "updated": "2026-08-12T05:40:03+00:00",
+      "confirmed": false,
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "await_confirm": true
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T04:07:45+00:00",
+  "updated": "2026-08-12T05:40:03+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1334,7 +1346,9 @@
       "archived": "2026-08-11"
     }
   ],
-  "active_milestones": [],
+  "active_milestones": [
+    "evals-regression-gate"
+  ],
   "active_tasks": {},
   "todos": [
     {
