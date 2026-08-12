@@ -162,7 +162,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T06:31:57+00:00",
+  "updated": "2026-08-12T08:16:08+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1715,19 +1715,19 @@
       "id": 61,
       "text": "PR#89 residue (R7 pr89-residue): file_search.py:201 silently ignores vector_store_ids[1:] \u2014 takes ids[0] only. OpenAI's wire is an array; two stores in, partial results out, no signal. Either 422 on len>1 in v1 or search across all supplied stores.",
       "created": "2026-07-25T07:33:37+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 62,
       "text": "PR#89 residue (R7 pr89-residue) SCALE: file_repository.py:265 search_chunks \u2014 pgvector HNSW applies the tenant/store WHERE filter AFTER index traversal, so as vector_store_chunks grows across tenants a small tenant's top-k silently returns fewer than top_k (or zero). Needs hnsw.ef_search tuning + partitioning by vector_store_id at scale. Publish as a known monitored bound with an alert.",
       "created": "2026-07-25T07:33:37+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 63,
       "text": "PR#89 residue (R7 pr89-residue) PERF: vector_stores/api/router.py:288 \u2014 N+1 on GET /v1/vector_stores (file_counts per row inside the page loop, up to 100 round-trips). Replace with one GROUP BY (vector_store_id, status) over the page's ids.",
       "created": "2026-07-25T07:33:37+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 64,
@@ -1739,7 +1739,7 @@
       "id": 65,
       "text": "PR#89 residue (R7, low): ingest_worker._read_bytes maps an ObjectStore outage to last_error.code='file_empty' (infra failure shown as a user data problem); ingest_worker.py:259 key_id falls back to tenant_id (tenant UUID in a key_id column); file_search._last_user_text embeds an empty string when no user message exists.",
       "created": "2026-07-25T07:33:38+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 66,
@@ -2058,6 +2058,24 @@
       "text": "NO CI IMAGE-PUBLISH WORKFLOW \u2014 release images are still hand-built. .github/workflows has only ci.yml and kind-e2e.yml; nothing builds or publishes container images, so every release depends on an operator running docker buildx correctly on their own laptop. This is the root cause of the arch defect in #117: because there is no publish step, there is nowhere to hang a guard that asserts the published manifest lists linux/amd64, and #117's remaining item (a) is blocked on this. NOTE #110 is CLOSED and was about Helm chart version drift, not publishing \u2014 #117's prose points at #110 as the future home of a publish step, which is wrong; this todo is that home. Deliverable: a workflow that on a v* tag builds gateway + dashboard with buildx --platform linux/amd64,linux/arm64 --push, and then VERIFIES the pushed manifest actually lists both (docker buildx imagetools inspect), failing the job if amd64 is absent \u2014 'the build succeeded' must not be allowed to stand in for 'the right artifact was published'.",
       "created": "2026-08-12T05:13:57+00:00",
       "status": "done"
+    },
+    {
+      "id": 119,
+      "text": "list",
+      "created": "2026-08-12T07:38:10+00:00",
+      "status": "open"
+    },
+    {
+      "id": 120,
+      "text": "R7 contract-surface deltas from the PR#89 residue batch (branch fix/vector-store-residue, PRs after #119): THREE reject/error codes were ADDED to closed, frozen \u00a73 contracts rather than editing the frozen PLAN.md files. file-search-tool: 'file_search_multiple_vector_stores_unsupported' (422, todo #61 \u2014 >1 vector_store_ids was silently served from ids[0]) and 'file_search_query_missing' (422, todo #65 \u2014 a body with no user text embedded \"\" and billed a per_query). vector-store-files: last_error.code 'storage_unavailable' (todo #65 \u2014 an ObjectStore outage reported as file_empty). Each is documented in-code with the reasoning and in the PR body. If either task is ever re-opened or re-frozen, its \u00a73 must absorb these; a client-facing error-code list must list them too.",
+      "created": "2026-08-12T07:54:53+00:00",
+      "status": "open"
+    },
+    {
+      "id": 121,
+      "text": "R7 SCALE follow-up from todo #62: vector_store_chunks retrieval recall now depends on THREE things nothing enforces at deploy time \u2014 (1) ix_vector_store_chunks_store existing (guarded in CI by tests/file_search_tool/test_retrieval_repo.py, NOT in prod), (2) current table statistics (a bulk ingest without ANALYZE can flip a selective store onto the HNSW post-filter plan), (3) pgvector >= 0.8 for hnsw.iterative_scan (an older server logs file_search_iterative_scan_unavailable once and silently degrades). Wire the alert: file_search_topk_shortfall (WARNING, gateway.vector_stores.infrastructure.file_repository) has no alert rule anywhere yet \u2014 the bound is published in docs/runbooks/pgvector-deploy.md \u00a77 but nothing pages on it. Also unbuilt: partitioning vector_store_chunks by vector_store_id, the documented escape hatch for a store large enough to exceed hnsw.max_scan_tuples (needs a migration).",
+      "created": "2026-08-12T07:55:02+00:00",
+      "status": "open"
     }
   ]
 }
