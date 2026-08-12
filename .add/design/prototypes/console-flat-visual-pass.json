@@ -1,0 +1,153 @@
+{
+  "root": "directory_screen",
+  "capture": null,
+  "note": "console-flat-visual-pass (milestone platform-console-flat-redesign), 2026-07-06. Visual-only pass over the REAL shipped IA (PlatformTenantDirectory.tsx + PlatformTenantDetail.tsx's 5 tabs) — no new screens, no new regions. No local headless-capture tooling in this worktree (same constraint as batches-workspace/batches-stats) — substituted with a published interactive Artifact, now at v5 (label contrast-and-grain-v5) after v2 ('tech/space/modern/flat...white luxury' redirect), v3 ('look boring' — dark rail/hero-scale/atmosphere fix), and v4 (icon/motion polish) — see DESIGN.md's four dated sub-bullets for full breakdowns. URL CHANGED at v5 (the v2-v4 link stopped resolving server-side, republished as a new file): https://claude.ai/code/artifact/93f09a35-c58f-4397-a8e6-460aadd2cab0 — also now saved to `mocks/console-flat-visual-pass.html` (cited since v1, not actually written until v5 — a real gap, closed). KNOWN GAP: this render tree still only models v2's token-level change (surface-muted->surface below); v3's dark nav-rail/ref-tag/hero-scale-type, v4's icons/sliding-tab-indicator/usage-bar/motion, and v5's contrast/grain/hairline-texture are NOT represented here — the current catalog.json vocabulary (Screen/Card/DataTable/Button/Badge/Heading/Text/Field props only) has no icon, animation, dark-surface-region, or texture-overlay concept to bind them to without inventing new catalog entries, which is out of scope for a read-only 'bind, don't break' prototype file. Left as an explicit, named gap rather than silently stale; close it (or raise a catalog change-request) once design-confirm is closer and the direction stops moving. v2's own change: every Screen/panel `bg` moved from `{semantic.color.surface-muted}` to `{semantic.color.surface}` (white) — canvas is near-white throughout, not slate-tinted; panel-level Card wrappers below are likewise `surface`, since v2's default separator is a hairline rule, not a distinct card background. Tab panels are modeled as sibling subtrees under detail_screen (config/budget/keys/members/plan) since the Tabs MECHANISM itself is pre-existing shipped chrome (components/ui/tabs.tsx) outside this task's own Touches — only panel CONTENTS change visually. `Tabs` has no catalog.json entry yet (gap, not invented here — catalog.json is read-only per design.md's 'bind, don't break' rule; a future change-request can add it). `DataTable`'s catalog schema only declares headerBg/text/border (no columns/rowCount) — actual column/row detail is described in each element's own `note` instead of invented props. A genuinely borderless Card OMITS the `border` prop entirely (the schema has no 'transparent' token value — omission is the accurate representation, not a literal string). Design-confirm OUTSTANDING — not yet approved by Tin at v2, v3, v4, or v5.",
+  "elements": {
+    "directory_screen": {
+      "type": "Screen",
+      "props": { "bg": "{semantic.color.surface}", "padding": "{semantic.space.inset-lg}" },
+      "children": ["directory_header", "directory_search", "directory_table_card", "directory_pager"]
+    },
+    "directory_header": {
+      "type": "Heading",
+      "props": { "text": "Platform · Tenants", "size": "{semantic.font.size.title}", "level": "1" }
+    },
+    "directory_search": {
+      "type": "Field",
+      "props": { "placeholder": "Search tenants…" }
+    },
+    "directory_table_card": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "radius": "{semantic.radius.flat-card}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["directory_table"],
+      "note": "no `border` prop — genuinely borderless (Card variant=\"flat\": border-transparent, shadow-none)."
+    },
+    "directory_table": {
+      "type": "DataTable",
+      "props": { "headerBg": "{semantic.color.surface-muted}", "text": "{semantic.color.text}", "border": "{semantic.color.border}" },
+      "note": "columns: Name/Kind/Created, 4 sample rows — Table itself is unchanged/out of scope; only its Card wrapper (soft→flat) changes."
+    },
+    "directory_pager": {
+      "type": "Text",
+      "props": { "text": "Showing 1–4 of 4", "color": "{semantic.color.text-muted}", "size": "{semantic.font.size.caption}" }
+    },
+
+    "detail_screen": {
+      "type": "Screen",
+      "props": { "bg": "{semantic.color.surface}", "padding": "{semantic.space.inset-lg}" },
+      "children": ["safety_banner", "detail_header", "config_panel", "budget_panel", "keys_panel", "members_panel", "plan_panel"]
+    },
+    "safety_banner": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.warning}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.flat-control}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["safety_banner_text"],
+      "note": "border prop here models the QUIETED neutral divider (reused hairline-strong/border, not the amber accent line) — same treatment applied to ImpersonationBanner (decision #2, not separately modeled — identical subtree shape)."
+    },
+    "safety_banner_text": {
+      "type": "Text",
+      "props": { "text": "Viewing: {tenant.name} — Platform Admin Mode", "color": "{semantic.color.warning}", "size": "{semantic.font.size.body}" }
+    },
+    "detail_header": {
+      "type": "Heading",
+      "props": { "text": "{tenant.name}", "size": "{semantic.font.size.title}", "level": "1" }
+    },
+
+    "config_panel": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "gap": "{semantic.space.gap-md}" },
+      "children": ["cache_card", "guardrails_card"]
+    },
+    "cache_card": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "radius": "{semantic.radius.flat-card}" },
+      "children": ["cache_title", "cache_save_btn"]
+    },
+    "cache_title": { "type": "Heading", "props": { "text": "Cache", "level": "3", "size": "{semantic.font.size.heading}" } },
+    "cache_save_btn": { "type": "Button", "props": { "label": "Save", "variant": "default" } },
+    "guardrails_card": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "radius": "{semantic.radius.flat-card}" },
+      "children": ["guardrails_title", "guardrails_save_btn"]
+    },
+    "guardrails_title": { "type": "Heading", "props": { "text": "Guardrails", "level": "3", "size": "{semantic.font.size.heading}" } },
+    "guardrails_save_btn": { "type": "Button", "props": { "label": "Save guardrails", "variant": "default" } },
+
+    "budget_panel": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "gap": "{semantic.space.gap-md}" },
+      "children": ["budget_stat", "spent_stat", "edit_budget_btn"]
+    },
+    "budget_stat": {
+      "type": "StatCard",
+      "props": { "label": "Monthly Budget", "value": "$500.00", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.text}" },
+      "note": "requires StatCard's new additive `variant` passthrough (decision #1) to render as flat — not yet added to the real component."
+    },
+    "spent_stat": {
+      "type": "StatCard",
+      "props": { "label": "Spent this month", "value": "$312.47", "bg": "{semantic.color.surface}", "valueColor": "{semantic.color.text}" }
+    },
+    "edit_budget_btn": { "type": "Button", "props": { "label": "Edit Budget", "variant": "outline" } },
+
+    "keys_panel": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "gap": "{semantic.space.gap-md}" },
+      "children": ["create_key_btn", "keys_table_card"]
+    },
+    "create_key_btn": { "type": "Button", "props": { "label": "Create key", "variant": "default" } },
+    "keys_table_card": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "radius": "{semantic.radius.flat-card}" },
+      "children": ["keys_table"]
+    },
+    "keys_table": {
+      "type": "DataTable",
+      "props": { "headerBg": "{semantic.color.surface-muted}", "text": "{semantic.color.text}", "border": "{semantic.color.border}" },
+      "note": "columns: Key ID/Name/Prefix/Created/Status/Actions, 2 sample rows. The revoke confirm dialog (role=dialog, useFocusTrap) is NOT re-skinned — decision #3, deliberately kept at its existing elevation."
+    },
+
+    "members_panel": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "gap": "{semantic.space.gap-md}" },
+      "children": ["members_table"]
+    },
+    "members_table": {
+      "type": "DataTable",
+      "props": { "headerBg": "{semantic.color.surface}", "text": "{semantic.color.text}", "border": "{semantic.color.border}" },
+      "note": "columns: Email/Current Role/Assign Role/Impersonate, 3 sample rows. No Card wrapper in the real component today — unchanged here; Table itself is out of this task's scope (Aurora default, untouched)."
+    },
+
+    "plan_panel": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "gap": "{semantic.space.gap-md}" },
+      "children": ["plan_card_starter", "plan_card_growth", "plan_card_enterprise", "remove_plan_btn"]
+    },
+    "plan_card_starter": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "radius": "{semantic.radius.flat-card}" },
+      "children": []
+    },
+    "plan_card_growth": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "border": "{semantic.color.selected-border}", "radius": "{semantic.radius.flat-card}" },
+      "children": ["growth_badge"],
+      "note": "current-plan card — selected-border (Classic Blue, 8.86:1 vs card) PLUS the badge below, together, never color alone (Tin's own decided rationale)."
+    },
+    "growth_badge": { "type": "Badge", "props": { "label": "Current plan", "variant": "secondary" } },
+    "plan_card_enterprise": {
+      "type": "Card",
+      "props": { "bg": "{semantic.color.surface}", "radius": "{semantic.radius.flat-card}" },
+      "children": [],
+      "note": "PlanCard is the SAME component PlatformPlanCatalog.tsx (Screen 1) reuses verbatim — decision #4, this flat-variant change spills over to that page too."
+    },
+    "remove_plan_btn": { "type": "Button", "props": { "label": "Remove plan assignment", "variant": "ghost" } }
+  }
+}

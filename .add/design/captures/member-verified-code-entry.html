@@ -1,0 +1,333 @@
+<title>Member-verified code entry — 6-digit rung-1 trust wireframe</title>
+<style>
+  :root {
+    --canvas:#eef1f5; --surface:#ffffff; --ink:#101720; --muted:#5b6675; --faint:#8a94a2;
+    --azure:#2f6df0; --azure-deep:#1c4bb8; --azure-soft:#eef3fe; --azure-border:#d8e4fd;
+    --border:#e5e9ef; --hair:#eef1f5; --field:#f7f9fb;
+    --success:#16955f; --success-text:#0f7a4d; --success-soft:#e7f5ee; --success-border:#bfe6d2;
+    --warning:#bd8410; --warning-text:#8a5a0a; --warning-soft:#fbf2df; --warning-border:#f0dfb0;
+    --danger:#cc3d37; --danger-text:#c0332e; --danger-soft:#fbeceb;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --shadow:0 1px 2px rgba(16,23,32,.05),0 10px 30px -16px rgba(16,23,32,.18);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --canvas:#0a0e13; --surface:#121924; --ink:#eaeff5; --muted:#9aa7b5; --faint:#6b7787;
+    --azure:#5b8cff; --azure-deep:#8fb0ff; --azure-soft:#16233d; --azure-border:#24365c;
+    --border:#232e3b; --hair:#1a2430; --field:#0f151d;
+    --success:#4cc38a; --success-text:#6fd3a5; --success-soft:#12281f; --success-border:#1f4535;
+    --warning:#e0a94a; --warning-text:#f2c661; --warning-soft:#2a2210; --warning-border:#463714;
+    --danger:#e06a63; --danger-text:#f08a86; --danger-soft:#2c1614;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px -18px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="light"]{--canvas:#eef1f5;--surface:#fff;--ink:#101720;--muted:#5b6675;--faint:#8a94a2;--azure:#2f6df0;--azure-deep:#1c4bb8;--azure-soft:#eef3fe;--azure-border:#d8e4fd;--border:#e5e9ef;--hair:#eef1f5;--field:#f7f9fb;--success:#16955f;--success-text:#0f7a4d;--success-soft:#e7f5ee;--success-border:#bfe6d2;--warning:#bd8410;--warning-text:#8a5a0a;--warning-soft:#fbf2df;--warning-border:#f0dfb0;--danger:#cc3d37;--danger-text:#c0332e;--danger-soft:#fbeceb;--shadow:0 1px 2px rgba(16,23,32,.05),0 10px 30px -16px rgba(16,23,32,.18);}
+  :root[data-theme="dark"]{--canvas:#0a0e13;--surface:#121924;--ink:#eaeff5;--muted:#9aa7b5;--faint:#6b7787;--azure:#5b8cff;--azure-deep:#8fb0ff;--azure-soft:#16233d;--azure-border:#24365c;--border:#232e3b;--hair:#1a2430;--field:#0f151d;--success:#4cc38a;--success-text:#6fd3a5;--success-soft:#12281f;--success-border:#1f4535;--warning:#e0a94a;--warning-text:#f2c661;--warning-soft:#2a2210;--warning-border:#463714;--danger:#e06a63;--danger-text:#f08a86;--danger-soft:#2c1614;--shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px -18px rgba(0,0,0,.7);}
+
+  *{box-sizing:border-box;}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--sans);line-height:1.55;margin:0;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:52px 24px 96px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--azure);font-weight:600;margin:0 0 12px;}
+  h1{font-size:clamp(28px,4.5vw,40px);line-height:1.12;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance;}
+  .lede{font-size:18px;color:var(--muted);margin:0;max-width:66ch;}
+  .lede b{color:var(--ink);}
+  .meta{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;}
+  .meta span::before{content:"▸ ";color:var(--azure);}
+
+  h2{font-size:13px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.11em;color:var(--faint);font-weight:600;margin:0 0 6px;}
+  .sec-head{margin:58px 0 22px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .sec-head h3{font-size:22px;letter-spacing:-.01em;margin:6px 0 4px;}
+  .sec-head p{margin:0;color:var(--muted);font-size:15px;max-width:72ch;}
+  .tag{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--azure-deep);background:var(--azure-soft);border:1px solid var(--azure-border);padding:2px 8px;border-radius:999px;font-weight:600;margin-left:8px;vertical-align:middle;}
+
+  /* app chrome mock */
+  .app{background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;}
+  .app-top{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--hair);background:var(--field);}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--border);}
+  .crumb{font-family:var(--mono);font-size:12px;color:var(--faint);margin-left:6px;}
+  .crumb b{color:var(--muted);font-weight:600;}
+  .app-body{padding:26px 28px;}
+
+  /* settings tabs strip */
+  .tabs{display:flex;gap:2px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:22px;}
+  .tabs .t{font-size:13px;color:var(--muted);padding:8px 12px;border-bottom:2px solid transparent;}
+  .tabs .t.on{color:var(--azure-deep);border-bottom-color:var(--azure);font-weight:600;}
+
+  .badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.02em;padding:3px 9px;border-radius:999px;line-height:1.4;white-space:nowrap;}
+  .b-success{background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border);}
+  .b-member{background:var(--azure-soft);color:var(--azure-deep);border:1px solid var(--azure-border);}
+  .b-warning{background:var(--warning-soft);color:var(--warning-text);border:1px solid var(--warning-border);}
+  .ic{width:12px;height:12px;display:inline-block;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+  /* claim row */
+  .claimrow{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 0 6px;}
+  .claimrow .dom{font-family:var(--mono);font-size:15px;font-weight:600;}
+  .claimrow .sub{font-size:12.5px;color:var(--faint);margin-top:3px;}
+  .muted{color:var(--muted);font-size:13px;}
+
+  /* the inline member-verify code block (expanded under a pending claim) */
+  .verifyblock{border:1px solid var(--azure-border);background:var(--azure-soft);border-radius:13px;padding:20px 22px;margin-top:10px;}
+  .verifyblock h4{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px;}
+  .verifyblock .sub{font-size:13.5px;color:var(--muted);margin:0 0 16px;max-width:60ch;}
+  .verifyblock .sub b{color:var(--ink);}
+  .otp{display:flex;gap:10px;margin-bottom:16px;}
+  .otp .seg{width:46px;height:56px;border:1px solid var(--border);background:var(--surface);border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:22px;font-weight:600;color:var(--ink);}
+  .otp .seg.filled{border-color:var(--azure);box-shadow:0 0 0 3px color-mix(in srgb,var(--azure) 18%,transparent);}
+  .otp .seg.caret{border-color:var(--azure);position:relative;}
+  .otp .seg.caret::after{content:"";width:2px;height:24px;background:var(--azure);animation:blink 1.1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  @media (prefers-reduced-motion:reduce){.otp .seg.caret::after{animation:none;}}
+  .otp .seg.empty{color:var(--faint);}
+  .cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .hint{font-size:12px;color:var(--faint);margin-top:12px;}
+
+  /* generic atoms */
+  .btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 16px;border-radius:8px;border:1px solid transparent;cursor:default;}
+  .btn-primary{background:var(--azure);color:#fff;}
+  .btn-ghost{background:transparent;color:var(--muted);border-color:var(--border);}
+  .btn-link{background:none;border:none;color:var(--azure-deep);font-weight:600;font-size:13px;padding:0;}
+  .btn-sm{font-size:12px;padding:6px 11px;}
+
+  /* the DNS challenge alternative (reused dns-verify-softeners card) */
+  .oralt{display:flex;align-items:center;gap:12px;margin:22px 0 6px;color:var(--faint);font-size:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.09em;}
+  .oralt::before,.oralt::after{content:"";height:1px;background:var(--border);flex:1;}
+  .challenge{border:1px solid var(--border);background:var(--field);border-radius:13px;padding:20px;}
+  .challenge h4{margin:0 0 4px;font-size:14.5px;}
+  .challenge .sub{font-size:13px;color:var(--muted);margin:0 0 14px;}
+  .field{font-family:var(--mono);font-size:12.5px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .field .v{color:var(--ink);overflow-x:auto;white-space:nowrap;}
+  .copybtn{font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--azure-deep);white-space:nowrap;display:inline-flex;gap:4px;align-items:center;}
+  .polling{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--azure-deep);font-weight:600;background:var(--surface);border:1px dashed var(--azure-border);border-radius:9px;padding:10px 13px;margin-top:14px;}
+  .spinner{width:14px;height:14px;border:2px solid var(--azure-border);border-top-color:var(--azure);border-radius:50%;animation:spin 1s linear infinite;flex:0 0 auto;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none;}}
+
+  /* rung seal showcase */
+  .rungrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+  @media (max-width:720px){.rungrow{grid-template-columns:1fr;}}
+  .rungcard{border:1px solid var(--border);border-radius:13px;padding:18px;background:var(--surface);position:relative;overflow:hidden;}
+  .rungcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;}
+  .rungcard.m::before{background:var(--azure);}
+  .rungcard.o::before{background:var(--success);}
+  .rungcard.p::before{background:var(--warning);}
+  .rungcard .lvl{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;}
+  .rungcard .desc{font-size:12.5px;color:var(--muted);margin-top:12px;}
+  .rungcard .desc b{color:var(--ink);}
+  .rungcard .drv{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:10px;padding-top:10px;border-top:1px solid var(--hair);}
+
+  /* calm inline messages (role=status) */
+  .status{display:flex;align-items:flex-start;gap:10px;font-size:13px;border-radius:9px;padding:11px 14px;margin-top:14px;}
+  .status .glyph{flex:0 0 16px;margin-top:1px;}
+  .status.calm{background:var(--field);border:1px solid var(--border);color:var(--muted);}
+  .status.calm b{color:var(--ink);}
+  .status .resend{margin-left:auto;color:var(--azure-deep);font-weight:600;white-space:nowrap;padding-left:12px;}
+  .statuslabel{font-family:var(--mono);font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em;margin:20px 0 6px;}
+  .contrast{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--faint);margin-top:10px;}
+  .contrast .x{display:inline-flex;align-items:center;gap:6px;color:var(--danger-text);text-decoration:line-through;text-decoration-color:var(--danger);}
+
+  /* onboarding checklist */
+  .checklist{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:18px 20px;max-width:520px;}
+  .checklist .ch-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .checklist h4{margin:0;font-size:15px;}
+  .checklist ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px;}
+  .checklist li{display:flex;align-items:center;gap:11px;font-size:13.5px;}
+  .checklist .mark{width:20px;height:20px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;}
+  .checklist .mark.done{background:color-mix(in srgb,var(--success) 20%,transparent);color:var(--success-text);}
+  .checklist .mark.todo{border:1px solid var(--border);color:var(--faint);}
+  .checklist li.newstep{background:var(--azure-soft);border:1px solid var(--azure-border);border-radius:9px;padding:9px 11px;margin:2px -11px;}
+  .checklist li.newstep .mark{border-color:var(--azure);color:var(--azure-deep);}
+  .checklist .deeplink{margin-left:auto;color:var(--azure-deep);font-weight:600;font-size:12px;white-space:nowrap;}
+
+  .anno{font-family:var(--mono);font-size:11.5px;color:var(--azure-deep);background:var(--azure-soft);border:1px solid var(--azure-border);border-radius:8px;padding:9px 13px;margin-top:16px;display:flex;gap:8px;line-height:1.5;}
+  .anno b{color:var(--ink);font-family:var(--sans);}
+  .note{font-size:12.5px;color:var(--faint);margin-top:12px;font-style:italic;}
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">UDD wireframe · for design confirmation · not pixel-final</p>
+  <h1>Member-verified — the 6-digit code path & rung-aware climb seal</h1>
+  <p class="lede">Rung 1 of the trust ladder: a teammate confirms they work at the domain by entering a code emailed to <b>their own signup address</b> — no DNS, no waiting. It lives <b>inline on the existing Domains card</b>, beside (never replacing) the DNS ownership challenge. Reuses the shipped Airier system + the <b>DomainStatusSeal</b> idiom; the one new element is a seal that shows the <em>climb</em> Member → Owner, not a flat badge.</p>
+  <div class="meta">
+    <span>Task: member-verified-code-entry</span>
+    <span>Consumes FROZEN member-verified-recognition (6a75579)</span>
+    <span>Presentation + BFF pass-through — trust enforced server-side</span>
+  </div>
+
+  <!-- ── SECTION 1 ─────────────────────────────────────────────── -->
+  <div class="sec-head">
+    <h2>Section 1 — Primary surface</h2>
+    <h3>Settings › Domains — inline code entry, DNS as the alternative<span class="tag">both paths coexist</span></h3>
+    <p>A PENDING claim expands to two ways to earn trust. <b>Member-verified now</b> (enter the mailbox code) sits first; <b>Owner-verified later</b> (publish the DNS TXT record, auto-checked) sits below under an "or" divider. Choosing one never blocks the other — a member can climb to owner anytime.</p>
+  </div>
+
+  <div class="app">
+    <div class="app-top">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="crumb">hydroa&nbsp;/&nbsp;<b>Settings</b>&nbsp;/&nbsp;Domains</span>
+    </div>
+    <div class="app-body">
+      <div class="tabs">
+        <span class="t">Cache</span><span class="t">Guardrails</span><span class="t">SSO</span>
+        <span class="t">Provider Keys</span><span class="t">SCIM</span><span class="t">SAML SSO</span>
+        <span class="t">Data &amp; residency</span><span class="t">Compliance</span><span class="t on">Domains</span>
+      </div>
+
+      <p class="muted" style="margin-top:0;">Prove your tenant owns an email domain, or confirm you're a member of one. Verified domains route matching signups and SSO logins into this workspace.</p>
+
+      <div class="claimrow">
+        <div>
+          <div class="dom">acme.com</div>
+          <div class="sub">Added 2 minutes ago · challenge expires in 72h</div>
+        </div>
+        <span class="badge b-warning">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          Pending
+        </span>
+      </div>
+
+      <!-- INLINE member-verify code block -->
+      <div class="verifyblock">
+        <h4>
+          <svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px;stroke:var(--azure-deep);"><path d="M4 4h16v16H4z" style="fill:none"/><path d="m4 7 8 5 8-5"/></svg>
+          Confirm you work at acme.com
+        </h4>
+        <p class="sub">We emailed a 6-digit code to <b>sam@acme.com</b>. Enter it to confirm you work here — this joins you as a <b>member-verified</b> teammate.</p>
+
+        <div class="otp" role="group" aria-label="6-digit confirmation code">
+          <span class="seg filled">4</span>
+          <span class="seg filled">1</span>
+          <span class="seg filled">9</span>
+          <span class="seg caret"></span>
+          <span class="seg empty"></span>
+          <span class="seg empty"></span>
+        </div>
+
+        <div class="cta">
+          <span class="btn btn-primary">Confirm</span>
+          <button class="btn-link">Resend code</button>
+          <button class="btn-link" style="color:var(--muted)">Verify domain later</button>
+        </div>
+        <p class="hint">inputmode=numeric · auto-advances · paste fills all six · backspace steps back</p>
+      </div>
+
+      <div class="oralt">or prove domain ownership</div>
+
+      <!-- DNS challenge alternative — reused dns-verify-softeners card, calm/auto -->
+      <div class="challenge">
+        <h4>Publish a DNS TXT record for acme.com</h4>
+        <p class="sub">We'll check automatically and seal it <b>Owner-verified</b> as soon as it's live — propagation can take a few minutes.</p>
+        <div class="field"><span class="v">_hydroa-challenge.acme.com</span><span class="copybtn">⧉ Copy</span></div>
+        <div class="field"><span class="v">hydroa-verify=8f2c…a91d</span><span class="copybtn">⧉ Copy</span></div>
+        <div class="polling"><span class="spinner"></span> Waiting for DNS to propagate — checking automatically…</div>
+      </div>
+
+      <div class="anno"><b>Reuse:</b> the DNS block, its auto-poll (useVerifyPoll), calm "checking" state, per-field copy, and "Verify later" are the shipped dns-verify-softeners affordances — untouched. The code block is the only new inline element.</div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 2 ─────────────────────────────────────────────── -->
+  <div class="sec-head">
+    <h2>Section 2 — Signature element</h2>
+    <h3>The rung-aware climb seal — three states, icon + label both carry meaning</h3>
+    <p>Extends <b>DomainStatusSeal</b>. The rung is <b>derived</b> from the frozen claim shape <code>(status, member_verified_at)</code> — never a new persisted status. Icon and text each stand alone (WCAG 1.4.1): color is never the only signal.</p>
+  </div>
+
+  <div class="rungrow">
+    <div class="rungcard m">
+      <div class="lvl">Rung 1</div>
+      <span class="badge b-member">
+        <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg>
+        Member-verified
+      </span>
+      <div class="desc">A teammate confirmed a mailbox code. Trusted to <b>belong</b> to the domain — not yet to <b>own</b> it.</div>
+      <div class="drv">member_verified_at set · status "pending"</div>
+    </div>
+    <div class="rungcard o">
+      <div class="lvl">Rung 2 · sealed</div>
+      <span class="badge b-success">
+        <svg class="ic" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Owner-verified
+      </span>
+      <div class="desc">DNS ownership proven. The <b>sealed</b> state — routes signups &amp; SSO. Reuses the lock-seal idiom verbatim.</div>
+      <div class="drv">status == "verified"</div>
+    </div>
+    <div class="rungcard p">
+      <div class="lvl">Rung 0</div>
+      <span class="badge b-warning">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        Pending
+      </span>
+      <div class="desc">Neither path complete yet. The action-needed state that offers <b>both</b> ways to climb.</div>
+      <div class="drv">no member_verified_at · not verified</div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3 ─────────────────────────────────────────────── -->
+  <div class="sec-head">
+    <h2>Section 3 — Error states</h2>
+    <h3>Calm, inline, recoverable — never a loud red alarm</h3>
+    <p>Every code failure is a quiet <code>role="status"</code> message under the segments (reusing the dns-verify-softeners calm-state pattern) — <b>not</b> a <code>role="alert"</code>. Expired and too-many both offer a one-tap "Resend code". The segments stay put so the user can correct without losing context.</p>
+  </div>
+
+  <div class="app"><div class="app-body" style="padding:24px 26px;">
+
+    <div class="statuslabel">Invalid code — ERR_MEMBER_VERIFY_CODE_INVALID (400)</div>
+    <div class="otp" aria-hidden="true">
+      <span class="seg filled">4</span><span class="seg filled">1</span><span class="seg filled">9</span>
+      <span class="seg filled">2</span><span class="seg filled">0</span><span class="seg filled">7</span>
+    </div>
+    <div class="status calm" role="status">
+      <svg class="ic glyph" viewBox="0 0 24 24" style="stroke:var(--muted)"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+      <span>That code doesn't match. <b>Double-check the 6 digits</b> from your email and try again.</span>
+    </div>
+
+    <div class="statuslabel">Expired code — ERR_MEMBER_VERIFY_CODE_EXPIRED (410)</div>
+    <div class="status calm" role="status">
+      <svg class="ic glyph" viewBox="0 0 24 24" style="stroke:var(--muted)"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>This code has expired. Codes are valid for a short window — <b>request a fresh one</b>.</span>
+      <span class="resend">↻ Resend code</span>
+    </div>
+
+    <div class="statuslabel">Too many attempts — ERR_MEMBER_VERIFY_TOO_MANY_ATTEMPTS (429)</div>
+    <div class="status calm" role="status">
+      <svg class="ic glyph" viewBox="0 0 24 24" style="stroke:var(--muted)"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+      <span>Too many tries on this code. For your security we've paused it — <b>send a new code</b> to start over.</span>
+      <span class="resend">↻ Resend code</span>
+    </div>
+
+    <div class="contrast">
+      <span class="x"><svg class="ic" viewBox="0 0 24 24" style="stroke:var(--danger)"><path d="M18 6 6 18M6 6l12 12"/></svg> loud red role="alert"</span>
+      <span>→ deliberately avoided; a mistyped digit is not an emergency.</span>
+    </div>
+    <p class="note">Also handled the same calm way: ERR_RATE_LIMITED (429, Retry-After), ERR_DOMAIN_CLAIM_NOT_PENDING (409), ERR_MEMBER_VERIFY_DOMAIN_MISMATCH (403), 404. The UI only ever sends the code — never an email or domain.</p>
+  </div></div>
+
+  <!-- ── SECTION 4 ─────────────────────────────────────────────── -->
+  <div class="sec-head">
+    <h2>Section 4 — First-run entry point</h2>
+    <h3>Overview › Onboarding checklist — a new "Confirm your work email domain" step</h3>
+    <p>A fifth step is appended to the existing <b>OnboardingChecklist</b>. It deep-links straight to the Domains card / code entry in Section 1 — so a brand-new teammate discovers the fast path on day one, without hunting through Settings.</p>
+  </div>
+
+  <div class="checklist">
+    <div class="ch-head">
+      <h4>Get started with Hydroa</h4>
+      <span class="btn-link" style="color:var(--muted);font-size:12px;">Dismiss</span>
+    </div>
+    <ul>
+      <li><span class="mark done">✓</span><span>Create your first API key</span></li>
+      <li><span class="mark done">✓</span><span>Make your first call</span></li>
+      <li><span class="mark todo"></span><span>Add a provider key (BYOK)</span></li>
+      <li><span class="mark todo"></span><span>Invite a teammate</span></li>
+      <li class="newstep">
+        <span class="mark todo"></span>
+        <span>Confirm your work email domain</span>
+        <span class="deeplink">Enter code →</span>
+      </li>
+    </ul>
+  </div>
+  <div class="anno"><b>Reuse:</b> the checklist's self-fetching, role-aware, dismissible card is untouched — this is one appended step whose link targets Settings ?tab=domains. Completion derives from the same claim list (member_verified_at or verified).</div>
+
+  <p class="note" style="margin-top:40px;">Toggle your OS light/dark theme (or the artifact's theme switch) to check both palettes. This is a wireframe for the human's pre-build confirmation — layout and states, not final pixels.</p>
+
+</div>

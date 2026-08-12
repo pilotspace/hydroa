@@ -1,0 +1,218 @@
+{
+  "components": {
+    "Screen": {
+      "description": "Top-level page region — the surface a journey renders into.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "padding": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Card": {
+      "description": "A bounded content container with surface, border, and radius.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "gap": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Heading": {
+      "description": "A section/page title.",
+      "props": {
+        "text": { "type": "string" },
+        "color": { "type": "token", "token": "color" },
+        "size": { "type": "token", "token": "dimension" },
+        "level": { "type": "enum", "values": ["1", "2", "3"] }
+      }
+    },
+    "Text": {
+      "description": "Body or muted copy.",
+      "props": {
+        "text": { "type": "string" },
+        "color": { "type": "token", "token": "color" },
+        "size": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Button": {
+      "description": "Primary action control.",
+      "props": {
+        "label": { "type": "string" },
+        "variant": { "type": "enum", "values": ["default", "secondary", "outline", "ghost", "destructive"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "Badge": {
+      "description": "A small status/label chip.",
+      "props": {
+        "label": { "type": "string" },
+        "variant": { "type": "enum", "values": ["default", "secondary", "outline", "success", "warning", "destructive"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" }
+      }
+    },
+    "StatCard": {
+      "description": "A labelled metric tile (label + value).",
+      "props": {
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "bg": { "type": "token", "token": "color" },
+        "valueColor": { "type": "token", "token": "color" }
+      }
+    },
+    "Field": {
+      "description": "A labelled form input.",
+      "props": {
+        "label": { "type": "string" },
+        "placeholder": { "type": "string" },
+        "border": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" }
+      }
+    },
+    "Textarea": {
+      "description": "Multi-line free-text input (autosizing or fixed) for prompt/JSONL/long-form entry. Reused from VideoWorkspace's prompt field. (Briefly registered @ batches-workspace as a second consumer 2026-07-03; that composer was retired the same day per a scope correction — see DESIGN.md — so VideoWorkspace remains the sole consumer.)",
+      "props": {
+        "placeholder": { "type": "string" },
+        "border": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" },
+        "font": { "type": "enum", "values": ["sans", "mono"] }
+      }
+    },
+    "AppSidebar": {
+      "description": "Collapsible navigation rail — brand header, grouped items, user footer.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "accent": { "type": "token", "token": "color" }
+      }
+    },
+    "DataTable": {
+      "description": "A sortable, paginated tabular data view built on the Table primitive.",
+      "hasChildren": true,
+      "props": {
+        "headerBg": { "type": "token", "token": "color" },
+        "text": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
+    },
+    "ChartCard": {
+      "description": "A Card-wrapped data-visualization surface with token-driven series colors.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "series": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "ThemeToggle": {
+      "description": "A control that switches the active theme (light/dark/system).",
+      "props": {
+        "fg": { "type": "token", "token": "color" },
+        "ring": { "type": "token", "token": "color" }
+      }
+    },
+    "MessageThread": {
+      "description": "Scrollable multi-turn chat thread (overflow-y-auto), rendering the four UI states (loading/empty/error/success) with a scroll-to-latest control. New @ v40 chat-workspace-page (ref: ChatGPT/Claude/Vercel AI thread layout).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "gap": { "type": "token", "token": "dimension" }
+      }
+    },
+    "MessageBubble": {
+      "description": "A single chat turn — user (align end, primary fill) or assistant (align start, surface+border, markdown+code). Supports a streaming caret. New @ v40 chat-workspace-page.",
+      "hasChildren": true,
+      "props": {
+        "role": { "type": "enum", "values": ["user", "assistant", "system"] },
+        "bg": { "type": "token", "token": "color" },
+        "fg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "streaming": { "type": "boolean" }
+      }
+    },
+    "Composer": {
+      "description": "Chat input — autosizing textarea + a Send/Stop action that toggles on streaming state, with a model-controls slot. New @ v40 chat-workspace-page.",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" },
+        "ring": { "type": "token", "token": "color" }
+      }
+    },
+    "CostReadout": {
+      "description": "Per-turn / per-session token+cost readout pill; shows an honest placeholder when usage is absent. Slot filled by chat-cost-readout. New @ v40.",
+      "props": {
+        "scope": { "type": "enum", "values": ["turn", "session"] },
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
+    },
+    "ModelPicker": {
+      "description": "Catalog-model selector (source GET /v1/models). Slot filled by chat-model-controls. New @ v40.",
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "radius": { "type": "token", "token": "dimension" }
+      }
+    },
+    "ModelControls": {
+      "description": "Per-request controls (system prompt + temperature) feeding the composer. Slot filled by chat-model-controls. New @ v40.",
+      "props": {
+        "fg": { "type": "token", "token": "color" }
+      }
+    },
+    "SessionsRail": {
+      "description": "Left rail listing conversations grouped by recency — search + New + per-item (title, model badge, timestamp, active state). Restyles the v40 ChatHistorySidebar into the playground's session list. New @ chat-playground (ref: OpenAI Playground / ChatGPT conversation sidebar).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "accent": { "type": "token", "token": "color" }
+      }
+    },
+    "InspectorPanel": {
+      "description": "Right-side tabbed control surface (Parameters / Tools / Code) — the playground's parameter rail. Owns the relocated ModelControls + the new sampling/tools/code slots. New @ chat-playground (ref: OpenAI Playground right rail · Anthropic Console).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "tabs": { "type": "enum", "values": ["parameters", "tools", "code"] }
+      }
+    },
+    "ParameterField": {
+      "description": "A labelled sampling control — label + slider (track/fill/thumb) + a numeric value box; also tag-input (stop sequences) and segmented variants. New @ chat-playground (ref: OpenAI Playground parameters: temperature/top_p/max_tokens/penalties/seed).",
+      "props": {
+        "label": { "type": "string" },
+        "control": { "type": "enum", "values": ["slider", "number", "tags", "segmented", "toggle"] },
+        "value": { "type": "string" },
+        "accent": { "type": "token", "token": "color" },
+        "track": { "type": "token", "token": "color" }
+      }
+    },
+    "ToolCallCard": {
+      "description": "Renders an assistant tool/function call inline in the thread — function badge + call id, JSON arguments, the tool result panel, then the final answer. New @ chat-playground (ref: OpenAI tool_calls · Anthropic Console tool use).",
+      "hasChildren": true,
+      "props": {
+        "fn": { "type": "string" },
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" },
+        "resultBg": { "type": "token", "token": "color" }
+      }
+    },
+    "ConversationTopBar": {
+      "description": "Conversation column header — editable title + model selector + Fork/Export/View-code actions + running CostReadout chip. New @ chat-playground (ref: OpenAI Playground top bar).",
+      "hasChildren": true,
+      "props": {
+        "bg": { "type": "token", "token": "color" },
+        "border": { "type": "token", "token": "color" }
+      }
+    }
+  }
+}

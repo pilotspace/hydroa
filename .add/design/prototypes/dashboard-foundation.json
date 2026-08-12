@@ -1,0 +1,88 @@
+{
+  "root": "screen",
+  "elements": {
+    "screen": {
+      "type": "Screen",
+      "props": {
+        "bg": "{semantic.color.surface-muted}",
+        "padding": "{semantic.space.inset-lg}"
+      },
+      "children": ["heading", "stats", "actions"]
+    },
+    "heading": {
+      "type": "Heading",
+      "props": {
+        "text": "Usage & cost",
+        "color": "{semantic.color.text}",
+        "size": "{semantic.font.size.heading}",
+        "level": "1"
+      }
+    },
+    "stats": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "gap": "{semantic.space.gap-md}"
+      },
+      "children": ["stat_requests", "stat_cost", "status_badge"]
+    },
+    "stat_requests": {
+      "type": "StatCard",
+      "props": {
+        "label": "Requests",
+        "value": "1,284",
+        "bg": "{semantic.color.surface}",
+        "valueColor": "{semantic.color.text}"
+      }
+    },
+    "stat_cost": {
+      "type": "StatCard",
+      "props": {
+        "label": "Cost (USD)",
+        "value": "$12.30",
+        "bg": "{semantic.color.surface}",
+        "valueColor": "{semantic.color.accent}"
+      }
+    },
+    "status_badge": {
+      "type": "Badge",
+      "props": {
+        "label": "Within budget",
+        "variant": "success",
+        "bg": "{semantic.color.surface-muted}",
+        "fg": "{semantic.color.success}"
+      }
+    },
+    "actions": {
+      "type": "Card",
+      "props": {
+        "bg": "{semantic.color.surface}",
+        "border": "{semantic.color.border}",
+        "radius": "{semantic.radius.card}",
+        "gap": "{semantic.space.gap-sm}"
+      },
+      "children": ["budget_field", "save_button"]
+    },
+    "budget_field": {
+      "type": "Field",
+      "props": {
+        "label": "Monthly budget",
+        "placeholder": "0.00",
+        "border": "{semantic.color.border}",
+        "ring": "{semantic.color.focus-ring}"
+      }
+    },
+    "save_button": {
+      "type": "Button",
+      "props": {
+        "label": "Save budget",
+        "variant": "default",
+        "bg": "{semantic.color.accent}",
+        "fg": "{semantic.color.text-on-accent}",
+        "radius": "{semantic.radius.control}"
+      }
+    }
+  }
+}
