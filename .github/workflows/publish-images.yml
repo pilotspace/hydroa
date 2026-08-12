@@ -1,0 +1,176 @@
+name: publish-images
+
+# Publishes the release container images. Closes todo #118; enforces the fix from #117.
+#
+# WHY THIS EXISTS. Until now release images were built by hand on an operator's laptop
+# (docs/runbooks/cloud-deploy.md). On 2026-08-12 that was actually run and both images came
+# out `linux/arm64`, because a bare `docker build` targets the OPERATOR'S host arch. Pushed
+# to a typical amd64 node pool that image dies with `exec format error` — at DEPLOY time,
+# after the artifact is published and the tag already means the wrong thing. Nothing caught
+# it at any layer, because there was no publish step to hang a check off.
+#
+# The build here is not the point; the VERIFY step is. `docker buildx build --platform a,b`
+# without `--push` silently keeps only the host arch and still exits 0, so "the build
+# succeeded" is not evidence the registry holds the right artifact. Only reading the
+# manifest back proves that, so this workflow does exactly that and fails if an arch is
+# missing. Guarded by tests/repo_hygiene/test_release_images_are_multi_arch.py, which is red
+# against the pre-fix runbook.
+#
+# INJECTION DISCIPLINE: no ${{ }} expansion appears inside a `run:` body. Every value a user
+# can influence — the dispatch input, the ref name, the actor — is passed through `env:` and
+# read as a quoted shell variable, so a crafted tag or username is data, never code.
+#
+# KNOWN RESIDUE — the half-published window. The two images are pushed by SEQUENTIAL steps, so
+# if the gateway push succeeds and the dashboard push then fails, the tag exists for one image
+# and not the other, and the verify step never runs because `set -e` stopped the job. There is
+# no atomic two-image publish in the registry protocol to fix this properly; the mitigations
+# are that the job fails LOUDLY and that re-running is idempotent. Do not read a failed run as
+# "nothing was published" — check the registry before assuming a clean slate.
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual re-publish for a tag that failed midway. Publishing is idempotent — the same
+  # source produces the same content, and re-pushing a tag overwrites it with the same
+  # manifest — so re-running is the recovery path rather than a second kind of risk.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.14.1)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+# A tag must never be published by two runs at once: they would race to move the same tag
+# and the winner is arbitrary. NOT cancel-in-progress — killing a half-finished push is how
+# you get a tag pointing at a partial manifest. Let the first finish; the second then
+# re-verifies the same content.
+concurrency:
+  # `ref_name`, NOT `ref`: a tag push gives `refs/tags/v0.14.1` for `github.ref` but plain
+  # `v0.14.1` for `github.ref_name`, while a dispatch supplies `v0.14.1`. Using `ref` put the
+  # two forms in DIFFERENT groups, so a manual re-publish racing the original tag-push run —
+  # the exact collision this group exists to stop — was not serialized at all.
+  group: publish-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/pilotspace
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # arm64 is built under QEMU emulation on an amd64 runner, which is slow — two images at
+    # roughly 15-20 min each, plus pushes. Bounded so a wedged emulator cannot burn the
+    # account's job minutes indefinitely (design-for-failure, CLAUDE.md).
+    timeout-minutes: 90
+    steps:
+      - name: Resolve and validate the release tag
+        id: release
+        env:
+          RAW_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Whitelist the shape before it is ever used as a ref or an image tag. Anything
+          # that is not vMAJOR.MINOR.PATCH is refused rather than sanitised.
+          case "$RAW_TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::refusing to publish from '$RAW_TAG' — expected vMAJOR.MINOR.PATCH"; exit 1 ;;
+          esac
+          echo "tag=$RAW_TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=${RAW_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # Build FROM THE TAG, never from a branch head. This is the control that makes the
+          # published artifact correspond to the reviewed release — v0.14.0 shipped before
+          # three fixes precisely because the tag and the tree disagreed.
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Verify the checkout really is that tag
+        env:
+          WANT: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          got=$(git rev-parse HEAD)
+          want=$(git rev-parse "refs/tags/${WANT}^{commit}")
+          [ "$got" = "$want" ] || { echo "::error::checkout $got is not tag $WANT ($want)"; exit 1; }
+          echo "building from $WANT ($got)"
+
+      - uses: docker/setup-qemu-action@v3      # cross-arch emulation for the arm64 half
+      - uses: docker/setup-buildx-action@v3    # the manifest-list builder
+
+      - name: Log in to the registry
+        env:
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: Build and push gateway
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t "${REGISTRY}/ai-proxy-gateway:${VERSION}-prod" \
+            -t "${REGISTRY}/ai-proxy-gateway:${VERSION}" \
+            --push apps/gateway
+
+      - name: Build and push dashboard
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t "${REGISTRY}/ai-proxy-dashboard:${VERSION}-prod" \
+            -t "${REGISTRY}/ai-proxy-dashboard:${VERSION}" \
+            --push apps/dashboard
+
+      # ── the step this workflow exists for ────────────────────────────────────────────
+      - name: Verify every published manifest lists both architectures
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for image in ai-proxy-gateway ai-proxy-dashboard; do
+            for suffix in "-prod" ""; do
+              ref="${REGISTRY}/${image}:${VERSION}${suffix}"
+              echo "── $ref"
+              # Read the manifest BACK from the registry. A local build says nothing about
+              # what was actually published.
+              manifest=$(docker buildx imagetools inspect "$ref")
+              echo "$manifest"
+              for arch in linux/amd64 linux/arm64; do
+                # arm64 reports as linux/arm64/v8, so a prefix match is correct here.
+                # Attestation entries appear as unknown/unknown and are ignored.
+                if ! grep -q "Platform:.*${arch}" <<<"$manifest"; then
+                  echo "::error::$ref is MISSING $arch — do not deploy this tag"
+                  failed=1
+                fi
+              done
+            done
+          done
+          [ "$failed" -eq 0 ] || exit 1
+
+      - name: Record the published digests
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Published \`${VERSION}\`"
+            echo
+            echo "| image | digest |"
+            echo "| --- | --- |"
+            for image in ai-proxy-gateway ai-proxy-dashboard; do
+              ref="${REGISTRY}/${image}:${VERSION}-prod"
+              digest=$(docker buildx imagetools inspect "$ref" --format '{{println .Manifest.Digest}}' | head -1)
+              echo "| \`${ref}\` | \`${digest}\` |"
+            done
+            echo
+            echo "Pin these digests in \`charts/ai-proxy/values-prod.yaml\` for immutable pulls."
+          } >> "$GITHUB_STEP_SUMMARY"
