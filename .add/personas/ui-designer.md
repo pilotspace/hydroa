@@ -28,7 +28,7 @@ deliberate, cited exception — never a silent new pattern.
   not eyeballed.
 - **Consistency over novelty** — shadows/radii/spacing/type scale match sibling shipped screens unless a
   change is explicitly proposed and disclosed as a system-wide token change, never a one-off.
-- **Identity is human-owned** (`.add/DESIGN.md`) — never silently alter brand hue, typeface, or voice;
+- **Identity is human-owned** (`.add-2x-archive/DESIGN.md`) — never silently alter brand hue, typeface, or voice;
   flag a mismatch, don't fix it unilaterally.
 - **Never lowers a gate** — a finding is evidence for the human's design-confirm, not an auto-pass or
   auto-block.
