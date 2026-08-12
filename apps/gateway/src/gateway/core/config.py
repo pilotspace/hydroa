@@ -1015,8 +1015,10 @@ class Settings(BaseSettings):
     # "" = none configured → honest-degrade close 4404; else "openai" | "gemini".
     realtime_relay_provider: str = Field(default="")
     # gpt-realtime-pricing-fields TASK.md §3: switched from the older "gpt-4o-realtime-preview"
-    # to the current GA "gpt-realtime" model (Tin 2026-07-02, AskUserQuestion) — see
-    # catalog/infrastructure/gpt_realtime_seed.py for the corresponding pricing seed.
+    # to the current GA "gpt-realtime" model (Tin 2026-07-02, AskUserQuestion). The pricing seed
+    # now lives in migration 9cdca76231c6_model_catalog_db_seed.py (rows "gpt-realtime" and
+    # "gpt-realtime-2.1"); the old catalog/infrastructure/gpt_realtime_seed.py was retired by
+    # catalog-db-seed and this comment outlived it by pointing at a deleted file.
     realtime_relay_openai_model: str = Field(default="gpt-realtime")
     realtime_relay_gemini_model: str = Field(default="gemini-2.0-flash-exp")
 

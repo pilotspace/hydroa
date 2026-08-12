@@ -238,7 +238,7 @@ Reviewed by: Tin Dang · date: 2026-07-24
 
 ### Spec delta
 One line per forward change, tagged `[SPEC · open|seeded|dropped]` + evidence — each re-enters at Specify (`deltas.md`).
-- [SPEC · open] MILESTONE.md api-surface-parity Exit criterion "a ZDR tenant's stored response is metadata-only" is superseded by Tin's recorded decision (2026-07-24): ZDR store:true → 403 ERR_ZDR_PAYLOAD_BLOCKED fail-closed; orchestrator to update the milestone doc (evidence: this task's §1 M7 + coordinator message relaying AskUserQuestion).
+- [SPEC · dropped] MILESTONE.md api-surface-parity Exit criterion "a ZDR tenant's stored response is metadata-only" is superseded by Tin's recorded decision (2026-07-24): ZDR store:true → 403 ERR_ZDR_PAYLOAD_BLOCKED fail-closed; orchestrator to update the milestone doc (evidence: this task's §1 M7 + coordinator message relaying AskUserQuestion). — ACTION COMPLETED 2026-08-12, not rejected: the doc now matches the decision. The Exit-criteria line had ALREADY been corrected; the residue was the shared Issues/Risks prose, which still framed ZDR as "(metadata-only)" and is now the 403. Marked `dropped` only because the SPEC vocabulary is `open|seeded|dropped|carried` with no "done" token, and this needed a doc edit rather than a seeded task — read it as closed-by-completion.
 
 ### Competency deltas
 One lesson per line: `[DDD|SDD|UDD|TDD|ADD · open] the learning (evidence: …)` — see `deltas.md`.

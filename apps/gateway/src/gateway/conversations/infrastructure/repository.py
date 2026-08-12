@@ -79,7 +79,7 @@ class ConversationRepository:
                 ConversationRow.tenant_id == tenant_id,
                 ConversationRow.deleted_at.is_(None),
             )
-            .order_by(ConversationRow.updated_at.desc())
+            .order_by(ConversationRow.updated_at.desc(), ConversationRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

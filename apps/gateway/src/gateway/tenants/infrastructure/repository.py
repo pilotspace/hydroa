@@ -54,11 +54,8 @@ async def list_tenants(
         count_stmt = count_stmt.where(name_filter)
 
     total = (await session.execute(count_stmt)).scalar_one()
-    rows = (
-        (await session.execute(stmt.order_by(TenantRow.created_at).limit(limit).offset(offset)))
-        .scalars()
-        .all()
-    )
+    paged = stmt.order_by(TenantRow.created_at, TenantRow.id).limit(limit).offset(offset)
+    rows = (await session.execute(paged)).scalars().all()
     return list(rows), total
 
 

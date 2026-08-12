@@ -71,7 +71,7 @@ class VectorStoreRepository:
         stmt = (
             select(VectorStoreRow)
             .where(VectorStoreRow.tenant_id == tenant_id)
-            .order_by(VectorStoreRow.created_at.desc())
+            .order_by(VectorStoreRow.created_at.desc(), VectorStoreRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

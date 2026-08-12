@@ -127,7 +127,7 @@ class FileRepository:
                 FileRow.tenant_id == tenant_id,
                 FileRow.deleted_at.is_(None),
             )
-            .order_by(FileRow.created_at.desc())
+            .order_by(FileRow.created_at.desc(), FileRow.id.desc())
             .limit(limit)
             .offset(offset)
         )

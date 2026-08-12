@@ -45,7 +45,10 @@ Honors (conventions): every proxied request → exactly one usage record, billed
   NEW payload store · fail-closed on security, honest degradation everywhere · Envoy edge: new /v1
   routes must ride the existing ext_authz gate.
 Issues/Risks (shared): responses statefulness is a NEW payload-at-rest store → must compose with ZDR
-  (metadata-only) + retention sweeper + payload-capture inventory, and state isolation is
+  (a ZDR tenant's `store:true` is REFUSED loud — 403 `ERR_ZDR_PAYLOAD_BLOCKED`, pre-dial; Tin's
+  decision 2026-07-24 superseded the drafted "metadata-only" wording, which would have quietly
+  stored a reduced payload for a tenant that contracted for none) + retention sweeper +
+  payload-capture inventory, and state isolation is
   security-sensitive (cross-tenant `previous_response_id` probing must 404) · /v1/files content is a
   second user-payload store with the same obligations · moderations billing needs a real per-token
   count from the provider verdict path · images edits are multipart (new content-type handling on a

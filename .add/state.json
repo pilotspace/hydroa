@@ -150,7 +150,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-11T15:13:32+00:00",
+  "updated": "2026-08-12T04:07:45+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1401,19 +1401,19 @@
       "id": 11,
       "text": "repo-wide hardening (from margin verify \ud83d\udfe1): naive-datetime idiom assumes host TZ=UTC, unpinned in Dockerfile + test-invisible \u2014 pin TZ=UTC or move to aware-UTC datetimes; money-critical paths affected",
       "created": "2026-07-12T12:48:15+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 12,
       "text": "housekeeping (from seat-billing build): migrations/env.py ORM-import gap causes false alembic-check drift \u2014 pre-existing, file a fix",
       "created": "2026-07-12T13:23:29+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 13,
       "text": "housekeeping (from seat-billing build): ~72-file repo-wide ruff format baseline drift predates milestone \u2014 decide one-shot format commit vs leave",
       "created": "2026-07-12T13:23:29+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 14,
@@ -1551,7 +1551,7 @@
       "id": 36,
       "text": "Pre-existing ruff-format debt (NOT from M2): tests/guardrails/test_guardrails_core.py + tests/migrations/test_migrations.py are format-dirty at HEAD (predate a ruff config/version change; ~40 + ~9 lines would reflow). A strict 'make ci' ruff format --check would flag them. Milestones have been merging past this via admin-merge on pytest evidence (org-billing CI block). Clean up in a dedicated format-only sweep, not mixed into feature commits.",
       "created": "2026-07-13T09:37:19+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 37,
@@ -1563,7 +1563,7 @@
       "id": 38,
       "text": "Delta-hygiene sweep (systemic): 273 open SPEC deltas accumulated across 76 archived milestones, riding unresolved across 7 releases (0.8.0 cut with --force, 15 bundle-deltas riding). Dedicate a triage pass: carry-delta the genuine defers, new-task --from-delta the real work (e.g. the recurring 'coverage under-attributes async-DB lines / greenlet concurrency' delta appears many times \u2014 worth ONE fix), drop-delta the obsolete. Not blocking releases but the floor re-fires every cut.",
       "created": "2026-07-13T11:09:33+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 39,
@@ -1623,7 +1623,7 @@
       "id": 48,
       "text": "core/config.py:848 comment points to deleted catalog/infrastructure/gpt_realtime_seed.py (catalog-db-seed retired it). Repoint to migration 9cdca76231c6 during model-catalog-db milestone-close docs sweep \u2014 out of catalog-db-seed's frozen scope.",
       "created": "2026-07-16T11:47:34+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 49,
@@ -1665,13 +1665,13 @@
       "id": 55,
       "text": "dashboard: 13 pre-existing Airier design-token test failures (design-system/aurora-classic-blue, premium-console, tokens, enterprise-ext, marketing-seo) expect the retired Classic-Blue palette \u2014 route to the design-foundation owner; not commercial-self-serve debt.",
       "created": "2026-07-17T18:40:03+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 56,
       "text": "Pre-existing pyright debt on main (not wave-1): mcp_connector/application/use_cases.py:496 candidate_body possibly-unbound; tenants/application/domain_invite_link_use_cases.py:21 unused UTC import. Billing-blocked CI let these slip. Fix in a dedicated cleanup, not a feature milestone.",
       "created": "2026-07-20T17:18:51+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 57,
@@ -1683,7 +1683,7 @@
       "id": 58,
       "text": "Pagination tiebreaker: list_active endpoints (vector_stores, files, +siblings) ORDER BY created_at DESC with no secondary key \u2014 rows sharing a timestamp can paginate unstably. Inherited from the files module template; a cross-module consistency pass, not task-specific. Refute-read note from vector-store-core verify 2026-07-24.",
       "created": "2026-07-24T09:20:02+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 59,
