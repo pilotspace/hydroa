@@ -1,0 +1,375 @@
+{
+ "edges": [
+  [
+   "/tasks/baseline-and-verdict.md",
+   "needs",
+   "eval-run-executor.md",
+   "/tasks/eval-run-executor.md"
+  ],
+  [
+   "/tasks/baseline-and-verdict.md",
+   "needs",
+   "deterministic-scorers.md",
+   "/tasks/deterministic-scorers.md"
+  ],
+  [
+   "/tasks/deterministic-scorers.md",
+   "needs",
+   "eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-run-executor.md",
+   "needs",
+   "eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/evals-console.md",
+   "needs",
+   "baseline-and-verdict.md",
+   "/tasks/baseline-and-verdict.md"
+  ]
+ ],
+ "nodes": {
+  "/PROJECT.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "goal": "a user can set up their tenant \u2192 log in \u2192 call any LLM model through the proxy \u2192 see accurate, billable cost tracking",
+   "profile": "code",
+   "stage": "production",
+   "title": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "type": "Project"
+  },
+  "/index.md": {
+   "abf_version": "1.3",
+   "created": "2026-08-12",
+   "engine": "add/3.2.0",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "name": "PROJECT \u2014 living documentation (cross-milestone context)",
+   "profile": "code",
+   "sensitive_paths": [],
+   "tooling_engine": "add/3.2.0"
+  },
+  "/milestones/evals-regression-gate.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "status": "direction",
+   "title": "Evals \u2014 regression gate on model swaps",
+   "type": "Milestone",
+   "verified": []
+  },
+  "/personas/accessibility-auditor.md": {
+   "description": "Dedicated WCAG 2.2 AA lens for Hydroa \u2014 the only persona whose full-time job is accessibility, existing because two AA-contrast failures shipped in badge.tsx before the visual and research lenses caught them.",
+   "flow": "design, build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "contrast/focus is one concern inside a broader visual review (ui-designer) or a keyboard walkthrough is one research ability among several (ux-researcher)",
+   "sources": [
+    ".add-2x-archive/personas/accessibility-auditor.md",
+    ".add/personas-teacher/testing/testing-accessibility-auditor.md"
+   ],
+   "task-kinds": "accessibility, wcag-audit, keyboard-nav, screen-reader",
+   "title": "Accessibility Auditor",
+   "type": "Persona",
+   "use-when": "a diff ships or restyles a dashboard component/screen, introduces a status color, or wraps a Radix interactive primitive \u2014 and someone must EXHAUSTIVELY sweep AA compliance, not review one new screen",
+   "verified": [],
+   "vibe": "If it is not tested with a screen reader and a keyboard, it is not accessible."
+  },
+  "/personas/appsec-engineer.md": {
+   "description": "Privilege-boundary and secrets-at-rest security lens for Hydroa \u2014 reviews RBAC/tenant-isolation/BYOK-adjacent code for escalation-ceiling drift, cross-tenant leak, and plaintext-secret exposure.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "a pure billing-math change (billing-precision-engineer) or a wire-shape change with no privilege or secret surface (protocol-translation-engineer)",
+   "sources": [
+    ".add-2x-archive/personas/appsec-engineer.md",
+    ".add/personas-teacher/security/security-appsec-engineer.md"
+   ],
+   "task-kinds": "authz, tenant-isolation, secrets-at-rest, security-review",
+   "title": "Application Security Engineer",
+   "type": "Persona",
+   "use-when": "a diff touches role assignment or invite issuance, a tenant-scoped lookup, BYOK/secret encryption at rest, or any SUPERADMIN-adjacent path",
+   "verified": [],
+   "vibe": "Assume breach, verify both failure directions, escalate to HARD-STOP."
+  },
+  "/personas/backend-architect.md": {
+   "description": "Ports-and-adapters clean-architecture lens for Hydroa's FastAPI gateway \u2014 audits new backend code against the domain/application/infrastructure/api layering, Protocol-port discipline, and repository/use-case conventions this codebase runs on.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the concern is the dollar amount (billing-precision-engineer), the wire shape (protocol-translation-engineer), or a privilege/secret boundary (appsec-engineer)",
+   "sources": [
+    ".add-2x-archive/personas/backend-architect.md",
+    ".add/personas-teacher/engineering/engineering-software-architect.md",
+    ".add/personas-teacher/engineering/engineering-backend-architect.md"
+   ],
+   "task-kinds": "backend-architecture, ports-and-adapters, repository, concurrency-safety",
+   "title": "Backend Architect",
+   "type": "Persona",
+   "use-when": "new or reused backend code adds a use-case, a repository, a Protocol port, or a mutation that needs a concurrency-safety primitive",
+   "verified": [],
+   "vibe": "Dependencies point inward; nothing else about the layering is negotiable."
+  },
+  "/personas/billing-precision-engineer.md": {
+   "description": "Exact-money billing-ledger lens for Hydroa \u2014 reviews usage/cost-computing code against the cost_basis / Decimal / reconciliation discipline the billing-precision milestones (v27, v29, v30, v33) established.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the concern is which token frame the amount is read from (protocol-translation-engineer) or the layering around the code (backend-architect)",
+   "sources": [
+    ".add-2x-archive/personas/billing-precision-engineer.md",
+    ".add/personas-teacher/finance/finance-bookkeeper-controller.md"
+   ],
+   "task-kinds": "billing, metering, usage-ledger, reconciliation",
+   "title": "Billing Precision Engineer",
+   "type": "Persona",
+   "use-when": "a diff computes cost, writes a `usage_records` row, meters a request, or touches a billing edge case (cache hit, disconnect, zero/partial quantity, missing pricing snapshot)",
+   "verified": [],
+   "vibe": "Every dollar is reconciled, provenanced, and never a bare number."
+  },
+  "/personas/frontend-engineer.md": {
+   "description": "Dashboard implementation lens for Hydroa's Next.js console \u2014 reviews frontend code for BFF trust-boundary discipline, SSR-safety, and design-token fidelity, distinct from ui-designer/ux-researcher's visual and research lenses.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the concern is visual-system consistency (ui-designer) or whether the screen serves its user's real job (ux-researcher) rather than implementation correctness",
+   "sources": [
+    ".add-2x-archive/personas/frontend-engineer.md",
+    ".add/personas-teacher/engineering/engineering-frontend-developer.md"
+   ],
+   "task-kinds": "dashboard, bff-trust-boundary, ssr-safety, design-token-fidelity",
+   "title": "Frontend Engineer",
+   "type": "Persona",
+   "use-when": "a diff implements dashboard code \u2014 a BFF/API-route handler, a client-side data read, or a screen consuming the design-token layer",
+   "verified": [],
+   "vibe": "The dashboard is a trust boundary before it is a UI."
+  },
+  "/personas/protocol-translation-engineer.md": {
+   "description": "Multi-provider wire-translation lens for Hydroa's ChatTranslator seam \u2014 reviews provider adapters and directive translations for shape-fidelity, byte-identical passthrough, and billing on the served model.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the concern is the dollar amount itself (billing-precision-engineer) or the module layering (backend-architect) rather than which frame the amount is read from",
+   "sources": [
+    ".add-2x-archive/personas/protocol-translation-engineer.md"
+   ],
+   "task-kinds": "protocol-translation, provider-adapter, streaming, wire-fidelity",
+   "title": "Protocol Translation Engineer",
+   "type": "Persona",
+   "use-when": "a diff adds a provider adapter or a directive translation (tools, response_format), or touches the ChatTranslator request/response/SSE seam",
+   "verified": [],
+   "vibe": "A request without the feature is byte-identical to before the feature existed."
+  },
+  "/personas/sre-reliability-engineer.md": {
+   "description": "Production-reliability lens for Hydroa's gateway \u2014 reviews outbound-IO resilience (breakers, boot guards, per-deployment health gates) and deployment-environment assumptions against failure modes this project's history already surfaced twice.",
+   "flow": "build, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the failure surface is a privilege/secret boundary (appsec-engineer) or a billing-correctness path (billing-precision-engineer)",
+   "sources": [
+    ".add-2x-archive/personas/sre-reliability-engineer.md",
+    ".add/personas-teacher/engineering/engineering-sre.md",
+    ".add/personas-teacher/engineering/engineering-incident-response-commander.md"
+   ],
+   "task-kinds": "io-resilience, circuit-breaker, boot-guard, deployment, health-gate",
+   "title": "SRE / Reliability Engineer",
+   "type": "Persona",
+   "use-when": "a diff adds an outbound-IO path, a health/availability signal, a boot-time config guard, or relies on external-tooling behavior (kind/NetworkPolicy/Helm/provider API)",
+   "verified": [],
+   "vibe": "Reliability is a feature \u2014 verify the environment, degrade safely, never guess."
+  },
+  "/personas/ui-designer.md": {
+   "description": "Visual-system + WCAG-AA consistency lens for Hydroa \u2014 audits a screen against the frozen Aurora identity and accessibility floor. The UI-Designer half of the design persona-evidence checklist.",
+   "flow": "design, advisor",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the job is an exhaustive AA sweep of the primitive library (accessibility-auditor) or validating the user's real job-to-be-done (ux-researcher)",
+   "sources": [
+    ".add-2x-archive/personas/ui-designer.md",
+    ".add/personas-teacher/design/design-ui-designer.md"
+   ],
+   "task-kinds": "ui-visual, design-system, wcag-audit",
+   "title": "UI Designer",
+   "type": "Persona",
+   "use-when": "a new or restyled screen must be judged for visual-system consistency against the frozen Aurora identity and the accessibility floor",
+   "verified": [],
+   "vibe": "The shipped system is the only source of visual truth."
+  },
+  "/personas/ux-researcher.md": {
+   "description": "Evidence-first UX research lens for Hydroa \u2014 validates that a screen serves its real user's actual job, not an assumed one. The UX-Researcher half of the design persona-evidence checklist.",
+   "flow": "design",
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "not-when": "the job is visual-system consistency (ui-designer) or an exhaustive accessibility sweep (accessibility-auditor)",
+   "sources": [
+    ".add-2x-archive/personas/ux-researcher.md",
+    ".add/personas-teacher/design/design-ux-researcher.md"
+   ],
+   "task-kinds": "ux-research, job-to-be-done, usability-heuristic",
+   "title": "UX Researcher",
+   "type": "Persona",
+   "use-when": "a screen must be validated against the actual job its real user is doing \u2014 before or during design, when the question is \"does this serve the operator's task,\" not \"is it visually consistent\"",
+   "verified": [],
+   "vibe": "No finding without a named user, a real job, and honest confidence."
+  },
+  "/specs/domain.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "lens": "domain",
+   "project": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "title": "Domain",
+   "type": "Spec"
+  },
+  "/specs/experience.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "lens": "experience",
+   "project": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "title": "Experience",
+   "type": "Spec"
+  },
+  "/specs/method.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "lens": "method",
+   "project": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "title": "Method",
+   "type": "Spec"
+  },
+  "/specs/quality.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "lens": "quality",
+   "project": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "title": "Quality",
+   "type": "Spec"
+  },
+  "/specs/system.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "lens": "system",
+   "project": "ai-proxy (Hydroa) \u2014 the multi-tenant LLM gateway",
+   "title": "System",
+   "type": "Spec"
+  },
+  "/tasks/baseline-and-verdict.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "gives": [
+    "S1 the baseline pin + verdict computation \u2014 thresholded pass/fail, equal-at-threshold decided explicitly"
+   ],
+   "milestone": "evals-regression-gate",
+   "needs": [
+    "eval-run-executor.md",
+    "deterministic-scorers.md"
+   ],
+   "status": "direction",
+   "title": "baseline-and-verdict",
+   "type": "Task",
+   "verified": []
+  },
+  "/tasks/deterministic-scorers.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "gives": [
+    "S1 the scorer port + the four deterministic scorers (exact \u00b7 contains \u00b7 regex \u00b7 JSON-schema valid) \u2014 no LLM judge"
+   ],
+   "milestone": "evals-regression-gate",
+   "needs": [
+    "eval-set-store.md"
+   ],
+   "status": "direction",
+   "title": "deterministic-scorers",
+   "type": "Task",
+   "verified": []
+  },
+  "/tasks/eval-run-executor.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "gives": [
+    "S1 the run-execution port \u2014 tenant-keyed breaker, bounded concurrency, timeouts, one usage_record per case through the governance path"
+   ],
+   "milestone": "evals-regression-gate",
+   "needs": [
+    "eval-set-store.md"
+   ],
+   "status": "direction",
+   "title": "eval-run-executor",
+   "type": "Task",
+   "verified": []
+  },
+  "/tasks/eval-set-store.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "gives": [
+    "S1 the eval-set / eval-case persistence contract + the ZDR disposition \u2014 the frozen case shape every downstream task hangs off"
+   ],
+   "milestone": "evals-regression-gate",
+   "status": "direction",
+   "title": "eval-set-store",
+   "type": "Task",
+   "verified": []
+  },
+  "/tasks/evals-console.md": {
+   "generated": {
+    "at": "2026-08-12",
+    "by": "add/3.2.0"
+   },
+   "gives": [
+    "S1 the evals console section \u2014 verdict-first IA, per-case diff signature element, keyboard-navigable, WCAG AA"
+   ],
+   "milestone": "evals-regression-gate",
+   "needs": [
+    "baseline-and-verdict.md"
+   ],
+   "status": "direction",
+   "title": "evals-console",
+   "type": "Task",
+   "verified": []
+  }
+ }
+}

@@ -1,29 +1,51 @@
-# Quality — the TDD spec
-
-project: ai-proxy · seeded: 2026-07-24 · stage: production
-
-> Living document — how we know it works: test strategy, floors, evidence (TDD).
-> Keep the sections below CURRENT (state, not history); lessons land under
-> Deltas the moment they are learned: `add.py delta-append tdd "<lesson>"`.
-> A delta that changes the standing picture is folded UP into the sections
-> above it and marked `[folded]` — the Deltas list is the inbox, not the spec.
-
+---
+type: Spec
+title: Quality
+lens: quality
+project: ai-proxy (Hydroa) — the multi-tenant LLM gateway
+generated: { by: add/3.2.0, at: 2026-08-12 }
+---
 ## Now
-<the standing TDD picture — replace this placeholder as the project firms; task-delta updates, never a full re-scan>
+
+Red/green TDD is the default for every feature and every fix: the test exists, fails for the
+right reason, and only then does code get written. ~4,600 gateway tests across ~60 suites plus
+~1,100 dashboard tests. `make ci` is the gate (4-way sharded, ~13 min; `ci` is the single
+required check). Pyright strict on `src/gateway`; ruff for lint and format.
 
 ## Decisions that bind
-<the TDD-lens decisions every task must honor — one line each, with the task/ADR that set it — or leave the placeholder until the first one lands>
 
-## Deltas (newest first)
-- [open · 2026-08-09] a fixed-sleep-then-assert conversion is a PER-SITE judgement, never a sweep: read the assertion's DIRECTION first. A positive wait ('the row appears') converts to poll_until; a NEGATIVE one ('rows == [] — a 403 writes no record') must KEEP its sleep, because polling returns on the first iteration and never gives the erroneous write a chance to appear, turning a real assertion vacuous; a MIXED one ('exactly one — not zero, not two') needs BOTH — poll for existence, then settle and re-count. Of 4 sites in this task, 2 converted, 1 kept, 1 mixed (evidence: tool_call_metering/test_di_wiring.py 73/112/229 + agent_identity_governance:1061) (task:ci-flake-classification)
-- [open · 2026-08-07] a guard test over a GitHub Actions workflow must key off the parser's REAL output, not the YAML source text: 'on:' is a YAML 1.1 boolean, so yaml.safe_load returns the key True, not the string 'on'. workflow['on'] raises KeyError — which reads as a legitimate red and is one lazy fix away from a vacuous green. Verify the parse in-context before writing the assert (evidence: _triggers() in test_ci_workflow_parity.py) (task:ci-timeout-and-e2e-scope)
-- [open · 2026-08-07] A green assertion over an EMPTY result set is invisible in a green suite. When a date bomb (or any seed/query mismatch) is found, ask what the now-empty set was supposed to prove, not just whether the test still passes: tests/margin_dashboard's tenant_id isolation test would have passed with the filter deleted. Probe the live response (0 items before, 1 after) rather than inferring from the assertion text. (task:release-provenance)
-- [open · 2026-08-07] A hand audit that concludes 'zero instances remain' is the weakest form of evidence when the auditor also wrote the framing being audited. date-bomb-sweep's §3 recorded a clean audit; the mechanical guard written the same day found three live instances on first contact with real code, including a tenant-isolation test asserting over an empty result set since 2026-08-01. Write the check before trusting the sweep. (task:release-provenance)
-- [open · 2026-08-07] A red suite over PURE logic cannot see which inputs the production hook actually forwards to it. suite-infra-tripwire's InfraTripwire was 12/12 green while the conftest hook fed it only 'call' reports — blind to the 2130 SETUP errors that were the entire incident. When the unit under test is fed by an untestable seam (a pytest hook, a signal handler, a framework callback), the red suite needs a companion END-TO-END probe or the green is scoped to the wrong thing. (task:suite-infra-tripwire)
-- [open · 2026-08-06] Verify the ARRANGE against the live environment and ASSERT it inside the fixture. vector-extension-preflight rests on 'a throwaway CREATE DATABASE has no vector extension'; that was checked against the real image (fresh db 0, template1 0, pg_available_extensions 1) instead of assumed, and the fixture now asserts count==0 before yielding. Without that assertion, an image that ever ships the extension in template1 would silently turn all five tests into vacuous passes — the same failure shape as the 2026-08-01 date bomb. (task:vector-extension-preflight)
-- [open · 2026-08-06] A regression-arm test that asserts only 'the object exists' (assert app is not None) PASSES before the implementation exists — it is a green that proves nothing, and it survives the red gate because the other arms are red for it. Caught in vector-extension-preflight §4: the M4 arm passed while the module was absent. Fix: every arm, including the happy-path/regression one, must drive the REAL code path under test. For a fail-closed guard the happy-path arm matters MORE than the failure arm — a false positive is a total outage. (task:vector-extension-preflight)
-- [open · 2026-07-25] A 'suppressions must be justified' rule needs a RATCHET, not a blanket assertion. lint-type-debt-sweep's M1 said 'written reason in every case' but its own guard only checked per-file-ignores, so the builder's own 3 bare noqas slipped through (caught by independent refute, MEDIUM). The codebase has 410 pre-existing bare noqas vs 143 justified — a blanket guard would either be turned off or explode a task's scope. Guard the delta (new/changed lines), grandfather the rest, and say so out loud. (task:lint-type-debt-sweep)
-- [open · 2026-07-25] A static test that asserts a CONFIG file's shape is vacuous by default. Two of three parity tests in ci-restoration passed under attack until an independent refuter probed them: a gate step neutered with 'if: false' or planted in the WRONG job still satisfied a whole-file string match, and 'evil/pgvector-but-not-really:latest' satisfied a bare substring check. Rule: for config-shape assertions, (a) scope the parse to the exact job/section that would actually execute, (b) exclude conditional steps — a gate behind an 'if:' is not a gate, (c) strip comments before matching, (d) assert EQUALITY against a pinned literal, never a substring. Then RUN the attacks as proof rather than reasoning about them. (task:ci-restoration)
-- [open · 2026-07-25] A security test whose ARRANGE depends on a FAIL-OPEN production path is unsound: when the fallback fires it produces the SAME observable signature as the vulnerability. Assert the confound away FIRST, with a message that says 'TEST CONFOUND, not a security failure'. (evidence: zdr-ingest-lock-heal — an independent refuter saw the pre-heal signature 'assert 4 == 0' once and could not reproduce it in 15 runs; cause was the attach router's fail-open inline drive racing the flip, not a lock gap) (task:zdr-ingest-lock-heal)
-- [open · 2026-07-24] independent adversarial refute-reads caught 4 real defects 5 green suites missed: split-usage-frame stream zeroed billing (responses), a 20MiB body-cap masking the contracted 413 range (files), fromtimestamp overflow 500 vs contracted 422 (usage), + the shared-breaker cross-tenant availability coupling (moderations, Tin HARD-STOP→CR-1) — the earned-green refute is load-bearing, not ceremony (task:responses-state-store)
-<!-- prepended by `add.py delta-append tdd "<text>"` — one line per lesson, `- [open · <date>] <lesson>` + the active-task stamp; fold a delta upward, then retag [open]->[folded] -->
+- **Never weaken a test or edit a frozen contract to make a build pass.** A security finding
+  is always a HARD-STOP.
+- **A guard must be RED against the tree that motivated it.** Keep a `<fix>^` worktree and
+  require the guard to name the original victim. A guard that is green on the pre-fix commit
+  is worse than none — and ceremony is a failure mode too: a validator that cries wolf on the
+  correct spelling gets deleted, taking the real signal with it.
+- **Assert emptiness deliberately.** A green assertion over an empty result set is invisible
+  in a green suite; a date bomb turned a tenant-isolation test vacuous for weeks. Ask what the
+  now-empty set was supposed to prove, and probe the live response (0 before, 1 after).
+- **Prefer behavioural assertions to structural ones.** Count the statements that reach
+  Postgres, not the `GROUP BY`s in the SQL; drive the real code path, not the object's
+  existence. A regression arm that asserts `app is not None` passes before the feature exists.
+- **A config-shape assertion is vacuous by default.** Scope the parse to the job that would
+  actually execute, exclude anything behind an `if:`, strip comments, assert equality against
+  a pinned literal — then RUN the attack rather than reasoning about it.
+- **A masked gate reports green.** Five shapes seen here: ordered behind a failure ·
+  invoked by nothing · permanently red and opt-in · a negative poll predicate · a check that
+  never reaches a verdict. Prove the verdict, not the invocation.
+- **Reproduce load flakes by delay injection, not by re-running**: wrap the deciding seam with
+  a sleep loaded as an external `-p` plugin, and force the less common outcome of a legal race.
+- **Read the assertion's direction before converting a sleep.** Positive ("the row appears") →
+  poll; NEGATIVE ("no record was written") → keep the sleep, or polling returns on the first
+  iteration and the assertion becomes vacuous; mixed ("exactly one") → both.
+- **One pytest session at a time on this host.** Worker DB isolation holds within a run, not
+  across runs; concurrent sessions manufacture failures that look exactly like isolation
+  defects (`pg_type_typname_nsp_index` duplicates, xdist `INTERNALERROR`).
+- **Independent adversarial refute-reads are load-bearing, not ceremony** — they have caught
+  real defects that green suites missed every time they have been run. Never prompt a refuter
+  toward a clean verdict; a refuter that reports an anomaly it cannot explain is worth more
+  than one that reports clean.
+- **Verify against the gate's own entry point** (`make ci` / `make lint`), never a per-file
+  invocation that bypasses the project's exclude list.
+
+## Deltas
+<!-- the inbox: `- [open · <date>] <lesson>` — fold upward into the sections above, then retag [folded] -->
