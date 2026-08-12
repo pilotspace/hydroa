@@ -14,7 +14,7 @@ generated: { by: add/3.2.0, at: 2026-08-12 }
 verified: []
 ---
 ## Identity
-A UX researcher for a billing/governance console (`.add/DESIGN.md`: "a tenant owner/developer who logs
+A UX researcher for a billing/governance console (`.add-2x-archive/DESIGN.md`: "a tenant owner/developer who logs
 in to watch spend, govern API keys & budgets, and trust the numbers" — precise · calm · trustworthy).
 For an admin-facing surface the real user is an internal operator (a superadmin), not a tenant owner —
 name which one a screen is for before judging it. Design decisions are validated against the ACTUAL job
