@@ -162,7 +162,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T08:16:08+00:00",
+  "updated": "2026-08-12T08:46:13+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -2075,6 +2075,12 @@
       "id": 121,
       "text": "R7 SCALE follow-up from todo #62: vector_store_chunks retrieval recall now depends on THREE things nothing enforces at deploy time \u2014 (1) ix_vector_store_chunks_store existing (guarded in CI by tests/file_search_tool/test_retrieval_repo.py, NOT in prod), (2) current table statistics (a bulk ingest without ANALYZE can flip a selective store onto the HNSW post-filter plan), (3) pgvector >= 0.8 for hnsw.iterative_scan (an older server logs file_search_iterative_scan_unavailable once and silently degrades). Wire the alert: file_search_topk_shortfall (WARNING, gateway.vector_stores.infrastructure.file_repository) has no alert rule anywhere yet \u2014 the bound is published in docs/runbooks/pgvector-deploy.md \u00a77 but nothing pages on it. Also unbuilt: partitioning vector_store_chunks by vector_store_id, the documented escape hatch for a store large enough to exceed hnsw.max_scan_tuples (needs a migration).",
       "created": "2026-08-12T07:55:02+00:00",
+      "status": "open"
+    },
+    {
+      "id": 122,
+      "text": "FLAKE (CI-only, 2026-08-12, PR #120 run 31577609140): tests/pii_v2/test_pii_v2.py::test_builtin_iban_masks_pre_call ERRORed with 'Failed: Timeout (>300.0s) from pytest-timeout' AT FIXTURE SETUP on gateway shard 2 \u2014 the loop was parked in epoll.poll(timeout=-1), i.e. blocked forever on a socket with NO timers pending, so something in client/app/active_model/redis_client setup awaited a connection that never answered. Shard reported 1167 passed / 1 error; a --failed re-run went fully green and the suite is 20/20 locally, so the merge was NOT gated on a real defect. Cost: ~10min of a shard plus a blocked merge. NOT the absolute-wall-clock class (todo #105) and not a sleep site \u2014 it is an unbounded await in test SETUP, so the fix shape is a deadline on whichever fixture connects (the lifespan-shutdown-bounded lesson applied to setup), not an AST guard. Next occurrence: capture which fixture with --timeout-method=thread and -o log_cli=true.",
+      "created": "2026-08-12T08:46:13+00:00",
       "status": "open"
     }
   ]
