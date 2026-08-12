@@ -62,7 +62,15 @@ _SELECT_LATEST_SNAPSHOT_SQL = text(
 # the head of the window and block every newer one indefinitely. NEWEST-first means stuck rows
 # drift OUT of the window as new jobs arrive, and it favours the jobs most likely to be
 # genuinely repairable — a just-missed registration is usually waiting on a catalog sync that
-# is about to land. The index `ix_finetune_jobs_tenant_created` already covers this direction.
+# is about to land.
+#
+# NOT INDEXED, deliberately. `ix_finetune_jobs_tenant_created` is (tenant_id, created_at DESC)
+# and this sweep is GLOBAL — no tenant predicate — so a composite index leading with tenant_id
+# cannot serve this ORDER BY, and Postgres will filter then sort. That is acceptable and not an
+# oversight: the sweep runs once per 300s, the predicate already restricts to succeeded jobs
+# with no catalog row (normally ZERO), and adding an index to speed up a five-minute background
+# task would cost a migration plus write amplification on every job insert to buy nothing.
+# Revisit only if finetune_jobs grows large enough for the sort to show up in slow queries.
 _SELECT_MISSED_JOBS_SQL = text(
     "SELECT * FROM finetune_jobs WHERE status = 'succeeded' AND fine_tuned_model IS NOT NULL"
     " AND NOT EXISTS (SELECT 1 FROM models WHERE models.id = finetune_jobs.fine_tuned_model)"
