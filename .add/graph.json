@@ -341,6 +341,7 @@
    "verified": []
   },
   "/tasks/eval-set-store.md": {
+   "advised_by": "appsec-engineer",
    "generated": {
     "at": "2026-08-12",
     "by": "add/3.2.0"
