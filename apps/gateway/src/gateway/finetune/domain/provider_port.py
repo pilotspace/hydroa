@@ -45,6 +45,11 @@ TERMINAL_STATUSES: frozenset[str] = frozenset({"succeeded", "failed", "cancelled
 
 _PROVIDER_JOB_ID_RE = re.compile(r"^[A-Za-z0-9:_.-]+$")
 
+#: Upper bound on a provider's ``fine_tuned_model`` string. Real OpenAI ids run well under
+#: 100 chars (``ft:gpt-4o-mini-2024-07-18:acme::AbCdEf12``); 256 leaves generous headroom for
+#: a longer base-model name or org slug while still refusing a megabyte of junk as a PK.
+MAX_FINE_TUNED_MODEL_LENGTH = 256
+
 
 def resolve_finetune_provider(model: str) -> str | None:
     """Derive the finetune-capable provider for ``model``, or None if unsupported.
@@ -96,6 +101,34 @@ def is_valid_provider_job_id(provider_job_id: str) -> bool:
     cannot redirect a later call by returning a path-traversal/injection payload as
     the job id)."""
     return bool(provider_job_id) and bool(_PROVIDER_JOB_ID_RE.match(provider_job_id))
+
+
+def is_valid_fine_tuned_model(fine_tuned_model: str) -> bool:
+    """Shape-validate the provider's ``fine_tuned_model`` before it becomes a catalog id.
+
+    Lives beside ``is_valid_provider_job_id`` deliberately: these are the TWO
+    provider-controlled strings this subsystem promotes into trusted identifiers, and
+    only one of them was checked (todo #59). ``fine_tuned_model`` is written straight in
+    as the PRIMARY KEY of the shared ``models`` table, which is a stronger promotion than
+    the job id ever gets.
+
+    Same charset as the job id — the real OpenAI shape is
+    ``ft:<base>:<org>::<random>``, all of which fits ``[A-Za-z0-9:_.-]`` — plus a length
+    bound the job id does not need, because this value becomes a primary key and is
+    echoed into catalog listings and billing rows.
+
+    Scope, honestly: this is ROBUSTNESS, not an access-control fix. Assessed 2026-08-12 —
+    a malformed id here was never a cross-tenant hole (``check_for_tenant`` returns
+    UNKNOWN for another tenant's row, the insert is ``ON CONFLICT DO NOTHING`` so nothing
+    is overwritten, and ``models.id`` is unbounded ``Text`` so nothing overflows). What it
+    does buy: an unusable or hostile string never becomes a permanent catalog row, and —
+    with the bounded sweep — never becomes a row the repair sweep retries forever.
+    """
+    return (
+        bool(fine_tuned_model)
+        and len(fine_tuned_model) <= MAX_FINE_TUNED_MODEL_LENGTH
+        and bool(_PROVIDER_JOB_ID_RE.match(fine_tuned_model))
+    )
 
 
 @runtime_checkable

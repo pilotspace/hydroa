@@ -716,3 +716,129 @@ class TestComposedFtModelUsability:
         assert markup == Decimal("25")
         effective = Decimal(str(snap[0])) * (Decimal("1") + markup / Decimal("100"))
         assert effective == _BASE_PROMPT * Decimal("1.25")
+
+
+# ---------------------------------------------------------------------------
+# todos #59 + #64 — the registrar's two unbounded inputs
+# ---------------------------------------------------------------------------
+# These two are one defect wearing two hats, which is why they are fixed together.
+#
+# #59: `fine_tuned_model` is a PROVIDER-CONTROLLED string written straight in as the
+# `models` PRIMARY KEY with only a falsy check, while its sibling `provider_job_id` IS
+# shape-validated (`is_valid_provider_job_id`, provider_port.py) precisely because a
+# hostile provider response must not become a trusted identifier.
+#
+# ASSESSED 2026-08-12, and the scary reading is WRONG — recording it so nobody re-raises
+# it: this is NOT a cross-tenant hole. `check_for_tenant` returns UNKNOWN for another
+# tenant's row, the insert is `ON CONFLICT DO NOTHING` so nothing is overwritten, ft ids
+# embed a provider-random segment so a collision cannot be forged, and `models.id` is
+# unbounded Text so there is no overflow. What is left is ordinary robustness.
+#
+# #64: the repair sweep had no LIMIT. Combined with #59 those compound: a registration
+# that loses the ON CONFLICT race (or is refused) leaves the job `succeeded` with no
+# `models` row, which is EXACTLY the sweep's selection predicate — so it re-selects the
+# same permanently-unresolvable rows in full every 300s, forever.
+
+
+class TestRegistrarInputBounds:
+    @pytest.mark.parametrize(
+        ("hostile", "why"),
+        [
+            ("ft:gpt-4o-mini/../../../etc/passwd", "path traversal"),
+            ("ft:gpt-4o-mini spaces", "whitespace"),
+            ("ft:gpt-4o-mini\nInjected: yes", "newline injection"),
+            ("ft:" + "x" * 4096, "unbounded length"),
+        ],
+    )
+    async def test_a_malformed_provider_model_id_is_never_registered(
+        self,
+        client: Any,
+        db_session: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+        hostile: str,
+        why: str,
+    ) -> None:
+        """A provider string that fails shape validation must not become a catalog PK.
+
+        The job itself still holds the provider's answer — the broker's CAS is already
+        committed and a listener must never roll it back (D4). What must NOT happen is
+        that string becoming a row in the shared `models` table.
+        """
+        await _seed_base_catalog(db_session)  # pricing resolvable: registration WOULD proceed
+        job_id = await _drive_job_to_succeeded(
+            client, tenant_a["key"], provider_port, fine_tuned_model=hostile
+        )
+
+        assert await _model_row(db_session, hostile) is None, (
+            f"a {why} payload became the PRIMARY KEY of the shared models table"
+        )
+        got = await client.get(f"/v1/fine_tuning/jobs/{job_id}", headers=_bearer(tenant_a["key"]))
+        assert got.status_code == 200
+        assert got.json()["status"] == "succeeded", "refusing to register must never touch the CAS"
+
+    async def test_a_real_provider_model_id_still_registers(
+        self,
+        client: Any,
+        db_session: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """The don't-cry-wolf half: the genuine OpenAI shape must still pass.
+
+        A validator that rejects the real format would silently stop every fine-tune from
+        ever becoming callable — a worse outcome than the laxity it replaced, and one that
+        would only surface in production.
+        """
+        await _seed_base_catalog(db_session)
+        await _drive_job_to_succeeded(client, tenant_a["key"], provider_port)
+
+        assert await _model_row(db_session, _FT_MODEL) is not None, (
+            "shape validation rejected a LEGITIMATE OpenAI fine-tuned model id"
+        )
+
+    async def test_the_repair_sweep_is_bounded(
+        self,
+        client: Any,
+        app: Any,
+        db_session: Any,
+        tenant_a: dict[str, str],
+        provider_port: FakeFinetuneProvider,
+        resolver: RecordingPerTenantResolver,
+    ) -> None:
+        """The sweep must examine at most `limit` jobs per pass.
+
+        Unbounded, every 300s tick re-reads the ENTIRE backlog of succeeded-but-
+        unregistered jobs — and rows that can never resolve stay in that set forever, so
+        the cost is permanent and grows monotonically. Asserted behaviourally (how many
+        it can register in one pass) rather than by grepping for 'LIMIT', so the property
+        survives a rewrite of the query.
+        """
+        from gateway.finetune_registry.application.registrar import (  # noqa: PLC0415
+            FinetuneModelRegistrar,
+        )
+
+        # Three jobs that all MISS registration (no pricing basis at succeed time).
+        ft_ids = [f"ft:{_BASE_MODEL}:acme::bounded{i}" for i in range(3)]
+        for ft_id in ft_ids:
+            await _drive_job_to_succeeded(
+                client, tenant_a["key"], provider_port, fine_tuned_model=ft_id
+            )
+        for ft_id in ft_ids:
+            assert await _model_row(db_session, ft_id) is None
+
+        await _seed_base_catalog(db_session)  # now ALL THREE are resolvable
+        registrar = FinetuneModelRegistrar(session_factory=app.state.sessionmaker)
+
+        registered = await registrar.repair_missed(limit=2)
+        assert registered == 2, (
+            f"sweep registered {registered} with limit=2 — it is not bounded, so a growing "
+            "backlog of unresolvable jobs is re-read in full on every 300s tick"
+        )
+
+        # And the bound is a WINDOW, not a cap on total progress: the next pass continues.
+        assert await registrar.repair_missed(limit=2) == 1
+        for ft_id in ft_ids:
+            assert await _model_row(db_session, ft_id) is not None, "a bounded sweep still finishes"

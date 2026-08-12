@@ -28,6 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.core.ids import uuid7
+from gateway.finetune.domain.provider_port import is_valid_fine_tuned_model
 
 _log = logging.getLogger(__name__)
 
@@ -50,10 +51,28 @@ _SELECT_LATEST_SNAPSHOT_SQL = text(
     " WHERE model_id = :model_id ORDER BY captured_at DESC LIMIT 1"
 )
 
+# todo #64 — BOUNDED, and ordered NEWEST-FIRST. Unbounded, this re-read the entire backlog
+# of succeeded-but-unregistered jobs every 300s forever, and the backlog only ever grows: a
+# job that can never resolve (its base model left the catalog, or its id was refused above)
+# matches this predicate permanently.
+#
+# `created_at DESC` is a deliberate choice, not a default. Neither ordering can fully prevent
+# starvation without per-job attempt tracking, which would need a migration; the question is
+# which failure is worse. OLDEST-first lets a clump of permanently-stuck ancient jobs sit at
+# the head of the window and block every newer one indefinitely. NEWEST-first means stuck rows
+# drift OUT of the window as new jobs arrive, and it favours the jobs most likely to be
+# genuinely repairable — a just-missed registration is usually waiting on a catalog sync that
+# is about to land. The index `ix_finetune_jobs_tenant_created` already covers this direction.
 _SELECT_MISSED_JOBS_SQL = text(
     "SELECT * FROM finetune_jobs WHERE status = 'succeeded' AND fine_tuned_model IS NOT NULL"
     " AND NOT EXISTS (SELECT 1 FROM models WHERE models.id = finetune_jobs.fine_tuned_model)"
+    " ORDER BY created_at DESC LIMIT :limit"
 )
+
+#: Jobs examined per repair tick. The sweep runs every 300s and each row is a cheap
+#: catalog lookup, so this is about bounding the WORST case (an unbounded backlog), not
+#: about throughput — a healthy system has zero missed rows and the sweep reads nothing.
+DEFAULT_REPAIR_LIMIT = 100
 
 
 def _field(job: Any, name: str) -> Any:
@@ -88,14 +107,30 @@ class FinetuneModelRegistrar:
         async with self._session_factory() as session:
             await self._register_one(session, job)
 
-    async def repair_missed(self) -> int:
+    async def repair_missed(self, limit: int = DEFAULT_REPAIR_LIMIT) -> int:
         """M6: sweep succeeded jobs with ``fine_tuned_model`` set but no ``models`` row
         yet, and register each idempotently. DB-only (no breaker needed). Returns the
         count of models actually registered by THIS sweep (a job whose basis is still
-        unresolvable is left for the next tick)."""
+        unresolvable is left for the next tick).
+
+        BOUNDED at ``limit`` rows per pass (todo #64). The bound is a WINDOW, not a cap on
+        total progress — each pass registers what it can and the next pass continues — but
+        it does mean a backlog larger than the window is not fully served by one tick, so
+        hitting the bound is logged rather than passed over in silence.
+        """
         async with self._session_factory() as session:
-            rows = (await session.execute(_SELECT_MISSED_JOBS_SQL)).mappings().all()
+            rows = (
+                (await session.execute(_SELECT_MISSED_JOBS_SQL, {"limit": limit})).mappings().all()
+            )
             missed = list(rows)
+
+        if len(missed) >= limit:
+            # Saturated: there is more work than this pass can see. Silence here would make
+            # a permanent backlog indistinguishable from a healthy empty sweep.
+            _log.warning(
+                "finetune_registry_repair_sweep_saturated",
+                extra={"limit": limit, "examined": len(missed)},
+            )
 
         registered = 0
         for row in missed:
@@ -113,6 +148,23 @@ class FinetuneModelRegistrar:
             _log.info(
                 "finetune_registry_model_id_missing",
                 extra={"job_id": str(job_id)},
+            )
+            return False
+
+        # todo #59 — the provider's string is about to become the PRIMARY KEY of the shared
+        # `models` table. Its sibling `provider_job_id` has been shape-validated since the
+        # broker shipped; this one never was, despite the stronger promotion. Refuse rather
+        # than sanitise: a mangled id would be a catalog row nobody can dial, and silently
+        # "fixing" a provider identifier invents a model that does not exist upstream.
+        if not is_valid_fine_tuned_model(str(fine_tuned_model)):
+            _log.warning(
+                "finetune_registry_model_id_malformed",
+                extra={
+                    "job_id": str(job_id),
+                    # Bounded + repr'd: this is untrusted provider input and it must not be
+                    # able to forge log structure or flood the log line.
+                    "fine_tuned_model": repr(str(fine_tuned_model)[:120]),
+                },
             )
             return False
 

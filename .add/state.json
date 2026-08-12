@@ -162,7 +162,7 @@
     }
   },
   "created": "2026-06-10T08:03:15+00:00",
-  "updated": "2026-08-12T05:40:03+00:00",
+  "updated": "2026-08-12T06:31:57+00:00",
   "setup": {
     "locked": true,
     "locked_at": "2026-06-10T08:05:39+00:00",
@@ -1703,7 +1703,7 @@
       "id": 59,
       "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:136 \u2014 provider-controlled fine_tuned_model lands as the shared models PK with NO shape validation, while its sibling provider_job_id IS validated via is_valid_provider_job_id for exactly this threat. Apply the same regex before INSERT.",
       "created": "2026-07-25T07:33:37+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 60,
@@ -1733,7 +1733,7 @@
       "id": 64,
       "text": "PR#89 residue (R7 pr89-residue): finetune_registry/registrar.py:55 _SELECT_MISSED_JOBS_SQL has no LIMIT \u2014 permanently-unresolvable jobs are re-swept in full every 300s forever. Bound the sweep.",
       "created": "2026-07-25T07:33:38+00:00",
-      "status": "open"
+      "status": "done"
     },
     {
       "id": 65,
