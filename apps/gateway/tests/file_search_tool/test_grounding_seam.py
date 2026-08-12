@@ -218,3 +218,191 @@ async def test_zero_hit_search_still_meters_one(app: Any, db_session: AsyncSessi
     assert meter.count == 1, f"a 0-hit valid search still meters ONE, got {meter.count}"
     tools = body.get("tools") or []
     assert not any(isinstance(t, dict) and t.get("type") == "file_search" for t in tools)
+
+
+# ---------------------------------------------------------------------------
+# todo #61 — two stores in, partial results out, no signal
+# ---------------------------------------------------------------------------
+# `ground()` took `ids[0]` and silently discarded `ids[1:]`. OpenAI's wire accepts an
+# ARRAY, so a caller passing two stores got an answer grounded on ONE of them and no
+# indication the other was ignored — a wrong answer that looks exactly like a right one.
+#
+# ⚠ CONTRACT NOTE: file-search-tool's frozen §3 contract specifies the shape as
+# `vector_store_ids: [id]` — SINGULAR — and enumerates four reject codes, none covering
+# "more than one store". So multi-store was never in scope; the defect is that the code
+# ACCEPTED it silently instead of refusing. This adds a reject code to a closed task's
+# contract surface, which is a deliberate, recorded addition (see the todo filed with this
+# change) rather than a quiet edit of a frozen artifact.
+#
+# Refusing beats guessing. Searching all N stores would be a FEATURE — it changes what
+# top-k means across stores, and each store carries its OWN embedding_model, so chunks
+# from two stores are not comparable in one vector space. Silently returning the first
+# store's hits is the one option that is always wrong without saying so.
+
+
+async def test_multiple_vector_stores_is_refused_not_silently_truncated(
+    app: Any, db_session: AsyncSession
+) -> None:
+    """Two stores must 422 BEFORE any retrieval or metering — never partial grounding."""
+    from gateway.vector_stores.application.file_search import (  # noqa: PLC0415
+        MultipleVectorStoresUnsupported,
+    )
+
+    tenant_id = uuid.uuid4()
+    first = await _seed_store(db_session, tenant_id=tenant_id, chunks=[("doc-a", _unit_vec(0))])
+    second = await _seed_store(db_session, tenant_id=tenant_id, chunks=[("doc-b", _unit_vec(1))])
+    grounder = FileSearchGrounder(
+        embedding_client=_FakeEmbeddingClient(_unit_vec(0)),
+        session_factory=app.state.sessionmaker,
+    )
+    body = _body(to_wire_id(first))
+    body["tools"][0]["vector_store_ids"] = [to_wire_id(first), to_wire_id(second)]
+    meter = _MeterSpy()
+
+    with pytest.raises(MultipleVectorStoresUnsupported) as exc_info:
+        await grounder.ground(body=body, tenant_id=tenant_id, meter=meter)
+
+    assert exc_info.value.status == 422
+    assert exc_info.value.code == "file_search_multiple_vector_stores_unsupported"
+    assert meter.count == 0, "a rejected request must never meter"
+    # The tool must survive the reject: a stripped tool plus a raised error would leave a
+    # caller that swallows the error dialling upstream UNGROUNDED but believing otherwise.
+    assert body["tools"][0]["type"] == "file_search", "the tool must not be stripped on reject"
+
+
+async def test_a_single_vector_store_still_grounds(app: Any, db_session: AsyncSession) -> None:
+    """Don't-cry-wolf half: the single-store path is the contract and must be untouched.
+
+    A refusal keyed on `len(ids) != 1` rather than `len(ids) > 1` would reject every
+    legitimate request; this is the test that would catch it.
+    """
+    tenant_id = uuid.uuid4()
+    store_id = await _seed_store(
+        db_session, tenant_id=tenant_id, chunks=[("the onboarding doc covers SSO", _unit_vec(0))]
+    )
+    grounder = FileSearchGrounder(
+        embedding_client=_FakeEmbeddingClient(_unit_vec(0)),
+        session_factory=app.state.sessionmaker,
+    )
+    body = _body(to_wire_id(store_id))
+    meter = _MeterSpy()
+
+    grounded = await grounder.ground(body=body, tenant_id=tenant_id, meter=meter)
+
+    assert grounded is True
+    assert meter.count == 1, "the single-store happy path must still meter exactly once"
+
+
+# ---------------------------------------------------------------------------
+# todo #65 (third clause) — a search with NO query, embedded and billed anyway
+# ---------------------------------------------------------------------------
+# `_last_user_text` returns "" when the body carries no user message (or a user
+# message with no text part — an image-only turn), and `ground()` fed that "" to
+# `embed()`. A provider returns a perfectly valid vector for the empty string, so
+# the top-k came back full of chunks that are simply whichever ones sit nearest to
+# that vector: arbitrary text, injected as authoritative retrieved context, and
+# metered as a per_query the caller pays for. A wrong answer that looks like a
+# right one, plus a bill for a search that had nothing to search FOR.
+#
+# Refused, not guessed — the same call as the multi-store clause above, and for the
+# same reason: the alternatives all invent a query. Embedding the last message of
+# ANY role would silently retrieve against a tool-result blob; skipping retrieval
+# while still stripping the tool would leave the caller permanently, silently
+# ungrounded with only a server-side log to say so. A 422 naming the cause is the
+# only outcome the caller can act on.
+#
+# ⚠ CONTRACT NOTE: a SECOND deliberate reject-code addition to file-search-tool's
+# closed §3 contract (see the multi-store note above), recorded rather than quiet.
+
+
+async def test_a_search_with_no_user_message_is_refused_never_embedded_as_empty(
+    app: Any, db_session: AsyncSession
+) -> None:
+    """No user turn -> 422 before any embed / retrieval / meter."""
+    from gateway.vector_stores.application.file_search import (  # noqa: PLC0415
+        MissingSearchQuery,
+    )
+
+    tenant_id = uuid.uuid4()
+    store_id = await _seed_store(
+        db_session, tenant_id=tenant_id, chunks=[("arbitrary nearest chunk", _unit_vec(0))]
+    )
+    embedder = _FakeEmbeddingClient(_unit_vec(0))
+    grounder = FileSearchGrounder(
+        embedding_client=embedder, session_factory=app.state.sessionmaker
+    )
+    body: dict[str, Any] = {
+        "model": "gpt-4o",
+        "messages": [{"role": "system", "content": "You are a helpful assistant."}],
+        "tools": [{"type": "file_search", "vector_store_ids": [to_wire_id(store_id)]}],
+    }
+    meter = _MeterSpy()
+
+    with pytest.raises(MissingSearchQuery) as exc_info:
+        await grounder.ground(body=body, tenant_id=tenant_id, meter=meter)
+
+    assert exc_info.value.status == 422
+    assert exc_info.value.code == "file_search_query_missing"
+    assert embedder.calls == [], (
+        f"the empty string was sent to the embedding provider: {embedder.calls!r}"
+    )
+    assert meter.count == 0, "a search with no query must never be billed"
+    assert body["tools"][0]["type"] == "file_search", "the tool must not be stripped on reject"
+
+
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        ("   \n\t ", "whitespace-only user text is not a query"),
+        ([{"type": "input_image", "image_url": "https://example.test/x.png"}], "image-only turn"),
+        ([], "an empty content list"),
+    ],
+)
+async def test_a_user_turn_with_no_text_is_refused(
+    app: Any, db_session: AsyncSession, content: Any, why: str
+) -> None:
+    """The query must be TEXT: a text embedding model cannot embed the alternatives."""
+    from gateway.vector_stores.application.file_search import (  # noqa: PLC0415
+        MissingSearchQuery,
+    )
+
+    tenant_id = uuid.uuid4()
+    store_id = await _seed_store(db_session, tenant_id=tenant_id, chunks=[("doc", _unit_vec(0))])
+    embedder = _FakeEmbeddingClient(_unit_vec(0))
+    grounder = FileSearchGrounder(
+        embedding_client=embedder, session_factory=app.state.sessionmaker
+    )
+    body: dict[str, Any] = {
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": content}],
+        "tools": [{"type": "file_search", "vector_store_ids": [to_wire_id(store_id)]}],
+    }
+    meter = _MeterSpy()
+
+    with pytest.raises(MissingSearchQuery):
+        await grounder.ground(body=body, tenant_id=tenant_id, meter=meter)
+    assert embedder.calls == [], why
+    assert meter.count == 0
+
+
+async def test_the_query_check_runs_before_any_store_lookup(app: Any) -> None:
+    """Ordering, asserted behaviourally: a queryless request against an UNKNOWN store
+    reports the missing query (a body-shape fact, free) rather than 404-ing on the
+    store — so a reject costs no DB round-trip and names the cause the caller can fix.
+    """
+    from gateway.vector_stores.application.file_search import (  # noqa: PLC0415
+        MissingSearchQuery,
+    )
+
+    grounder = FileSearchGrounder(
+        embedding_client=_FakeEmbeddingClient(_unit_vec(0)),
+        session_factory=app.state.sessionmaker,
+    )
+    body: dict[str, Any] = {
+        "model": "gpt-4o",
+        "messages": [{"role": "assistant", "content": "I looked that up already."}],
+        "tools": [{"type": "file_search", "vector_store_ids": [to_wire_id(uuid.uuid4())]}],
+    }
+
+    with pytest.raises(MissingSearchQuery):
+        await grounder.ground(body=body, tenant_id=uuid.uuid4(), meter=_MeterSpy())

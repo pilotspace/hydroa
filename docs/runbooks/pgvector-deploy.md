@@ -275,6 +275,82 @@ which is what the exit criterion asks for, and it is not the same as a productio
 
 ---
 
+## 7 · Published bound — HNSW post-filtering can truncate a top-k retrieval
+
+`file_search` retrieval (`VectorStoreFileRepository.search_chunks`) filters on
+`(tenant_id, vector_store_id)` and orders by cosine distance. The HNSW index covers
+**only** `embedding`, so those two clauses can be served in either order, and the order
+decides **correctness**, not just speed:
+
+| Plan | How | Recall |
+| --- | --- | --- |
+| exact | filter via `ix_vector_store_chunks_store`, then sort the matches | full |
+| HNSW | traverse the vector index for the globally-nearest candidates, **then** filter | partial — this store's lower-ranked chunks are dropped |
+
+A truncated retrieval is **indistinguishable from an empty one** at the API: HTTP 200, a
+grounded-looking answer, and a `per_query` bill.
+
+**Measured** (pgvector 0.8.5, PG 16, one 13,605-row table, `ANALYZE`d, both indexes present):
+
+| store size | share of table | plan chosen | rows returned for `top_k=20` |
+| --- | --- | --- | --- |
+| 5 | 0.0 % | exact | 5 / 5 |
+| 100 | 0.7 % | exact | 20 / 20 |
+| 1 500 | 11.0 % | exact | 20 / 20 |
+| 4 000 | 29.4 % | exact | 20 / 20 |
+| 8 000 | 58.8 % | **HNSW** | 20 / 20 |
+
+So the small tenant is **not** currently exposed: the planner only reaches for HNSW once
+the store dominates the table, and in that regime the store's own rows fill the candidate
+window. The two conditions for harm are mutually exclusive under the cost model.
+
+**What the bound actually depends on:**
+
+1. **`ix_vector_store_chunks_store` must exist.** It is load-bearing for *recall*, not
+   just latency. With it dropped, a 5-chunk store's `top_k=20` measured **2 of 5** against
+   a 4 000-row noisy neighbour. Guarded by
+   `tests/file_search_tool/test_retrieval_repo.py::test_a_small_store_search_is_planned_exactly_not_approximately`.
+2. **Statistics must be current.** After a bulk ingest, an un-`ANALYZE`d table can make a
+   selective store look non-selective and flip the plan to HNSW. `autovacuum` normally
+   handles it; a large one-shot import should `ANALYZE vector_store_chunks` explicitly.
+3. **Iterative scan is the insurance.** `search_chunks` issues
+   `SET LOCAL hnsw.iterative_scan = strict_order` (pgvector ≥ 0.8) before every search,
+   which keeps traversing until `top_k` rows have *passed* the filter, ordering intact.
+   Measured on a forced-HNSW plan: **1 of 5** without it, **5 of 5** with it. On pgvector
+   < 0.8 the `SET` is refused, the process logs
+   `file_search_iterative_scan_unavailable` **once**, and retrieval silently falls back to
+   the bound above — that log line is a deployment defect, not a warning.
+4. **`hnsw.max_scan_tuples` (default 20 000) still bounds it.** A store whose matching
+   rows sit beyond that many candidates can come back short even with iterative scan.
+   This is the residual, unavoidable bound.
+5. **Ordering is approximate for a store large enough to get the HNSW plan.** Standard ANN
+   behaviour; it may miss its own true nearest chunk. Not a defect to fix — a property to
+   know about.
+
+**⚠ `hnsw.ef_search` does not fix this.** Raised to 1 000 it changed nothing (still 2 of 5).
+A bigger candidate window is still a window and cannot reach rows ranked below it globally.
+
+### The alert
+
+```
+file_search_topk_shortfall
+```
+`WARNING` from `gateway.vector_stores.infrastructure.file_repository`, with
+`tenant_id`, `vector_store_id`, `returned`, `top_k`, `chunks_in_store`.
+
+Fires only when **fewer than `top_k` rows came back AND the store holds more chunks than
+were returned** — a combination a legitimately small store can never produce (it returns
+everything it has). Alert on any occurrence; it means a tenant was served a partial
+retrieval and billed for it.
+
+Triage order: (1) is `ix_vector_store_chunks_store` still present? (2) `EXPLAIN` the
+tenant's query — exact or HNSW? (3) `ANALYZE vector_store_chunks` and re-`EXPLAIN`;
+(4) if the plan is legitimately HNSW because the store is huge, raise
+`hnsw.max_scan_tuples` for that query or partition `vector_store_chunks` by
+`vector_store_id` — the documented scale escape hatch, which needs a migration.
+
+---
+
 ## Related
 
 - `docs/runbooks/backup-rollback.md` — backups, the restore drill, Alembic rollback

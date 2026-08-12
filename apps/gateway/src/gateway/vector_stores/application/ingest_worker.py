@@ -105,7 +105,28 @@ _CLAIM_TIMEOUT_PROCESS_ONCE = 1
 # (batches precedent).
 _ENQUEUE_TIMEOUT_SECONDS = 2.0
 
-_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+#: last_error.code for "we could not obtain this file's bytes" (todo #65).
+#:
+#: ⚠ This is a FIFTH value on vector-store-files' frozen §3 contract, which enumerates
+#: embedding_unavailable | zdr_blocked | file_empty | file_too_large. It is added
+#: deliberately and on the record, because every alternative is a lie: `file_empty`
+#: (the pre-fix behaviour) blames the tenant's data for our storage being down, and
+#: `embedding_unavailable` names the wrong subsystem entirely. Sibling in spirit to
+#: `embedding_unavailable` — same shape ("an upstream we depend on did not answer"),
+#: same terminal-with-retry-by-re-attach disposition.
+_STORAGE_UNAVAILABLE_CODE = "storage_unavailable"
+
+
+class SourceBytesUnavailable(Exception):
+    """The file's bytes could not be READ — an infrastructure fact, never a claim
+    about what the file contains (todo #65).
+
+    Raised by ``_read_bytes`` in place of the old ``return b""``, which flowed into
+    the zero-chunk branch and surfaced as ``file_empty``: a tenant whose s3-backed
+    file failed to ingest because OUR object store was unreachable was told THEIR
+    file was empty. They re-upload; it fails again; the only party who can act on
+    the truth never learns it.
+    """
 
 
 class RedisVectorStoreIngestQueue:
@@ -154,9 +175,9 @@ class VectorStoreIngestWorker:
       get_embedder   — zero-arg callable returning the current ChunkEmbedder (or
                        None). A lambda reading app.state lets tests swap the
                        embedder after construction (the get_batch_processor idiom).
-      object_store   — optional ObjectStore for s3-backed file bytes (None
-                       honest-degrades an s3-backed file to a read failure —
-                       inline BYTEA, the test path, is unaffected).
+      object_store   — optional ObjectStore for s3-backed file bytes (None fails an
+                       s3-backed file as failed/storage_unavailable — a read failure,
+                       NOT an empty file, todo #65; inline BYTEA is unaffected).
     """
 
     def __init__(
@@ -256,7 +277,19 @@ class VectorStoreIngestWorker:
             )
             return
 
-        content = await self._read_bytes(file_row)
+        try:
+            content = await self._read_bytes(file_row)
+        except SourceBytesUnavailable:
+            # todo #65 — fail with the SUBSYSTEM that actually failed. Terminal, matching
+            # the sibling embedding_unavailable disposition: the tenant re-attaches to
+            # retry (the failed->retry path this suite already covers), rather than the
+            # row sitting in_progress forever with no error to read.
+            await self._fail(
+                row_id,
+                code=_STORAGE_UNAVAILABLE_CODE,
+                message="File storage did not return the file's bytes; re-attach to retry",
+            )
+            return
         text = content.decode("utf-8", errors="replace") if content else ""
         chunks = chunk_text(text)
 
@@ -271,10 +304,26 @@ class VectorStoreIngestWorker:
 
         async with self._sessionmaker() as session:
             store_row = await session.get(VectorStoreRow, vector_store_id)
-        embedding_model = (
-            store_row.embedding_model if store_row is not None else _DEFAULT_EMBEDDING_MODEL
-        )
-        key_id = store_row.key_id if store_row is not None else tenant_id
+        if store_row is None:
+            # todo #65 — the old fallbacks INVENTED both values: a DEFAULT embedding model
+            # (embedding into a store whose existing chunks may be in a different vector
+            # space) and `key_id = tenant_id` (a tenant UUID written into a key_id column,
+            # billing a key that does not exist). Neither is recoverable from downstream.
+            #
+            # Reached only if the store disappears between the attach-row load above and
+            # here; vector_store_files.vector_store_id is ON DELETE CASCADE, so that
+            # normally takes this row with it and drive() stops at its row-is-None guard.
+            # Returning leaves the row non-terminal for recover_orphans/re-attach, and
+            # there is no row left to write a last_error onto in the ordinary case.
+            _log.warning(
+                "vector_store_ingest_worker: vector store %s vanished mid-ingest for row %s"
+                " — nothing ingested, nothing billed",
+                vector_store_id,
+                row_id,
+            )
+            return
+        embedding_model = store_row.embedding_model
+        key_id = store_row.key_id
 
         embedder = self._get_embedder()
         if embedder is None:
@@ -366,22 +415,35 @@ class VectorStoreIngestWorker:
             await session.commit()
 
     async def _read_bytes(self, file_row: Any) -> bytes:
+        """Return the file's bytes, or raise SourceBytesUnavailable (todo #65).
+
+        Both s3 failure modes raise rather than degrade to b"": an unconfigured
+        object store is a deployment fault and a raising ``get`` is an outage, and
+        NEITHER is a statement about the file's contents. Only the inline path can
+        legitimately yield b"" — an actually-empty stored file.
+        """
         if file_row.storage_backend == "s3":
             if self._object_store is None or not file_row.object_key:
-                _log.warning(
+                # Deployment fault, not tenant data: this row can never be ingested by
+                # this process, and reporting it as empty content hid that from the
+                # only party who can fix it.
+                _log.error(
                     "vector_store_ingest_worker: s3-backed file with no ObjectStore configured"
-                    " (file_id=%s) — treated as empty",
+                    " (file_id=%s) — unreadable",
                     file_row.id,
                 )
-                return b""
+                raise SourceBytesUnavailable("no object store configured for an s3-backed file")
             try:
                 return await self._object_store.get(file_row.object_key)
-            except Exception:
-                _log.warning(
+            except Exception as exc:
+                # Catch-all on purpose: ObjectStore.get contracts ObjectNotFoundError
+                # and ObjectStoreUnavailableError, but an adapter-level surprise
+                # (botocore, TLS, DNS) is still OUR read failing, never an empty file.
+                _log.error(
                     "vector_store_ingest_worker: ObjectStore.get failed for file_id=%s",
                     file_row.id,
                 )
-                return b""
+                raise SourceBytesUnavailable("object store read failed") from exc
         return file_row.content or b""
 
     async def _record_usage(

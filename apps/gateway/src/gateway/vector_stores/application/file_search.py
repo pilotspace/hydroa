@@ -4,7 +4,8 @@
 (/v1/responses and /v1/chat/completions) reach via `CompletionUseCase`. For a request
 carrying a `file_search` tool it:
 
-  1. validates `vector_store_ids` (empty/missing -> 422, BEFORE any retrieval/meter);
+  1. validates `vector_store_ids` (empty/missing, or more than one -> 422) and that the
+     body carries a non-empty user TEXT query (-> 422) — all BEFORE any retrieval/meter;
   2. loads the store tenant-scoped for its OWN `embedding_model` (absent / cross-tenant
      -> 404 `vector_store_not_found`, a uniform no-leak reject raised BEFORE metering);
   3. embeds the last user message via the PER-TENANT breaker (breaker-open / timeout after
@@ -63,6 +64,58 @@ class MissingVectorStoreIds(FileSearchError):
         super().__init__(
             "file_search_vector_store_ids_required",
             "file_search requires a non-empty vector_store_ids array",
+            status=422,
+        )
+
+
+class MultipleVectorStoresUnsupported(FileSearchError):
+    """More than one `vector_store_ids` entry (todo #61).
+
+    ⚠ This code is an ADDITION to file-search-tool's closed §3 contract, which specifies
+    the shape as `vector_store_ids: [id]` — singular — and enumerates four rejects, none
+    covering this case. Multi-store was never in scope; the defect was that the code
+    ACCEPTED it silently, taking ids[0] and discarding the rest. Measured pre-fix: two
+    stores grounded successfully off the first and metered once, so the caller was billed
+    as if fully served and had no way to know.
+
+    Refusing beats guessing, and the alternative is not a smaller change:
+      * searching all N stores is a FEATURE — it redefines what top-k means across stores;
+      * and it is not even well-posed here, because each store carries its OWN
+        embedding_model, so chunks from two stores need not share a vector space. Ranking
+        them together would produce confidently-ordered nonsense.
+    Returning the first store's hits is the only option that is always wrong in silence.
+    """
+
+    def __init__(self, count: int) -> None:
+        super().__init__(
+            "file_search_multiple_vector_stores_unsupported",
+            # The count is echoed because the fix is usually "send one request per store",
+            # and a caller cannot act on a message that hides what it sent.
+            f"file_search supports exactly one vector store per request; got {count}",
+            status=422,
+        )
+
+
+class MissingSearchQuery(FileSearchError):
+    """No user TEXT to retrieve against (todo #65).
+
+    ⚠ A SECOND addition to file-search-tool's closed §3 reject set (see
+    MultipleVectorStoresUnsupported). Pre-fix, `_last_user_text` returned "" for a body
+    with no user message — or a user turn carrying no text part, e.g. image-only — and
+    that "" went to `embed()`. Providers return a perfectly valid vector for the empty
+    string, so top-k returned whichever chunks happen to sit nearest it: arbitrary text,
+    injected as authoritative retrieved context, and metered as a per_query.
+
+    Refusing is the only outcome that does not invent a query. Falling back to the last
+    message of ANY role would retrieve against a tool-result blob; skipping retrieval
+    while still stripping the tool would leave the caller silently ungrounded with only
+    a server-side log to show it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "file_search_query_missing",
+            "file_search requires a user message with text to search for",
             status=422,
         )
 
@@ -184,9 +237,10 @@ class FileSearchGrounder:
     ) -> bool:
         """Ground `body` in place; return True iff a file_search tool was serviced.
 
-        Raises MissingVectorStoreIds (422) / VectorStoreNotFound (404) /
-        UpstreamUnavailable (503) — the caller maps these to problem+json. The `meter`
-        callback fires exactly once, only on a fully-successful invocation.
+        Raises MissingVectorStoreIds / MultipleVectorStoresUnsupported /
+        MissingSearchQuery (422) / VectorStoreNotFound (404) / UpstreamUnavailable (503)
+        — the caller maps these to problem+json. The `meter` callback fires exactly once,
+        only on a fully-successful invocation.
         """
         tool = _extract_file_search_tool(body)
         if tool is None:
@@ -195,6 +249,19 @@ class FileSearchGrounder:
         ids = tool.get("vector_store_ids")
         if not isinstance(ids, list) or len(ids) == 0:
             raise MissingVectorStoreIds()
+        # todo #61 — refuse >1 rather than silently serving ids[0]. `> 1`, deliberately not
+        # `!= 1`: the single-store path IS the contract and must stay untouched. Raised here,
+        # beside the empty-list check and BEFORE any store load / embed / meter, so a reject
+        # costs nothing and cannot half-ground.
+        if len(ids) > 1:
+            raise MultipleVectorStoresUnsupported(len(ids))
+
+        # todo #65 — resolve the QUERY before anything costs a round-trip. A body-shape
+        # fact is free to check and names something the caller can fix, so it precedes the
+        # store load (and therefore the 404) as well as the embed and the meter.
+        query = _last_user_text(body).strip()
+        if not query:
+            raise MissingSearchQuery()
 
         first = ids[0]
         store_id = parse_wire_id(first) if isinstance(first, str) else None
@@ -220,7 +287,7 @@ class FileSearchGrounder:
         # (2) Embed the query via the PER-TENANT breaker — fail closed on breaker-open/timeout.
         try:
             vectors, _usage = await self._embedding_client.embed(
-                tenant_id, store_row.embedding_model, [_last_user_text(body)]
+                tenant_id, store_row.embedding_model, [query]
             )
         except (UpstreamUnavailableError, CircuitOpenError) as exc:
             raise UpstreamUnavailable() from exc
