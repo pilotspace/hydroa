@@ -399,3 +399,83 @@ async def test_zdr_tenant_can_create_store(
     resp = await _create_store(client, tenant_a["key"], name="zdr-ok")
     assert resp.status_code == 200, f"ZDR tenant blocked from metadata-only create: {resp.text}"
     assert resp.json()["object"] == "vector_store"
+
+
+# ---------------------------------------------------------------------------
+# todo #63 — N+1 on GET /v1/vector_stores
+# ---------------------------------------------------------------------------
+# The list handler looped the page and awaited `file_repo.file_counts(row.id)` per row —
+# up to 100 sequential round-trips for one request, each a GROUP BY on
+# vector_store_files. Nothing failed, so nothing complained; the endpoint just got
+# linearly slower as a tenant added stores, which is the kind of cost that only shows up
+# once a customer is big enough to care.
+#
+# Asserted as "the count queries do not grow with the page size" rather than a latency
+# threshold: a wall-clock assertion would be a date-bomb on CI hardware, and this repo has
+# already been bitten by absolute-duration guards (flake class 10).
+
+
+async def test_listing_stores_does_not_issue_one_count_query_per_store(
+    client: Any, app: Any, tenant_a: dict[str, str]
+) -> None:
+    """The file_counts query count must be O(1) in the number of stores listed."""
+    from sqlalchemy import event  # noqa: PLC0415
+
+    for i in range(6):
+        created = await _create_store(client, tenant_a["key"], name=f"n1-store-{i}")
+        assert created.status_code == 200, created.text
+
+    counting_statements: list[str] = []
+
+    def _listener(conn: Any, cursor: Any, statement: str, *args: Any) -> None:
+        # The file_counts shape: an aggregate over vector_store_files. Keyed on the table +
+        # the aggregate so a rewrite that keeps the N+1 is still caught.
+        normalized = " ".join(statement.split()).lower()
+        if "vector_store_files" in normalized and "count(" in normalized:
+            counting_statements.append(normalized)
+
+    sync_engine = app.state.engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _listener)
+    try:
+        listed = await client.get("/v1/vector_stores", headers=_bearer(tenant_a["key"]))
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _listener)
+
+    assert listed.status_code == 200, listed.text
+    assert len(listed.json()["data"]) == 6, "the page must still contain every store"
+    assert len(counting_statements) <= 1, (
+        f"{len(counting_statements)} file-count queries for 6 stores — the N+1 is back. "
+        "One GROUP BY over the whole page answers this in a single round-trip."
+    )
+
+
+async def test_batched_file_counts_are_still_correct_per_store(
+    client: Any, app: Any, tenant_a: dict[str, str]
+) -> None:
+    """Correctness half: batching must not smear counts across stores.
+
+    The dangerous failure of a GROUP BY rewrite is not slowness, it is attributing one
+    store's files to another — or dropping the zero-file stores entirely, since a store
+    with no files produces NO group row and must still appear with all-zero counts.
+    """
+    ids = []
+    for i in range(3):
+        created = await _create_store(client, tenant_a["key"], name=f"counts-store-{i}")
+        assert created.status_code == 200, created.text
+        ids.append(created.json()["id"])
+
+    listed = await client.get("/v1/vector_stores", headers=_bearer(tenant_a["key"]))
+    assert listed.status_code == 200, listed.text
+    by_id = {row["id"]: row for row in listed.json()["data"]}
+
+    for store_id in ids:
+        assert store_id in by_id, f"store {store_id} vanished from the listing"
+        counts = by_id[store_id]["file_counts"]
+        assert counts["total"] == 0, f"a file-less store must report zeros, got {counts}"
+        assert counts == {
+            "in_progress": 0,
+            "completed": 0,
+            "failed": 0,
+            "cancelled": 0,
+            "total": 0,
+        }, counts

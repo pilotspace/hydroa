@@ -283,10 +283,20 @@ async def list_vector_stores(
     )
     has_more = len(rows) > effective_limit
     page = rows[:effective_limit]
-    data = []
-    for row in page:
-        counts = await file_repo.file_counts(row.id)
-        data.append(_vector_store_object(row, file_counts=counts))
+    # todo #63 — ONE grouped query for the whole page, not one per row. `file_counts_for`
+    # returns an entry for every id asked about, so a file-less store still renders zeros
+    # instead of a KeyError; the `_zero()` fallback here is belt-and-braces, not a real path.
+    counts_by_store = await file_repo.file_counts_for([row.id for row in page])
+    data = [
+        _vector_store_object(
+            row,
+            file_counts=counts_by_store.get(
+                row.id,
+                {"in_progress": 0, "completed": 0, "failed": 0, "cancelled": 0, "total": 0},
+            ),
+        )
+        for row in page
+    ]
     return {
         "object": "list",
         "data": data,

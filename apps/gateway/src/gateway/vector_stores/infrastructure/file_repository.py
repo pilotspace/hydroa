@@ -33,12 +33,13 @@ Methods:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,7 +49,55 @@ from gateway.vector_stores.infrastructure.orm import (
     VectorStoreRow,
 )
 
+_log = logging.getLogger(__name__)
+
 _TERMINAL_STATUSES = ("completed", "failed")
+
+# --- todo #62: the HNSW post-filtering bound -------------------------------------
+# The HNSW index covers ONLY `embedding`, so a (tenant_id, vector_store_id)-filtered
+# top-k can be served two ways, and the difference is CORRECTNESS, not just speed:
+#   * exact  — filter via ix_vector_store_chunks_store, then sort the matches. Full recall.
+#   * HNSW   — traverse the vector index for the globally-nearest candidates, THEN apply
+#              the filter. Any of this store's chunks ranking below the candidate window
+#              is dropped: fewer than top_k hits, a 200, and a per_query bill.
+# Measured (pgvector 0.8.5 / PG16): the planner picks EXACT for a selective store (up to
+# ~29% of the table in a 13.6k-row probe) and HNSW once the store dominates (~59%) — and
+# in that regime the store's own rows fill the window anyway. So the harmful combination
+# is not one the cost model produces on its own; it needs the protective btree index to
+# be gone, or statistics to have drifted after a bulk ingest.
+#
+# Iterative scan is the insurance for exactly that: it keeps traversing until top_k rows
+# have PASSED the filter (bounded by hnsw.max_scan_tuples, default 20000). strict_order
+# keeps the exact distance ordering. Measured on the forced-HNSW plan: 1 of 5 chunks
+# without it, 5 of 5 with it.
+#
+# NOT ef_search: raising it to 1000 changed nothing (still 2 of 5 in a 4000-row probe).
+# A bigger window is still a window; it cannot reach rows that rank below it globally.
+# That was the remedy the todo proposed, and it would have cost latency for no recall.
+_ITERATIVE_SCAN_SQL = "SET LOCAL hnsw.iterative_scan = strict_order"
+
+
+class _IterativeScan:
+    """Process-wide capability cache for the pgvector >= 0.8 GUC above.
+
+    An older pgvector rejects the SET with "unrecognized configuration parameter",
+    which POISONS the transaction — so the first attempt per process runs inside a
+    SAVEPOINT and a failure degrades retrieval to the documented post-filter bound
+    instead of 500-ing every file_search on that deployment.
+    """
+
+    supported: bool | None = None
+
+
+def is_topk_shortfall(*, returned: int, total: int, top_k: int) -> bool:
+    """True iff a retrieval came back short WHILE the store had more to give (todo #62).
+
+    Both halves are required, and that is the whole point: a store holding fewer than
+    top_k chunks returns everything it has, every time, which is not a truncation. An
+    alert that fired on those would be muted within a week and the real event would be
+    invisible with it.
+    """
+    return returned < top_k and total > returned
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +292,45 @@ class VectorStoreFileRepository:
             counts["total"] += int(n)
         return counts
 
+    async def file_counts_for(
+        self, vector_store_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, dict[str, int]]:
+        """Live file counts for MANY stores in ONE round-trip (todo #63).
+
+        The list endpoint used to call ``file_counts`` once per row — up to 100 sequential
+        GROUP BYs for a single request, getting linearly slower as a tenant added stores.
+
+        Returns an entry for EVERY id asked for, including stores with no files at all: a
+        file-less store produces no group row, and the caller must still render its
+        all-zero counts rather than a missing key. That asymmetry — the rows you get back
+        are a subset of the rows you asked about — is the bug a naive GROUP BY rewrite
+        ships, so the zero-fill happens here rather than being left to each caller.
+        """
+        if not vector_store_ids:
+            return {}
+
+        def _zero() -> dict[str, int]:
+            return {"in_progress": 0, "completed": 0, "failed": 0, "cancelled": 0, "total": 0}
+
+        counts: dict[uuid.UUID, dict[str, int]] = {sid: _zero() for sid in vector_store_ids}
+        result = await self._session.execute(
+            select(
+                VectorStoreFileRow.vector_store_id,
+                VectorStoreFileRow.status,
+                func.count(),
+            )
+            .where(VectorStoreFileRow.vector_store_id.in_(list(vector_store_ids)))
+            .group_by(VectorStoreFileRow.vector_store_id, VectorStoreFileRow.status)
+        )
+        for store_id, status, n in result.all():
+            bucket = counts.get(store_id)
+            if bucket is None:  # pragma: no cover — defensive; IN () cannot widen the set
+                continue
+            if status in bucket:
+                bucket[status] = int(n)
+            bucket["total"] += int(n)
+        return counts
+
     async def search_chunks(
         self,
         *,
@@ -259,7 +347,12 @@ class VectorStoreFileRepository:
         ``vector_store_id`` (both denormalized onto the chunk row) so a store owned by
         another tenant — or an unknown store — returns ``[]`` with ZERO leak; the caller
         maps ``[]``/absent-store to a uniform 404 (never an enumeration oracle).
+
+        Asks for iterative index scan first, and logs a shortfall whose signature cannot
+        be a legitimately small store — see the todo #62 block at the top of this module
+        for the measurements behind both.
         """
+        await self._request_iterative_scan()
         result = await self._session.execute(
             select(VectorStoreChunkRow.content, VectorStoreChunkRow.chunk_index)
             .where(
@@ -269,7 +362,77 @@ class VectorStoreFileRepository:
             .order_by(VectorStoreChunkRow.embedding.cosine_distance(query_embedding))
             .limit(top_k)
         )
-        return [RetrievedChunk(content=row[0], chunk_index=row[1]) for row in result.all()]
+        chunks = [RetrievedChunk(content=row[0], chunk_index=row[1]) for row in result.all()]
+        if len(chunks) < top_k:
+            await self._warn_if_truncated(
+                tenant_id=tenant_id, store_id=store_id, returned=len(chunks), top_k=top_k
+            )
+        return chunks
+
+    async def _request_iterative_scan(self) -> None:
+        """Enable pgvector's iterative index scan for this transaction, or degrade."""
+        if _IterativeScan.supported is False:
+            return
+        if _IterativeScan.supported is True:
+            await self._session.execute(text(_ITERATIVE_SCAN_SQL))
+            return
+        try:
+            # SAVEPOINT: an unrecognized GUC aborts the transaction, and every retrieval
+            # after it in this session would fail too. Probed once per process.
+            async with self._session.begin_nested():
+                await self._session.execute(text(_ITERATIVE_SCAN_SQL))
+        except Exception:
+            _IterativeScan.supported = False
+            _log.error(
+                "file_search_iterative_scan_unavailable: pgvector < 0.8 on this database;"
+                " top-k retrieval falls back to the HNSW post-filter bound (a store's"
+                " lower-ranked chunks can be dropped when the planner takes the vector"
+                " index). Upgrade pgvector to restore full recall."
+            )
+            return
+        _IterativeScan.supported = True
+
+    async def _warn_if_truncated(
+        self, *, tenant_id: uuid.UUID, store_id: uuid.UUID, returned: int, top_k: int
+    ) -> None:
+        """Alert on the published bound (todo #62): short result, store had more.
+
+        The extra COUNT runs ONLY on an under-full result and is served by
+        ix_vector_store_chunks_store, so it costs a sub-millisecond index scan on a path
+        that has already made an embedding round-trip. Silence here is what made this
+        defect class unobservable: a truncated search and an empty store look identical
+        from the outside.
+        """
+        total = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(VectorStoreChunkRow)
+                    .where(
+                        VectorStoreChunkRow.tenant_id == tenant_id,
+                        VectorStoreChunkRow.vector_store_id == store_id,
+                    )
+                )
+            ).scalar_one()
+        )
+        if not is_topk_shortfall(returned=returned, total=total, top_k=top_k):
+            return
+        _log.warning(
+            "file_search_topk_shortfall: retrieval returned %d of top_k=%d for store %s"
+            " which holds %d chunks — HNSW post-filtering or the iterative-scan tuple"
+            " bound (hnsw.max_scan_tuples) dropped reachable chunks",
+            returned,
+            top_k,
+            store_id,
+            total,
+            extra={
+                "tenant_id": str(tenant_id),
+                "vector_store_id": str(store_id),
+                "returned": returned,
+                "top_k": top_k,
+                "chunks_in_store": total,
+            },
+        )
 
 
-__all__ = ["_TERMINAL_STATUSES", "VectorStoreFileRepository"]
+__all__ = ["_TERMINAL_STATUSES", "VectorStoreFileRepository", "is_topk_shortfall"]
