@@ -142,6 +142,13 @@ from gateway.evals.api.router import evals_router
 from gateway.evals.infrastructure.orm import (  # noqa: F401 — registers EvalSetRow/EvalCaseRow on Base.metadata
     EvalCaseRow as _EvalCaseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
+from gateway.evals.runs.api.run_router import eval_runs_router
+from gateway.evals.runs.application.run_executor import EvalRunExecutor
+from gateway.evals.runs.infrastructure.orm import (  # noqa: F401 — registers EvalRunRow/EvalCaseResultRow on Base.metadata
+    EvalCaseResultRow as _EvalCaseResultRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
+from gateway.evals.runs.infrastructure.repository import SqlAlchemyEvalRunStore
+from gateway.evals.runs.infrastructure.upstream_adapter import TenantExecutionRegistry
 from gateway.files.api.router import files_router
 from gateway.finetune.api.router import finetune_router
 from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
@@ -1817,6 +1824,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(files_router)
     app.include_router(vector_stores_router)
     app.include_router(evals_router)
+    app.include_router(eval_runs_router)
+    # eval-run-executor (R7): replay a set through the SAME governance path a live request uses.
+    # build_use_case reuses the request path's get_completion_use_case over a shim exposing only
+    # .app (it never reads request.headers) — so use_cases.py/governance.py stay untouched and the
+    # run's governance/billing hold by construction. The breaker + concurrency are PER-TENANT
+    # (TenantExecutionRegistry), NEVER app.state.circuit_breaker (R:GLOBAL_BREAKER). Closures read
+    # app.state lazily (at drive time), so construction here needs only app.state.sessionmaker.
+    from types import SimpleNamespace
+
+    from gateway.proxy.api.deps import get_completion_use_case as _get_completion_use_case
+
+    def _build_eval_use_case(_session: Any) -> Any:
+        return _get_completion_use_case(SimpleNamespace(app=app), _session)  # type: ignore[arg-type]
+
+    app.state.eval_run_executor = EvalRunExecutor(
+        sessionmaker=app.state.sessionmaker,
+        store=SqlAlchemyEvalRunStore(app.state.sessionmaker),
+        build_use_case=_build_eval_use_case,
+        get_upstream_delegate=lambda: app.state.completion_upstream,
+        get_usage_recorder=lambda: app.state.usage_recorder,
+        get_model_router=lambda: getattr(app.state, "model_router", None),
+        registry=TenantExecutionRegistry(
+            concurrency=int(getattr(settings, "eval_run_concurrency", 4)),
+        ),
+        per_call_timeout_seconds=float(getattr(settings, "eval_run_timeout_seconds", 30.0)),
+    )
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)

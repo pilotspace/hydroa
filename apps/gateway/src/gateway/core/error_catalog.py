@@ -1689,3 +1689,12 @@ EVAL_SET_NAME_CONFLICT = ErrorSpec(
     "ERR_EVAL_SET_NAME_CONFLICT",
     "an eval set with this name already exists for this tenant",
 )
+
+#: GET /v1/evals/runs/{id} (or .../cases) whose run id is absent OR owned by another tenant
+#: — deliberately indistinguishable (M6, R:RUN_NOT_FOUND; never an enumeration oracle),
+#: byte-identical for both causes, exactly like EVAL_SET_NOT_FOUND above.
+EVAL_RUN_NOT_FOUND = ErrorSpec(404, "ERR_EVAL_RUN_NOT_FOUND", "Eval run not found")
+
+#: POST .../runs whose `model` is missing or not a non-empty string — 422, nothing launched.
+#: Validated on the caller's own input BEFORE the parent set is resolved (no oracle).
+EVAL_RUN_INVALID = ErrorSpec(422, "ERR_EVAL_RUN_INVALID", "model must be a non-empty string")
