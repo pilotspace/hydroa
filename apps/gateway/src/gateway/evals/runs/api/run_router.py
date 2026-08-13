@@ -95,9 +95,7 @@ def _case_result_object(row: EvalCaseResultRow) -> dict[str, Any]:
     return obj
 
 
-@eval_runs_router.post(
-    "/v1/evals/sets/{set_id}/runs", status_code=201, response_model=None
-)
+@eval_runs_router.post("/v1/evals/sets/{set_id}/runs", status_code=201, response_model=None)
 async def launch_eval_run(
     set_id: str,
     body: dict[str, Any],
@@ -150,9 +148,7 @@ async def launch_eval_run(
     return _run_object(refreshed, case_count=case_count)
 
 
-async def _enqueue_or_drive(
-    request: Request, executor: Any, *, run_id: Any, raw_key: str
-) -> None:
+async def _enqueue_or_drive(request: Request, executor: Any, *, run_id: Any, raw_key: str) -> None:
     """Enqueue for the durable worker; FAIL OPEN to an inline drive (vector-store idiom, M7)."""
     queue = getattr(request.app.state, "eval_run_queue", None)
     if queue is not None:

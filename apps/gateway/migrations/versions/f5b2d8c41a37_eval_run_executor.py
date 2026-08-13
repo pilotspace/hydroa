@@ -80,9 +80,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["eval_run_id"], ["eval_runs.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint(
-            "eval_run_id", "eval_case_id", name="uq_eval_case_results_run_case"
-        ),
+        sa.UniqueConstraint("eval_run_id", "eval_case_id", name="uq_eval_case_results_run_case"),
     )
     op.create_index(
         "ix_eval_case_results_run_created",

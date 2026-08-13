@@ -181,7 +181,10 @@ async def _add_case(client: Any, key: str, set_id: str, content: str) -> None:
     resp = await client.post(
         f"/v1/evals/sets/{set_id}/cases",
         json={
-            "request_body": {"model": "ignored", "messages": [{"role": "user", "content": content}]},
+            "request_body": {
+                "model": "ignored",
+                "messages": [{"role": "user", "content": content}],
+            },
             "assertion": {"kind": "contains", "expected": "echo"},
         },
         headers=_bearer(key),
@@ -225,13 +228,17 @@ async def test_run_enters_governance_per_case(
         await _add_case(client, tenant_a["key"], set_id, f"case-{i}")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     run_id = run.json()["id"]
     assert run.json()["case_count"] == 3
 
-    cases = (await client.get(f"/v1/evals/runs/{run_id}/cases", headers=_bearer(tenant_a["key"]))).json()
+    cases = (
+        await client.get(f"/v1/evals/runs/{run_id}/cases", headers=_bearer(tenant_a["key"]))
+    ).json()
     assert [c["status"] for c in cases["data"]] == ["completed", "completed", "completed"]
     # one dial per case (governance passed for each, then dialed) — never more, never fewer.
     assert upstream.calls == 3
@@ -320,7 +327,9 @@ async def test_one_usage_record_per_dialed_case(
         await _add_case(client, tenant_a["key"], set_id, f"distinct-{i}")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
 
@@ -350,11 +359,15 @@ async def test_per_tenant_breaker_isolation(
     for i in range(6):
         await _add_case(client, tenant_a["key"], set_a, f"a-{i}")
     run_a = await client.post(
-        f"/v1/evals/sets/{set_a}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_a}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run_a.status_code == 201, run_a.text
     cases_a = (
-        await client.get(f"/v1/evals/runs/{run_a.json()['id']}/cases", headers=_bearer(tenant_a["key"]))
+        await client.get(
+            f"/v1/evals/runs/{run_a.json()['id']}/cases", headers=_bearer(tenant_a["key"])
+        )
     ).json()
     assert all(c["status"] == "errored" for c in cases_a["data"])
     assert registry.breaker_for(a_tid).is_open() is True
@@ -367,11 +380,15 @@ async def test_per_tenant_breaker_isolation(
     for i in range(2):
         await _add_case(client, tenant_b["key"], set_b, f"b-{i}")
     run_b = await client.post(
-        f"/v1/evals/sets/{set_b}/runs", json={"model": active_model}, headers=_bearer(tenant_b["key"])
+        f"/v1/evals/sets/{set_b}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_b["key"]),
     )
     assert run_b.status_code == 201, run_b.text
     cases_b = (
-        await client.get(f"/v1/evals/runs/{run_b.json()['id']}/cases", headers=_bearer(tenant_b["key"]))
+        await client.get(
+            f"/v1/evals/runs/{run_b.json()['id']}/cases", headers=_bearer(tenant_b["key"])
+        )
     ).json()
     assert all(c["status"] == "completed" for c in cases_b["data"])
 
@@ -398,7 +415,9 @@ async def test_zdr_run_refused_atomically_zero_results(
         )
         await s.commit()
     launch = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert launch.status_code == 403
     assert launch.json()["error"]["code"] == "ERR_ZDR_PAYLOAD_BLOCKED"
@@ -465,7 +484,9 @@ async def test_resume_does_not_rebill_terminal_cases(
         await _add_case(client, tenant_a["key"], set_id, f"r-{i}")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     run_id_wire = run.json()["id"]
@@ -480,8 +501,11 @@ async def test_resume_does_not_rebill_terminal_cases(
     assert len(rec.records) == 3, "a resumed drive must not re-bill a terminal case"
     # exactly N result rows — the UNIQUE(run, case) idempotency held.
     assert (
-        await _count(app, "SELECT count(*) FROM eval_case_results WHERE eval_run_id = :r",
-                     r=uuid.UUID(_strip_prefix(run_id_wire)))
+        await _count(
+            app,
+            "SELECT count(*) FROM eval_case_results WHERE eval_run_id = :r",
+            r=uuid.UUID(_strip_prefix(run_id_wire)),
+        )
         == 3
     )
 
@@ -504,16 +528,22 @@ async def test_timeout_case_errored_run_continues(
     await _add_case(client, tenant_a["key"], set_id, "fast-2")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     cases = (
-        await client.get(f"/v1/evals/runs/{run.json()['id']}/cases", headers=_bearer(tenant_a["key"]))
+        await client.get(
+            f"/v1/evals/runs/{run.json()['id']}/cases", headers=_bearer(tenant_a["key"])
+        )
     ).json()["data"]
     by_status = sorted(c["status"] for c in cases)
     assert by_status == ["completed", "completed", "errored"], by_status
     # the run still reaches a terminal rollup — one bad case never sinks it.
-    got = (await client.get(f"/v1/evals/runs/{run.json()['id']}", headers=_bearer(tenant_a["key"]))).json()
+    got = (
+        await client.get(f"/v1/evals/runs/{run.json()['id']}", headers=_bearer(tenant_a["key"]))
+    ).json()
     assert got["status"] == "completed"
     assert got["counts"]["errored"] == 1 and got["counts"]["completed"] == 2
 
@@ -531,16 +561,22 @@ async def test_cross_tenant_and_absent_run_uniform_404(
     set_id = await _make_set(client, tenant_a["key"], "iso")
     await _add_case(client, tenant_a["key"], set_id, "x")
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     run_id = run.json()["id"]
 
     # Tenant B asking for A's run.
     cross = await client.get(f"/v1/evals/runs/{run_id}", headers=_bearer(tenant_b["key"]))
     # A wholly-absent run id.
-    absent = await client.get(f"/v1/evals/runs/er_{uuid.uuid4().hex}", headers=_bearer(tenant_b["key"]))
+    absent = await client.get(
+        f"/v1/evals/runs/er_{uuid.uuid4().hex}", headers=_bearer(tenant_b["key"])
+    )
     assert cross.status_code == 404 and absent.status_code == 404
-    assert cross.json() == absent.json(), "cross-tenant must be byte-identical to absent (no oracle)"
+    assert cross.json() == absent.json(), (
+        "cross-tenant must be byte-identical to absent (no oracle)"
+    )
     assert cross.json()["error"]["code"] == "ERR_EVAL_RUN_NOT_FOUND"
     # A malformed id resolves to the same 404, never a 500.
     malformed = await client.get("/v1/evals/runs/not-a-run", headers=_bearer(tenant_b["key"]))
@@ -569,7 +605,9 @@ async def test_results_aligned_to_case_creation_order(
         )
         assert run.status_code == 201, run.text
         data = (
-            await client.get(f"/v1/evals/runs/{run.json()['id']}/cases", headers=_bearer(tenant_a["key"]))
+            await client.get(
+                f"/v1/evals/runs/{run.json()['id']}/cases", headers=_bearer(tenant_a["key"])
+            )
         ).json()["data"]
         return [c["eval_case_id"] for c in data]
 
@@ -596,15 +634,21 @@ async def test_empty_set_run_completes_vacuously(
     set_id = await _make_set(client, tenant_a["key"], "empty")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     body = run.json()
     assert body["case_count"] == 0
-    got = (await client.get(f"/v1/evals/runs/{body['id']}", headers=_bearer(tenant_a["key"]))).json()
+    got = (
+        await client.get(f"/v1/evals/runs/{body['id']}", headers=_bearer(tenant_a["key"]))
+    ).json()
     assert got["status"] == "completed"
     assert got["counts"] == {"completed": 0, "refused": 0, "errored": 0, "pending": 0}
-    cases = (await client.get(f"/v1/evals/runs/{body['id']}/cases", headers=_bearer(tenant_a["key"]))).json()
+    cases = (
+        await client.get(f"/v1/evals/runs/{body['id']}/cases", headers=_bearer(tenant_a["key"]))
+    ).json()
     assert cases["data"] == []
 
 
@@ -623,14 +667,18 @@ async def test_cross_tenant_launch_and_billing_identity(
 
     # Tenant B launching a run on tenant A's set -> uniform 404 (A's set is invisible to B).
     forbidden = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_b["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_b["key"]),
     )
     assert forbidden.status_code == 404
     assert forbidden.json()["error"]["code"] == "ERR_EVAL_SET_NOT_FOUND"
 
     # Tenant A's own run bills A's tenant, never B's (the usage record carries the launcher).
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     assert await _poll(lambda: len(rec.records) == 1)
@@ -652,14 +700,18 @@ async def test_run_snapshot_fixed_at_launch(
     await _add_case(client, tenant_a["key"], set_id, "at-launch-2")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     assert run.json()["case_count"] == 2
 
     # A case added after launch is NOT in the already-launched run's fixed denominator.
     await _add_case(client, tenant_a["key"], set_id, "after-launch-3")
-    got = (await client.get(f"/v1/evals/runs/{run.json()['id']}", headers=_bearer(tenant_a["key"]))).json()
+    got = (
+        await client.get(f"/v1/evals/runs/{run.json()['id']}", headers=_bearer(tenant_a["key"]))
+    ).json()
     assert got["case_count"] == 2, "the run's case set is fixed at launch (A2)"
 
 
@@ -685,7 +737,9 @@ async def test_bounded_per_tenant_concurrency(
         await _add_case(client, tenant_a["key"], set_id, f"c-{i}")
 
     run = await client.post(
-        f"/v1/evals/sets/{set_id}/runs", json={"model": active_model}, headers=_bearer(tenant_a["key"])
+        f"/v1/evals/sets/{set_id}/runs",
+        json={"model": active_model},
+        headers=_bearer(tenant_a["key"]),
     )
     assert run.status_code == 201, run.text
     assert fake.calls == 6
