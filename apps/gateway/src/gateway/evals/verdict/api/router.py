@@ -125,6 +125,48 @@ async def pin_baseline(
     }
 
 
+async def build_verdict_body(
+    run: EvalRunRow,
+    run_store: SqlAlchemyEvalRunStore,
+    baseline_store: SqlAlchemyEvalBaselineStore,
+) -> dict[str, Any]:
+    """Assemble a run's verdict body vs its set's pinned baseline — the ONE verdict core.
+
+    Shared by the /v1 (API-key) surface AND the /admin (session) console so both render a
+    byte-identical verdict from the same scoring functions (no fork, R:LOGIC_FORK). Tenant is
+    re-derived from the run row — the caller has already resolved it in tenant scope.
+    """
+    tenant_id = run.tenant_id
+    candidate = await _score_run_row(run, run_store)
+
+    baseline_pin = await baseline_store.get_baseline(
+        tenant_id=tenant_id, eval_set_id=run.eval_set_id
+    )
+    body: dict[str, Any] = {
+        "object": "eval.verdict",
+        "run_id": to_run_wire_id(run.id),
+        "score": _score_obj(candidate),
+        "baseline": None,
+        "verdict": "no_baseline",
+    }
+    if baseline_pin is None:
+        # M4: a gate with no reference cannot render pass/fail — surface the absence, not green.
+        return body
+
+    baseline_run = await run_store.get_run(tenant_id=tenant_id, run_id=baseline_pin.run_id)
+    if baseline_run is None:
+        # The pinned run is gone (FK CASCADE should prevent this) — degrade to no_baseline.
+        return body
+
+    baseline_score = await _score_run_row(baseline_run, run_store)
+    body["baseline"] = {
+        "run_id": to_run_wire_id(baseline_run.id),
+        "score": _score_obj(baseline_score),
+    }
+    body["verdict"] = decide(candidate, baseline_score)
+    return body
+
+
 @eval_verdict_router.get("/v1/evals/runs/{run_id}/verdict", status_code=200, response_model=None)
 async def get_verdict(
     run_id: str,
@@ -140,31 +182,4 @@ async def get_verdict(
     if run is None:
         return _err(EVAL_RUN_NOT_FOUND)
 
-    candidate = await _score_run_row(run, run_store)
-
-    baseline_pin = await _baseline_store(request).get_baseline(
-        tenant_id=authz.tenant_id, eval_set_id=run.eval_set_id
-    )
-    body: dict[str, Any] = {
-        "object": "eval.verdict",
-        "run_id": to_run_wire_id(run.id),
-        "score": _score_obj(candidate),
-        "baseline": None,
-        "verdict": "no_baseline",
-    }
-    if baseline_pin is None:
-        # M4: a gate with no reference cannot render pass/fail — surface the absence, not green.
-        return body
-
-    baseline_run = await run_store.get_run(tenant_id=authz.tenant_id, run_id=baseline_pin.run_id)
-    if baseline_run is None:
-        # The pinned run is gone (FK CASCADE should prevent this) — degrade to no_baseline.
-        return body
-
-    baseline_score = await _score_run_row(baseline_run, run_store)
-    body["baseline"] = {
-        "run_id": to_run_wire_id(baseline_run.id),
-        "score": _score_obj(baseline_score),
-    }
-    body["verdict"] = decide(candidate, baseline_score)
-    return body
+    return await build_verdict_body(run, run_store, _baseline_store(request))

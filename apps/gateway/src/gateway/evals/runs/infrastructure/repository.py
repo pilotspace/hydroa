@@ -66,6 +66,24 @@ class SqlAlchemyEvalRunStore:
                 session.expunge(row)
             return row
 
+    async def list_runs(
+        self, *, tenant_id: uuid.UUID, eval_set_id: uuid.UUID
+    ) -> list[EvalRunRow]:
+        """A set's runs, newest first (A2 order). Tenant-scoped in the resolving query (M6)."""
+        async with self._sessionmaker() as session:
+            stmt = (
+                select(EvalRunRow)
+                .where(
+                    EvalRunRow.tenant_id == tenant_id,
+                    EvalRunRow.eval_set_id == eval_set_id,
+                )
+                .order_by(EvalRunRow.created_at.desc(), EvalRunRow.id.desc())
+            )
+            rows = list((await session.execute(stmt)).scalars().all())
+            for r in rows:
+                session.expunge(r)
+            return rows
+
     async def load_run(self, run_id: uuid.UUID) -> EvalRunRow | None:
         async with self._sessionmaker() as session:
             row = await session.get(EvalRunRow, run_id)
