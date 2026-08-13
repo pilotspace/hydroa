@@ -110,6 +110,7 @@ import gateway.compliance.infrastructure.orm  # noqa: F401 — tenant_report_sch
 import gateway.credits.infrastructure.orm  # noqa: F401 — tenant_credit_balances, credit_ledger
 import gateway.domain_capture.infrastructure.orm  # noqa: F401 — tenant_domain_claims
 import gateway.files.infrastructure.orm  # noqa: F401 — files
+import gateway.evals.infrastructure.orm  # noqa: F401 — eval_sets, eval_cases
 import gateway.finetune.infrastructure.orm  # noqa: F401 — finetune_jobs, finetune_job_events
 import gateway.guardrail_analytics.infrastructure.orm  # noqa: F401 — guardrail_verdict_events
 import gateway.payments.infrastructure.orm  # noqa: F401 — checkout_sessions
