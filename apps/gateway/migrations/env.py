@@ -112,6 +112,7 @@ import gateway.domain_capture.infrastructure.orm  # noqa: F401 — tenant_domain
 import gateway.files.infrastructure.orm  # noqa: F401 — files
 import gateway.evals.infrastructure.orm  # noqa: F401 — eval_sets, eval_cases
 import gateway.evals.runs.infrastructure.orm  # noqa: F401 — eval_runs, eval_case_results
+import gateway.evals.verdict.infrastructure.orm  # noqa: F401 — eval_baselines
 import gateway.finetune.infrastructure.orm  # noqa: F401 — finetune_jobs, finetune_job_events
 import gateway.guardrail_analytics.infrastructure.orm  # noqa: F401 — guardrail_verdict_events
 import gateway.payments.infrastructure.orm  # noqa: F401 — checkout_sessions

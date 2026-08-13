@@ -149,6 +149,10 @@ from gateway.evals.runs.infrastructure.orm import (  # noqa: F401 — registers 
 )
 from gateway.evals.runs.infrastructure.repository import SqlAlchemyEvalRunStore
 from gateway.evals.runs.infrastructure.upstream_adapter import TenantExecutionRegistry
+from gateway.evals.verdict.api.router import eval_verdict_router
+from gateway.evals.verdict.infrastructure.orm import (  # noqa: F401 — registers EvalBaselineRow on Base.metadata
+    EvalBaselineRow as _EvalBaselineRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.files.api.router import files_router
 from gateway.finetune.api.router import finetune_router
 from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
@@ -1825,6 +1829,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(vector_stores_router)
     app.include_router(evals_router)
     app.include_router(eval_runs_router)
+    # baseline-and-verdict (R7): pin a baseline run per set + verdict a candidate against it.
+    # The router builds its stores from app.state.sessionmaker per request (no app.state wiring).
+    app.include_router(eval_verdict_router)
     # eval-run-executor (R7): replay a set through the SAME governance path a live request uses.
     # build_use_case reuses the request path's get_completion_use_case over a shim exposing only
     # .app (it never reads request.headers) — so use_cases.py/governance.py stay untouched and the
