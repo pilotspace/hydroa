@@ -138,6 +138,10 @@ from gateway.domain_capture.infrastructure.rate_limiter import DomainClaimRateLi
 from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
+from gateway.evals.api.router import evals_router
+from gateway.evals.infrastructure.orm import (  # noqa: F401 — registers EvalSetRow/EvalCaseRow on Base.metadata
+    EvalCaseRow as _EvalCaseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
+)
 from gateway.files.api.router import files_router
 from gateway.finetune.api.router import finetune_router
 from gateway.finetune.infrastructure.openai_client import OpenAIFinetuneClient
@@ -1812,6 +1816,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(files_router)
     app.include_router(vector_stores_router)
+    app.include_router(evals_router)
     app.include_router(video_router)
     app.include_router(batch_router)
     app.include_router(batch_stats_router)
