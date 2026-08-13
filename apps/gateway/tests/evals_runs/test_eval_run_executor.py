@@ -496,6 +496,10 @@ async def test_resume_does_not_rebill_terminal_cases(
     # Resume the SAME run (all cases terminal) -> zero new dials, zero new bills.
     executor = app.state.eval_run_executor
     await executor.drive(uuid.UUID(_strip_prefix(run_id_wire)), raw_key=tenant_a["key"])
+    # NEGATIVE WAIT: the drive above is already awaited to completion; this gives any ERRANT
+    # fire-and-forget re-dial/re-bill a window to land, then we assert it did NOT — a bounded
+    # poll can't express "prove nothing more ever happens" (it returns on the first satisfied
+    # tick). skip-existing + UNIQUE(run, case) is what actually guarantees the invariant.
     await asyncio.sleep(0.05)
     assert upstream.calls == 3, "a resumed drive must not re-dial a terminal case"
     assert len(rec.records) == 3, "a resumed drive must not re-bill a terminal case"
