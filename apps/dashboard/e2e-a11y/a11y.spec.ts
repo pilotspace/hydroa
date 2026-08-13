@@ -64,6 +64,84 @@ const SPEND = {
 };
 const CACHE = { enabled: true, semantic_enabled: false };
 
+// evals-console TASK.md §3 CONTRACT — test #9 (test_evals_routes_axe_clean) fixtures.
+const EVALS_SET_ID = "es_a1b2c3d4";
+const EVALS_RUN_ID = "er_e5f6a7b8";
+const EVAL_SETS = {
+  object: "list",
+  data: [
+    {
+      id: EVALS_SET_ID,
+      object: "eval.set",
+      created_at: 1751328000,
+      name: "Support Tone Regression",
+      description: "Checks tone drift on refusal edge cases",
+      case_count: 2,
+    },
+  ],
+};
+const EVAL_SET_DETAIL = {
+  id: EVALS_SET_ID,
+  object: "eval.set",
+  created_at: 1751328000,
+  name: "Support Tone Regression",
+  description: "Checks tone drift on refusal edge cases",
+  cases: [
+    {
+      id: "ec_cccc1111",
+      object: "eval.case",
+      created_at: 1751328100,
+      eval_set_id: EVALS_SET_ID,
+      assertion: { kind: "exact_match", expected: "Sure thing!" },
+    },
+  ],
+  runs: [
+    {
+      id: EVALS_RUN_ID,
+      object: "eval.run",
+      created_at: 1751328300,
+      eval_set_id: EVALS_SET_ID,
+      model: "openai/gpt-4o",
+      status: "completed",
+      case_count: 2,
+    },
+  ],
+  baseline_run_id: null,
+};
+const EVAL_VERDICT = {
+  object: "eval.verdict",
+  run_id: EVALS_RUN_ID,
+  score: { passed: 1, total: 2 },
+  baseline: { run_id: "er_00000000", score: { passed: 2, total: 2 } },
+  verdict: "fail",
+};
+const EVAL_CASES = {
+  object: "list",
+  data: [
+    {
+      eval_case_id: "ec_cccc1111",
+      assertion: { kind: "exact_match", expected: "Sure thing!" },
+      status: "completed",
+      response_text: "Sure thing!",
+      passed: true,
+    },
+    {
+      eval_case_id: "ec_cccc2222",
+      assertion: { kind: "exact_match", expected: "Absolutely!" },
+      status: "completed",
+      response_text: "Nope, can't do that.",
+      reason: "Assertion exact_match failed: response did not match expected value",
+      passed: false,
+    },
+    {
+      eval_case_id: "ec_cccc3333",
+      assertion: { kind: "exact_match", expected: "Some answer" },
+      status: "refused",
+      reason: "Content policy violation",
+    },
+  ],
+};
+
 function gwBody(url: string): unknown {
   if (url.includes("/admin/usage")) return USAGE;
   if (url.includes("/admin/budget")) return BUDGET;
@@ -71,6 +149,10 @@ function gwBody(url: string): unknown {
   if (url.includes("/admin/keys")) return KEYS;
   if (url.includes("/admin/spend")) return SPEND;
   if (url.includes("/admin/cache")) return CACHE;
+  if (/\/admin\/evals\/runs\/[^/]+\/verdict/.test(url)) return EVAL_VERDICT;
+  if (/\/admin\/evals\/runs\/[^/]+\/cases/.test(url)) return EVAL_CASES;
+  if (/\/admin\/evals\/sets\/[^/]+$/.test(url)) return EVAL_SET_DETAIL;
+  if (url.includes("/admin/evals/sets")) return EVAL_SETS;
   return {};
 }
 
@@ -129,4 +211,38 @@ test.describe("real-browser a11y — primary surfaces (WCAG 2.2 AA, color-contra
       expect(v, `serious/critical axe violations on ${path}:\n${JSON.stringify(v, null, 2)}`).toEqual([]);
     });
   }
+
+  // evals-console TASK.md §3 CONTRACT — test #9: axe across all three evals routes
+  // (Sets list -> Set detail -> Run verdict), real headless Chromium, color-contrast
+  // ENABLED. Distinct headings per route prove each real populated layout mounted
+  // (never a transient loading/error frame).
+  test("test_evals_routes_axe_clean", async ({ page }) => {
+    await seedSession(page);
+    await stubBff(page);
+
+    await page.goto("/app/evals");
+    await expect(page.getByRole("navigation")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /^evals$/i })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    let v = await blockingViolations(page);
+    expect(v, `serious/critical axe violations on /app/evals:\n${JSON.stringify(v, null, 2)}`).toEqual([]);
+
+    await page.goto(`/app/evals/${EVALS_SET_ID}`);
+    await expect(page.getByRole("heading", { level: 1, name: /support tone regression/i })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    v = await blockingViolations(page);
+    expect(
+      v,
+      `serious/critical axe violations on /app/evals/${EVALS_SET_ID}:\n${JSON.stringify(v, null, 2)}`,
+    ).toEqual([]);
+
+    await page.goto(`/app/evals/${EVALS_SET_ID}/runs/${EVALS_RUN_ID}`);
+    await expect(page.getByRole("heading", { level: 1, name: /run verdict/i })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    v = await blockingViolations(page);
+    expect(
+      v,
+      `serious/critical axe violations on /app/evals/${EVALS_SET_ID}/runs/${EVALS_RUN_ID}:\n${JSON.stringify(v, null, 2)}`,
+    ).toEqual([]);
+  });
 });

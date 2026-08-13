@@ -1,7 +1,7 @@
 ---
 type: Task
 title: evals-console
-status: direction
+status: done
 milestone: evals-regression-gate
 needs:
   - baseline-and-verdict.md
@@ -11,12 +11,15 @@ generated: { by: add/3.2.0, at: 2026-08-12 }
 verified:
   - { by: "cli", at: 2026-08-13, act: freeze, authority: process, direction: "sha256:0b0747287fa1ed99" }
   - { by: "cli", at: 2026-08-13, act: brief, authority: process, brief: "sha256:60cf00293d919fbc" }
+  - { by: "process:run", at: 2026-08-14, act: run, authority: process, outcome: PASS, receipt: /tasks/evals-console.d/runs/1.md }
+  - { by: "process:run", at: 2026-08-14, act: run, authority: process, outcome: PASS, receipt: /tasks/evals-console.d/runs/2.md }
+  - { by: "Tin Dang", at: 2026-08-14, act: gate, authority: process, outcome: PASS, receipt: /tasks/evals-console.d/runs/2.md, brief: "sha256:60cf00293d919fbc" }
 advised_by: ui-designer
 ---
 ## CARD
 goal: author sets, launch runs, read the verdict with per-case drill-down — UDD loop, verdict-first IA, per-case diff as the signature element
 why: a user-facing surface takes the UDD design loop, not a CRUD table; the verdict is the page's primary object, not a row count
-beat: direction · next: add freeze evals-console
+beat: done · next: add status
 
 ## RULES
 <must>

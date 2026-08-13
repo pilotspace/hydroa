@@ -207,7 +207,15 @@ async def test_admin_evals_session_scoped_reads(
     ).status_code == 200
     cases = await client.get(f"/admin/evals/runs/{run_id}/cases", headers=_bearer(tok_a))
     assert cases.status_code == 200, cases.text
-    assert len(cases.json()["data"]) == 1
+    rows = cases.json()["data"]
+    assert len(rows) == 1
+    # The per-case DIFF row carries the AUTHORITATIVE pass/fail from the SAME scorer the verdict
+    # uses. The case asserts `contains "echo"` and ScriptedUpstream('echo') answers "echo:one" —
+    # a PASS the scorer sees but naive expected==actual string equality would MISS. Proving the
+    # backend (not the client) owns this bool keeps the diff badge honest and fork-free.
+    assert rows[0]["status"] == "completed"
+    assert rows[0]["passed"] is True
+    assert rows[0]["assertion"]["expected"] == "echo"
 
     # Tenant B's session cannot read A's set or run — uniform 404, and A's set is absent from B's list.
     tok_b = tenant_b["token"]

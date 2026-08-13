@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Activity, BadgeCheck, BarChart3, Bell, Bot, Boxes, Brain, Clapperboard, ClipboardList, Eye, FileText, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, ScrollText, Settings, ShieldCheck, Shuffle, Tags, Users, Wallet } from "lucide-react";
+import { Activity, BadgeCheck, BarChart3, Bell, Bot, Boxes, Brain, Clapperboard, ClipboardList, Eye, FileText, FlaskConical, FolderArchive, GaugeCircle, HeartPulse, Hexagon, KeyRound, Layers, LogOut, Menu, MessageSquare, Mic, Receipt, ScrollText, Settings, ShieldCheck, Shuffle, Tags, Users, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { bffAuthPost } from "@/lib/bff-client";
 import {
@@ -76,6 +76,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/app/usage", label: "Usage", icon: BarChart3 },
       { href: "/app/spend", label: "Spend", icon: Receipt },
+      // evals-console TASK.md §3 CONTRACT (Nav): joins the existing "Insights" group —
+      // no minRole (every authenticated role may read regression-gate verdicts).
+      { href: "/app/evals", label: "Evals", icon: FlaskConical },
     ],
   },
   {

@@ -61,6 +61,7 @@ from gateway.evals.domain.errors import EvalSetNameConflict, EvalSetNotFound
 from gateway.evals.infrastructure.repository import SqlAlchemyEvalStore
 from gateway.evals.runs.api.run_router import _run_object  # pyright: ignore[reportPrivateUsage]
 from gateway.evals.runs.infrastructure.repository import SqlAlchemyEvalRunStore
+from gateway.evals.scoring.scorers import DeterministicScorer
 from gateway.evals.verdict.api.router import build_verdict_body
 from gateway.evals.verdict.infrastructure.repository import SqlAlchemyEvalBaselineStore
 from gateway.evals.wire_id import (
@@ -73,6 +74,10 @@ from gateway.evals.wire_id import (
 from gateway.tenants.domain.entities import Identity
 
 evals_console_router = APIRouter(tags=["evals-console"])
+
+# The deterministic scorer is PURE + stateless — one shared instance is safe, and it is the SAME
+# class the verdict core counts with, so per-case `passed` never disagrees with the run verdict.
+_SCORER = DeterministicScorer()
 
 _MAX_NAME_LEN = 256
 
@@ -182,6 +187,13 @@ async def get_run_cases(
     result row yet is ``pending`` and carries NO response_text (never a fabricated actual, E3);
     a refused/errored case carries its status + reason but no answer. The assertion (expected)
     travels with every row so the UI can render expected-vs-actual without a second call.
+
+    A completed row also carries the AUTHORITATIVE per-case ``passed`` bool — computed by the
+    SAME deterministic scorer the verdict counts with (M1). The UI renders that verdict directly
+    and never re-derives pass/fail from the payload; a client-side re-implementation would be a
+    scoring fork (R:LOGIC_FORK) AND would disagree with the banner for e.g. a ``contains``
+    assertion (expected "echo" vs actual "echo:one" is a PASS the scorer sees but string equality
+    would miss). Non-completed rows carry no ``passed`` (they are counted, never a pass, A4).
     """
     resolved = parse_run_wire_id(run_id)
     if resolved is None:
@@ -210,6 +222,12 @@ async def get_run_cases(
             row["response_text"] = res.response_text
         if res is not None and res.reason is not None:
             row["reason"] = res.reason
+        if res is not None and res.status == "completed":
+            # Authoritative pass/fail from the SAME scorer the verdict uses — never re-derived
+            # by the client (R:LOGIC_FORK). A pending/refused/errored case gets no `passed`.
+            row["passed"] = _SCORER.score(
+                assertion=case.assertion, output_text=res.response_text or ""
+            ).passed
         data.append(row)
     return {"object": "list", "data": data}
 

@@ -57,6 +57,10 @@
  * itself allows any role) is added to the Govern group after "Guardrail Analytics" →
  * member sees 12 (unchanged, still hidden); admin now sees 25 (was 24); owner/unknown
  * now see 26 (was 25).
+ * UPDATED by evals-console: a MEMBER-visible "Evals" link (/app/evals, NO minRole — any
+ * authenticated role may read a regression-gate verdict) is added to the Insights group
+ * after "Spend" → member now sees 13 (was 12, +Evals); admin now sees 26 (was 25);
+ * owner/unknown now see 27 (was 26).
  *
  * AppShell takes an optional `role` prop (presentational); DashboardShell ("use
  * client") feeds it from useCurrentUser().role. The nav filter is UX-only — no
@@ -81,9 +85,9 @@ import { DashboardShell } from "@/components/dashboard-shell";
 const APP = "http://localhost:3000";
 const ADMIN_ONLY = [/models/i, /teams/i, /members/i, /routing/i, /^batches$/i, /alerts/i, /audit/i, /^logs$/i, /health/i, /^slo$/i, /guardrail analytics/i, /^invoices$/i, /^agents$/i];
 const OWNER_ONLY = [/model presets/i];
-const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, /^credits$/i, /plan & seats/i, /settings/i];
-const ADMIN_SEES = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
-const ALL_TWENTY = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /api keys/i, ...OWNER_ONLY, ...ADMIN_ONLY, /settings/i];
+const MEMBER_OK = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /^evals$/i, /api keys/i, /^credits$/i, /plan & seats/i, /settings/i];
+const ADMIN_SEES = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /^evals$/i, /api keys/i, ...ADMIN_ONLY, /settings/i];
+const ALL_TWENTY = [/^chat$/i, /^voice$/i, /^memory$/i, /^artifacts$/i, /^vision$/i, /^video$/i, /usage/i, /spend/i, /^evals$/i, ...OWNER_ONLY, ...ADMIN_ONLY, /settings/i];
 
 function makeQueryClient() {
   return new QueryClient({
@@ -116,10 +120,11 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of MEMBER_OK) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    // exactly the 12 member-OK links (Chat + Voice + Memory + Artifacts + Vision + Video +
-    // Usage + Spend + API Keys + Credits + Plan & seats + Settings) — guards against an
-    // accidental extra/missing minRole tag silently dropping a member-visible link.
-    expect(within(n).getAllByRole("link")).toHaveLength(12);
+    // exactly the 13 member-OK links (Chat + Voice + Memory + Artifacts + Vision + Video +
+    // Usage + Spend + Evals + API Keys + Credits + Plan & seats + Settings) — guards
+    // against an accidental extra/missing minRole tag silently dropping a member-visible
+    // link.
+    expect(within(n).getAllByRole("link")).toHaveLength(13);
   });
 
   it("test_admin_sees_admin_tier_but_not_owner_only_links", () => {
@@ -137,7 +142,7 @@ describe("AppShell — role-based nav visibility", () => {
     }
     // admin is NOT owner — "Model Presets" (minRole: "owner") stays hidden, unlike every
     // other minRole:"admin" link above it.
-    expect(within(n).getAllByRole("link")).toHaveLength(25);
+    expect(within(n).getAllByRole("link")).toHaveLength(26);
   });
 
   it("test_owner_sees_all_links", () => {
@@ -150,7 +155,7 @@ describe("AppShell — role-based nav visibility", () => {
     for (const re of ALL_TWENTY) {
       expect(within(n).getByRole("link", { name: re })).toBeInTheDocument();
     }
-    expect(within(n).getAllByRole("link")).toHaveLength(26);
+    expect(within(n).getAllByRole("link")).toHaveLength(27);
   });
 
   it("test_unknown_role_fails_open", () => {
@@ -159,7 +164,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(26);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(27);
     unmount();
 
     // no role prop at all → also fail-open (preserves the prior AppShell behavior)
@@ -168,7 +173,7 @@ describe("AppShell — role-based nav visibility", () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(within(nav()).getAllByRole("link")).toHaveLength(26);
+    expect(within(nav()).getAllByRole("link")).toHaveLength(27);
   });
 });
 
@@ -199,7 +204,7 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     });
     expect(within(n).queryByRole("link", { name: /teams/i })).not.toBeInTheDocument();
     expect(within(n).queryByRole("link", { name: /routing/i })).not.toBeInTheDocument();
-    // member-OK links remain — exactly 12 after the role resolves to member
+    // member-OK links remain — exactly 13 after the role resolves to member
     expect(within(n).getByRole("link", { name: /^chat$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^voice$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^memory$/i })).toBeInTheDocument();
@@ -207,6 +212,7 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     expect(within(n).getByRole("link", { name: /^vision$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^video$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /usage/i })).toBeInTheDocument();
+    expect(within(n).getByRole("link", { name: /^evals$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /^credits$/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /plan & seats/i })).toBeInTheDocument();
     expect(within(n).getByRole("link", { name: /settings/i })).toBeInTheDocument();
@@ -214,6 +220,6 @@ describe("DashboardShell — wires role from useCurrentUser", () => {
     // a member never sees it either (billing-ui M1).
     expect(within(n).queryByRole("link", { name: /model presets/i })).not.toBeInTheDocument();
     expect(within(n).queryByRole("link", { name: /^invoices$/i })).not.toBeInTheDocument();
-    expect(within(n).getAllByRole("link")).toHaveLength(12);
+    expect(within(n).getAllByRole("link")).toHaveLength(13);
   });
 });
