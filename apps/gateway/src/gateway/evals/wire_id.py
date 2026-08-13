@@ -1,8 +1,9 @@
 """Wire ids for the evals domain (eval-set-store PLAN.md §3 — FROZEN @ v1).
 
-Two reversible prefixes, mirroring ``gateway.vector_stores.wire_id``'s ``vs_<32hex>`` shape:
+Three reversible prefixes, mirroring ``gateway.vector_stores.wire_id``'s ``vs_<32hex>`` shape:
   - eval SET  -> ``es_<32hex>``
   - eval CASE -> ``ec_<32hex>``
+  - eval RUN  -> ``er_<32hex>``  (eval-run-executor §3)
 
 ``parse_*`` returns None (never raises) for anything that is not exactly the prefix followed
 by a valid 32-char hex UUID — the caller maps None to the same uniform 404 as an absent or
@@ -15,6 +16,7 @@ import uuid
 
 _SET_PREFIX = "es_"
 _CASE_PREFIX = "ec_"
+_RUN_PREFIX = "er_"
 
 
 def to_set_wire_id(eval_set_id: uuid.UUID) -> str:
@@ -23,6 +25,14 @@ def to_set_wire_id(eval_set_id: uuid.UUID) -> str:
 
 def parse_set_wire_id(wire_id: str) -> uuid.UUID | None:
     return _parse(wire_id, _SET_PREFIX)
+
+
+def to_run_wire_id(eval_run_id: uuid.UUID) -> str:
+    return f"{_RUN_PREFIX}{eval_run_id.hex}"
+
+
+def parse_run_wire_id(wire_id: str) -> uuid.UUID | None:
+    return _parse(wire_id, _RUN_PREFIX)
 
 
 def to_case_wire_id(eval_case_id: uuid.UUID) -> str:

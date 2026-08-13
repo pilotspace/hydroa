@@ -1476,6 +1476,11 @@ async def test_guardrails_core_migration_column_exists(
     # the eval-set-store task's own evals/ context, registered on Base.metadata via the
     # router's import chain (repository -> orm, same precedent as every entry above).
     # Guardrails-core still adds no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (eval-run-executor PLAN.md §3 two-manifest rule, 2026-08-13): added
+    # 'eval_runs', 'eval_case_results' — additive migration f5b2d8c41a37, two NEW tables owned
+    # by the eval-run-executor task's own evals/runs/ context, registered on Base.metadata via
+    # main.py's side-effect import (same precedent as every entry above). Guardrails-core still
+    # adds no tables of its own; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1502,7 +1507,7 @@ async def test_guardrails_core_migration_column_exists(
                 " 'pending_personal_signups','access_requests','files',"
                 " 'stored_responses','vector_stores','vector_store_files',"
                 " 'vector_store_chunks','finetune_jobs','finetune_job_events',"
-                " 'eval_sets','eval_cases')"
+                " 'eval_sets','eval_cases','eval_runs','eval_case_results')"
             )
         )
     ).fetchall()

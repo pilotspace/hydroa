@@ -89,6 +89,8 @@ EXPECTED_TABLES = frozenset(
         "finetune_job_events",  # SANCTIONED EDIT — finetune-broker PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration 6f2a9c1e3b7d adds this table
         "eval_sets",  # SANCTIONED EDIT — eval-set-store PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration e4a1c9d27f60 adds this table (tenant-owned metadata, UNIQUE(tenant_id,name))
         "eval_cases",  # SANCTIONED EDIT — eval-set-store PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration e4a1c9d27f60 adds this table (payload-bearing: request_body+assertion JSONB, FK CASCADE -> eval_sets)
+        "eval_runs",  # SANCTIONED EDIT — eval-run-executor PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration f5b2d8c41a37 adds this table (one row per launched run; status DERIVED from cases, FK CASCADE -> eval_sets)
+        "eval_case_results",  # SANCTIONED EDIT — eval-run-executor PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration f5b2d8c41a37 adds this table (per-case result; response_text is the ZDR-gated payload-at-rest, UNIQUE(eval_run_id,eval_case_id), FK CASCADE -> eval_runs)
     }
 )
 
