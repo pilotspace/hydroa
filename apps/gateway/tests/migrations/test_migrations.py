@@ -91,6 +91,7 @@ EXPECTED_TABLES = frozenset(
         "eval_cases",  # SANCTIONED EDIT — eval-set-store PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration e4a1c9d27f60 adds this table (payload-bearing: request_body+assertion JSONB, FK CASCADE -> eval_sets)
         "eval_runs",  # SANCTIONED EDIT — eval-run-executor PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration f5b2d8c41a37 adds this table (one row per launched run; status DERIVED from cases, FK CASCADE -> eval_sets)
         "eval_case_results",  # SANCTIONED EDIT — eval-run-executor PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration f5b2d8c41a37 adds this table (per-case result; response_text is the ZDR-gated payload-at-rest, UNIQUE(eval_run_id,eval_case_id), FK CASCADE -> eval_runs)
+        "eval_baselines",  # SANCTIONED EDIT — baseline-and-verdict PLAN.md §3 manifest maintenance (two-manifest rule); disposition: additive migration a3f9c7e21b84 adds this table (one-baseline-per-set pin, UNIQUE(eval_set_id), FK CASCADE -> eval_sets + eval_runs)
     }
 )
 

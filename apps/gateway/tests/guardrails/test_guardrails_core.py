@@ -1481,6 +1481,11 @@ async def test_guardrails_core_migration_column_exists(
     # by the eval-run-executor task's own evals/runs/ context, registered on Base.metadata via
     # main.py's side-effect import (same precedent as every entry above). Guardrails-core still
     # adds no tables of its own; invariant intent unchanged.
+    # SANCTIONED EDIT (baseline-and-verdict PLAN.md §3 two-manifest rule, 2026-08-13): added
+    # 'eval_baselines' — additive migration a3f9c7e21b84, one NEW table owned by the
+    # baseline-and-verdict task's own evals/verdict/ context, registered on Base.metadata via
+    # main.py's side-effect import (same precedent as every entry above). Guardrails-core still
+    # adds no tables of its own; invariant intent unchanged.
     new_tables = (
         await db_session.execute(
             text(
@@ -1507,7 +1512,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'pending_personal_signups','access_requests','files',"
                 " 'stored_responses','vector_stores','vector_store_files',"
                 " 'vector_store_chunks','finetune_jobs','finetune_job_events',"
-                " 'eval_sets','eval_cases','eval_runs','eval_case_results')"
+                " 'eval_sets','eval_cases','eval_runs','eval_case_results',"
+                " 'eval_baselines')"
             )
         )
     ).fetchall()
