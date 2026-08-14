@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.15.0 — 2026-08-14 — Evals regression gate
+
+R7. The first product-feature milestone since R6's substrate work. It answers the
+question a gateway operator is actually asked — *"did changing the model break this
+tenant?"* — as a scored, reproducible gate rather than a vibe. A tenant runs a named
+**eval set** against a candidate model and gets an explicit **pass/fail verdict**
+against a **pinned baseline**, so a model swap is proven safe BEFORE it ships. It
+deliberately does NOT touch the hot proxy path (shadow A/B), promote/rollback on a
+verdict (this milestone REPORTS; acting stays human), or score with an LLM judge (a
+gate whose own verdict flaps is not a gate). Prompt registry and shadow A/B stay on
+the roadmap.
+
+### Added
+- **Eval sets + cases** (`/v1/evals/sets`, `#201`). A set is a named collection of
+  cases, each an input request plus a *deterministic* assertion. Tenant-scoped like
+  every other surface; an absent-or-cross-tenant set is a uniform 404.
+- **Runs through governance** (`#203`). A run is BILLED TRAFFIC — it replays each case
+  by REUSING the existing completion path, so it enters the same budget · tier · credit
+  · rate-limit guards and produces one `usage_record` per case with the same shape as an
+  equivalent live request. A tenant at their credit/budget limit CANNOT spend through an
+  eval run; it is refused at the governance guard with no upstream call.
+- **Deterministic scorers** (`#202`): exact · contains · regex · JSON-schema-valid. The
+  same case and the same response score identically across re-runs — the property that
+  makes the gate a gate. Each scorer is red against a case it must fail.
+- **Baseline pin + verdict** (`#204`). Pin one run of a set as its baseline; a candidate
+  is scored against it by EXACT integer cross-multiply (`pass_c·total_b ≥ pass_b·total_c`)
+  — equal-at-threshold is decided by arithmetic, never float luck. A run's score is
+  re-derived ON DEMAND from its launch snapshot (no stored, stale-able number); refused,
+  errored and unscoreable cases are counted-not-passed. A missing baseline is the
+  explicit `no_baseline` state, never a silent green.
+- **Evals console** (`/admin/evals/*`, `#205`) — verdict-first, read-focused. Session
+  (JWT) authed so the dashboard BFF never holds a raw API key. The per-case **diff** is
+  the signature element; WCAG AA, keyboard-navigable. It computes NOTHING new: it reuses
+  the SAME stores and the SAME verdict core as `/v1`, so `/admin` and `/v1` render a
+  byte-identical verdict (a client-side re-derivation would be a scoring fork). Per-case
+  `pass/fail` is emitted by the ONE server-side scorer the verdict counts with — the UI
+  renders it, never re-derives it (so a `contains` case where expected `"echo"` ≠ actual
+  `"echo:one"` still reads as the PASS the scorer sees). Read + baseline-pin only; set/case
+  authoring AND run launch stay on the `/v1` API-key path (launching dials upstreams and
+  must bill a live key — a session must never hold one) and the console links to them.
+
+### Security
+- **ZDR is the sharp edge of the whole milestone** and was treated as one. An eval case
+  is a persisted request payload — exactly what a Zero-Data-Retention tenant is promised
+  will never be stored. The disposition was decided at freeze, not discovered in build,
+  and the ZDR re-check is ATOMIC with the write (tested with a slow double that flips the
+  flag mid-await), closing the check-at-entry / persist-after-await TOCTOU that has been
+  HARD-STOPPED three times before.
+- **Per-tenant circuit breaker, never a global one.** An eval run is a BURST of upstream
+  calls — the most likely surface yet to trip a shared breaker and take out other tenants.
+  The tenant key is threaded through the breaker port: tenant A's run driving its breaker
+  open leaves tenant B's request in the same process succeeding.
+
+### Release
+- Version bumped across all eight sites per the RELEASES.md checklist (pyproject +
+  `__version__` fallback, Chart `version`+`appVersion`, `values.yaml` gateway+dashboard
+  tags, `values-prod.yaml` both `-prod` overrides). Dashboard `package.json` stays
+  independently versioned. R7 milestone `evals-regression-gate` closed 7/7 and archived.
+
 ## 0.14.1 — 2026-08-11 — Reproducible release artifacts
 
 Patch release. 0.14.0 made the delivery substrate *attestable*; it did not make the

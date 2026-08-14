@@ -1,7 +1,7 @@
 ---
 type: Milestone
 title: Evals — regression gate on model swaps
-status: direction
+status: archived
 generated: { by: add/3.2.0, at: 2026-08-12 }
 verified: []
 ---
@@ -40,13 +40,13 @@ risks:
   - **Spend.** A run costs real money. Bypassing budget/credit/tier guards is a spend-control bypass dressed as a feature — a tenant at their credit limit must not spend through evals. Runs are billed traffic, not a side channel.
 
 ## EXIT
-- [ ] User can create a named eval set and add cases, and a ZDR tenant gets the documented, tested disposition rather than silent payload persistence   (← eval-set-store)   (verify: a ZDR tenant's case write is refused/redacted INCLUDING when a slow double flips the flag mid-await; assert on the persisted row)
-- [ ] User can run a set against a model and see per-case results; the run appears in usage/billing like ordinary traffic   (← eval-run-executor)   (verify: a completed run produces one usage_record per case with the same shape as an equivalent live request)
-- [ ] User can see each case scored by a deterministic scorer, identically on a re-run   (← deterministic-scorers)   (verify: same case + same response scores identically across 2 runs; each scorer red against a case it must fail)
-- [ ] User can pin a baseline and get an explicit pass/fail verdict for a candidate against it   (← baseline-and-verdict)   (verify: candidate strictly worse → FAIL, strictly better → PASS, equal-at-threshold decided explicitly not by float luck)
-- [ ] User can do all of the above from the console, verdict-first, keyboard-navigable, WCAG AA   (← evals-console)   (verify: `next build` + authed capture harness `apps/dashboard/e2e-review/capture.spec.ts`, plus an axe pass with zero serious/critical)
-- [ ] A tenant at their credit/budget limit CANNOT spend through an eval run   (← eval-run-executor)   (verify: a tenant over budget/credit gets the run refused at the governance guard; assert NO upstream call was made)
-- [ ] One tenant's eval burst CANNOT open a breaker that degrades another tenant   (← eval-run-executor)   (verify: tenant A's run drives its breaker open; tenant B's request in the same process still succeeds)
+- [x] User can create a named eval set and add cases, and a ZDR tenant gets the documented, tested disposition rather than silent payload persistence   (← eval-set-store)   (verify: a ZDR tenant's case write is refused/redacted INCLUDING when a slow double flips the flag mid-await; assert on the persisted row)
+- [x] User can run a set against a model and see per-case results; the run appears in usage/billing like ordinary traffic   (← eval-run-executor)   (verify: a completed run produces one usage_record per case with the same shape as an equivalent live request)
+- [x] User can see each case scored by a deterministic scorer, identically on a re-run   (← deterministic-scorers)   (verify: same case + same response scores identically across 2 runs; each scorer red against a case it must fail)
+- [x] User can pin a baseline and get an explicit pass/fail verdict for a candidate against it   (← baseline-and-verdict)   (verify: candidate strictly worse → FAIL, strictly better → PASS, equal-at-threshold decided explicitly not by float luck)
+- [x] User can do all of the above from the console, verdict-first, keyboard-navigable, WCAG AA   (← evals-console)   (verify: `next build` + authed capture harness `apps/dashboard/e2e-review/capture.spec.ts`, plus an axe pass with zero serious/critical)
+- [x] A tenant at their credit/budget limit CANNOT spend through an eval run   (← eval-run-executor)   (verify: a tenant over budget/credit gets the run refused at the governance guard; assert NO upstream call was made)
+- [x] One tenant's eval burst CANNOT open a breaker that degrades another tenant   (← eval-run-executor)   (verify: tenant A's run drives its breaker open; tenant B's request in the same process still succeeds)
 
 ## CLOSE
 evidence: <one row per task at ship — gate · tests green · residue>
