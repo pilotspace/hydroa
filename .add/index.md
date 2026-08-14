@@ -25,15 +25,16 @@ generated: { by: add/3.2.0, at: 2026-08-12 }
 
 ## Milestones
 
-- [Evals — regression gate on model swaps](milestones/evals-regression-gate.md) — `direction`
+- [Evals — regression gate on model swaps](milestones/evals-regression-gate.md) — `archived`
+- [SOC 2 groundwork — internal readiness (1.0.0)](milestones/soc2-groundwork.md) — `direction`
 
 ## Tasks
 
-- [baseline-and-verdict](tasks/baseline-and-verdict.md) — `direction`
-- [deterministic-scorers](tasks/deterministic-scorers.md) — `direction`
-- [eval-run-executor](tasks/eval-run-executor.md) — `direction`
-- [eval-set-store](tasks/eval-set-store.md) — `direction`
-- [evals-console](tasks/evals-console.md) — `direction`
+- [baseline-and-verdict](tasks/baseline-and-verdict.md) — `done`
+- [deterministic-scorers](tasks/deterministic-scorers.md) — `done`
+- [eval-run-executor](tasks/eval-run-executor.md) — `done`
+- [eval-set-store](tasks/eval-set-store.md) — `done`
+- [evals-console](tasks/evals-console.md) — `done`
 
 ## Personas
 
