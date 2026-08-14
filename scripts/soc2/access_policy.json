@@ -1,0 +1,17 @@
+{
+  "_comment": "CC6 DECLARED least-privilege policy — the ONLY yardstick access_review.py measures justification against (M4). A principal absent here fails CLOSED (over_privileged). Edited by a human on review; the tool never writes this file. Add real principals as the operator wires GitHubAccessSource.grants().",
+  "entries": [
+    {
+      "login": "TinDang97",
+      "max_permission": "admin",
+      "justification": "repo owner / release engineer — sole human maintainer during SOC 2 groundwork",
+      "self_approval_account": false
+    },
+    {
+      "login": "pilotspacex-byte",
+      "max_permission": "write",
+      "justification": "operator-directed automation account (shared keyring) used for disclosed byte-approvals; NOT an independent reviewer — disposition owned by Tin, tracked in soc2-groundwork independent-review-control",
+      "self_approval_account": true
+    }
+  ]
+}
