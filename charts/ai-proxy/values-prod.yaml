@@ -3,7 +3,7 @@
 # secret reference WITHOUT editing any template. Real secrets live in the referenced
 # k8s Secrets, never here.
 image:
-  tag: "0.14.1-prod"
+  tag: "0.15.0-prod"
 
 # The dashboard has its OWN image block, so the gateway override above does NOT reach it.
 # This override was MISSING until 0.14.0: prod fell through to values.yaml's plain tag, so a
@@ -11,7 +11,7 @@ image:
 # were pinned to the same stale 0.4.0. See todo #110.
 dashboard:
   image:
-    tag: "0.14.1-prod"
+    tag: "0.15.0-prod"
 
 gateway:
   replicas: 3

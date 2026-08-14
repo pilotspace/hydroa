@@ -9,8 +9,8 @@ type: application
 # they had drifted NINE releases: appVersion sat at 0.4.0 while the gateway shipped
 # 0.13.0, so the documented production deploy would have pulled 0.4.0 images. See
 # todo #110 and the release checklist in RELEASES.md.
-version: 0.2.1
-appVersion: "0.14.1"
+version: 0.2.2
+appVersion: "0.15.0"
 maintainers:
   - name: Pilotspace
 keywords:

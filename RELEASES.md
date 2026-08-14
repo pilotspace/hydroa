@@ -14,6 +14,17 @@
        7. git tag -a vX.Y.Z on the release commit   (v0.9.0 and v0.10.0 were missing until 0.14.0)
        8. build + push images FROM THE TAG, per docs/runbooks/cloud-deploy.md -->
 
+## 0.15.0 — 2026-08-14 — Evals regression gate
+milestones: evals-regression-gate (R7)
+loose tasks: none
+waivers: two carry forward from 0.14.0, both still in window — suite-stability (RISK-ACCEPTED, owner Tin Dang, expires 2026-09-30: todo #81 unreproduced catalog_refresh_scheduler stall, todo #80 azure egress DNS) · pgvector-deploy-runbook (RISK-ACCEPTED, owner Tin Dang, expires 2026-09-30: the M3 operator walkthrough on a REAL target is still not done). 0.14.0's ci-restoration waiver stays DISCHARGED. No new waivers.
+actor: Tin Dang <tindang.ht97@gmail.com> (git)
+evidence: R7 "evals — regression gate on model swaps" — 5/5 tasks gated PASS through the protected gate (`enforce_admins: true`, required `ci` + `dashboard`, `required_approving_review_count: 1`), milestone 7/7 exit criteria met and archived. The gate answers "did changing the model break this tenant?" as a scored, reproducible verdict without touching the hot proxy path.
+  Shipped: eval-set-store (#201) → eval-run-executor (#203) ∥ deterministic-scorers (#202) → baseline-and-verdict (#204) → evals-console (#205), in the risk-first order the milestone sequenced (ZDR disposition frozen FIRST because every later task assumes its answer).
+  THE two sharp edges, treated as such at freeze not discovered in build: (1) an eval case is a persisted request payload, so ZDR is the whole milestone's edge — the ZDR re-check is ATOMIC with the write, adversarially verified with a slow double that flips the flag mid-await, closing the check-at-entry / persist-after-await TOCTOU HARD-STOPPED three times before; (2) an eval run is a BURST of upstream calls, so the breaker is PER-TENANT — one tenant's run opening its breaker leaves another tenant's request in the same process succeeding (the global-breaker cross-tenant DoS has been HARD-STOPPED twice before). A run is BILLED TRAFFIC: it reuses the completion path through the governance guards, emits one `usage_record` per case, and a tenant over budget/credit is refused with NO upstream call.
+  The verdict is EXACT: `(pass,total)` re-derived on demand from each run's launch snapshot (no stored, stale-able score), compared by integer cross-multiply so equal-at-threshold is arithmetic not float luck, and a missing baseline is the explicit `no_baseline` state, never a silent green. The console (verdict-first, per-case diff as the signature element, WCAG AA, keyboard-navigable) computes nothing new — it reuses the SAME stores and verdict core as `/v1`, so `/admin` and `/v1` are byte-identical and per-case pass/fail comes from the ONE server-side scorer, never re-derived client-side. Read + baseline-pin only; authoring and launch stay on the `/v1` API-key path so a session JWT never holds a raw key.
+  ⚠ OPEN, carried to R8 `soc2-groundwork` and NOT waived: the `required_approving_review_count: 1` gate was satisfied on all five R7 PRs by an operator-directed self-approval via a second GitHub account (`pilotspacex-byte`), disclosed on each PR. That evidences a green required check on the merged artifact; it does NOT evidence independent four-eyes review. Every R7 merge still owes a genuine second human with write access before the SOC 2 audit.
+
 ## 0.14.1 — 2026-08-11 — Reproducible release artifacts
 milestones: none (patch)
 loose tasks: todo #113 (digest-pin production images) + todo #98 (pin the deployed Python), PRs #108 and #109
