@@ -746,6 +746,113 @@ const ROUTES: Route[] = [
     }),
   },
 
+  // source: components/evals/EvalsListPage.tsx (EvalSetsListResponse/EvalSetSummary)
+  {
+    method: "GET",
+    pattern: /^admin\/evals\/sets$/,
+    build: () => ({
+      object: "list",
+      data: [
+        {
+          id: "es_a1b2c3d4",
+          object: "eval.set",
+          created_at: 1751328000,
+          name: "Support Tone Regression",
+          description: "Checks tone drift on refusal edge cases",
+          case_count: 2,
+        },
+        {
+          id: "es_e5f6a7b8",
+          object: "eval.set",
+          created_at: 1751500800,
+          name: "Pricing Q&A Accuracy",
+          description: null,
+          case_count: 1,
+        },
+      ],
+    }),
+  },
+
+  // source: components/evals/SetDetailPage.tsx (EvalSetDetail)
+  {
+    method: "GET",
+    pattern: /^admin\/evals\/sets\/([^/]+)$/,
+    build: ([, id]) => ({
+      id,
+      object: "eval.set",
+      created_at: 1751328000,
+      name: "Support Tone Regression",
+      description: "Checks tone drift on refusal edge cases",
+      cases: [
+        {
+          id: "ec_cccc1111",
+          object: "eval.case",
+          created_at: 1751328100,
+          eval_set_id: id,
+          assertion: { kind: "exact_match", expected: "Sure thing!" },
+        },
+        {
+          id: "ec_cccc2222",
+          object: "eval.case",
+          created_at: 1751328200,
+          eval_set_id: id,
+          assertion: { kind: "exact_match", expected: "Absolutely!" },
+        },
+      ],
+      runs: [
+        {
+          id: "er_e5f6a7b8",
+          object: "eval.run",
+          created_at: 1751328300,
+          eval_set_id: id,
+          model: "openai/gpt-4o",
+          status: "completed",
+          case_count: 2,
+        },
+      ],
+      baseline_run_id: null,
+    }),
+  },
+
+  // source: components/evals/RunVerdictPage.tsx (EvalVerdict)
+  {
+    method: "GET",
+    pattern: /^admin\/evals\/runs\/([^/]+)\/verdict$/,
+    build: ([, runId]) => ({
+      object: "eval.verdict",
+      run_id: runId,
+      score: { passed: 1, total: 2 },
+      baseline: { run_id: "er_00000000", score: { passed: 2, total: 2 } },
+      verdict: "fail",
+    }),
+  },
+
+  // source: components/evals/RunVerdictPage.tsx (EvalCaseResultsResponse)
+  {
+    method: "GET",
+    pattern: /^admin\/evals\/runs\/([^/]+)\/cases$/,
+    build: () => ({
+      object: "list",
+      data: [
+        {
+          eval_case_id: "ec_cccc1111",
+          assertion: { kind: "exact_match", expected: "Sure thing!" },
+          status: "completed",
+          response_text: "Sure thing!",
+          passed: true,
+        },
+        {
+          eval_case_id: "ec_cccc2222",
+          assertion: { kind: "exact_match", expected: "Absolutely!" },
+          status: "completed",
+          response_text: "Nope, can't do that.",
+          reason: "Assertion exact_match failed: response did not match expected value",
+          passed: false,
+        },
+      ],
+    }),
+  },
+
   // ── Platform (superadmin) GET reads ────────────────────────────────────────
 
   // source: components/platform/PlatformTenantDirectory.tsx (TenantDirectoryListResponse)
@@ -1070,6 +1177,18 @@ const ROUTES: Route[] = [
       context_length: 128000,
       enabled: true,
       input_modalities: ["text", "image"],
+    }),
+  },
+
+  // source: components/evals/PinBaselineControl.tsx (EvalBaselinePutResponse)
+  {
+    method: "PUT",
+    pattern: /^admin\/evals\/sets\/([^/]+)\/baseline$/,
+    build: ([, setId]) => ({
+      object: "eval.baseline",
+      eval_set_id: setId,
+      baseline_run_id: "er_e5f6a7b8",
+      pinned_at: 1751587400,
     }),
   },
 

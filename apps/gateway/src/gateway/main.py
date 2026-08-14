@@ -139,6 +139,7 @@ from gateway.email.domain.ports import EmailSender
 from gateway.email.infrastructure.console_email_sender import ConsoleEmailSender
 from gateway.email.infrastructure.smtp_email_sender import SmtpEmailSender
 from gateway.evals.api.router import evals_router
+from gateway.evals.console.router import evals_console_router
 from gateway.evals.infrastructure.orm import (  # noqa: F401 — registers EvalSetRow/EvalCaseRow on Base.metadata
     EvalCaseRow as _EvalCaseRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
@@ -1832,6 +1833,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # baseline-and-verdict (R7): pin a baseline run per set + verdict a candidate against it.
     # The router builds its stores from app.state.sessionmaker per request (no app.state wiring).
     app.include_router(eval_verdict_router)
+    # evals-console (R7): the SESSION-authed /admin/evals twin of the /v1 surface, so the
+    # dashboard BFF can read + author evals with a JWT and never a raw API key. Reuses the same
+    # stores + build_verdict_body (no logic fork); it too builds stores from app.state.sessionmaker
+    # per request. There is deliberately NO launch route here (launch bills a live key -> /v1 only).
+    app.include_router(evals_console_router)
     # eval-run-executor (R7): replay a set through the SAME governance path a live request uses.
     # build_use_case reuses the request path's get_completion_use_case over a shim exposing only
     # .app (it never reads request.headers) — so use_cases.py/governance.py stay untouched and the
