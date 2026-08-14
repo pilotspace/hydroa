@@ -1,20 +1,19 @@
 """RED suite for evals-console backend (/admin/evals/*) — R7 L3, session-authed twin of /v1.
 
-Contract under test (evals-console PLAN.md, FROZEN @ sha256:60cf00293d919fbc):
+Contract under test (evals-console PLAN.md, FROZEN @ sha256:a09b4f0786d59b93):
   A session-authed control-plane surface serves the console. It resolves the tenant from the
   session Identity (JWT via get_current_identity), REUSES the eval stores + the ONE verdict core
-  (no logic fork), is READ + basic authoring only (NO launch, never a raw key), and is uniformly
-  tenant-scoped (absent/cross-tenant -> 404).
+  (no logic fork), is READ + baseline-pin ONLY (NO set/case authoring, NO launch, never a raw
+  key), and is uniformly tenant-scoped (absent/cross-tenant -> 404).
 
 These 4 checks bind the backend Musts/Rejects:
   M1, A1, A2, R:CROSS_TENANT, E5 -> test_admin_evals_session_scoped_reads
-  M1, R:LOGIC_FORK             -> test_admin_evals_verdict_matches_v1_reuse
-  M2, A1                        -> test_admin_evals_authoring_session_writes
-  M2, R:RAW_KEY_IN_CONSOLE      -> test_admin_evals_has_no_launch_and_no_raw_key
+  M1, R:LOGIC_FORK               -> test_admin_evals_verdict_matches_v1_reuse
+  M2, A1                          -> test_admin_evals_session_pins_baseline
+  M2, R:RAW_KEY_IN_CONSOLE        -> test_admin_evals_has_no_launch_and_no_raw_key
 
-RED until gateway/evals/console/ is wired into the app. DO NOT edit to make pass — that is
-Build's job. Launch (the only path that needs a raw key) stays on /v1; these tests launch runs
-through the /v1 API-key surface and then READ/AUTHOR them through the session surface.
+Launch AND set/case authoring both stay on /v1; these tests author + launch through the /v1
+API-key surface and then READ / PIN through the session console. DO NOT edit to make pass.
 """
 
 from __future__ import annotations
@@ -258,29 +257,25 @@ async def test_admin_evals_verdict_matches_v1_reuse(
     assert admin.json()["verdict"] in {"pass", "fail"}
 
 
-async def test_admin_evals_authoring_session_writes(
+async def test_admin_evals_session_pins_baseline(
     client: Any, app: Any, tenant_a: dict[str, str], active_model: str
 ) -> None:
-    """covers: M2, A1 — POST set + POST case + PUT baseline all succeed via the session, tenant-scoped."""
+    """covers: M2, A1 — a session Identity pins a baseline (tenant-scoped); the console exposes
+    NO set/case authoring (those stay on /v1). The read-focused surface's only write is the pin."""
     _install(app, ScriptedUpstream(prefix="echo"))
     tok_a, key_a = tenant_a["token"], tenant_a["key"]
 
-    made = await client.post("/admin/evals/sets", json={"name": "authored"}, headers=_bearer(tok_a))
-    assert made.status_code == 201, made.text
-    set_id = made.json()["id"]
+    # Authoring is /v1-only in the read-focused console: the /admin authoring routes do not exist,
+    # so a session POST to them is not found (no in-console create).
+    denied = await client.post("/admin/evals/sets", json={"name": "x"}, headers=_bearer(tok_a))
+    assert denied.status_code in (404, 405), denied.text
 
-    cased = await client.post(
-        f"/admin/evals/sets/{set_id}/cases",
-        json={
-            "request_body": {"model": "ignored", "messages": [{"role": "user", "content": "hi"}]},
-            "assertion": {"kind": "contains", "expected": "echo"},
-        },
-        headers=_bearer(tok_a),
-    )
-    assert cased.status_code == 201, cased.text
-
-    # Launch is /v1-only; use the key to produce a run, then pin it via the session.
+    # Set up the set + case + run through /v1 (the API-key surface that owns authoring + launch),
+    # then PIN a baseline through the SESSION console — the one write the read experience needs.
+    set_id = await _v1_make_set(client, key_a, "pinme")
+    await _v1_add_case(client, key_a, set_id, "one")
     run_id = await _v1_launch(client, key_a, set_id, active_model)
+
     pinned = await client.put(
         f"/admin/evals/sets/{set_id}/baseline",
         json={"run_id": run_id},
@@ -289,24 +284,18 @@ async def test_admin_evals_authoring_session_writes(
     assert pinned.status_code == 200, pinned.text
     assert pinned.json()["baseline_run_id"] == run_id
 
-    # The authored set is owned by tenant A (session tenant), and the pin landed.
+    # The pin landed tenant-scoped to the session tenant.
     async with app.state.sessionmaker() as session:
-        owner = (
+        row = (
             await session.execute(
-                text("SELECT tenant_id FROM eval_sets WHERE id = :s"),
-                {"s": uuid.UUID(set_id.removeprefix("es_"))},
+                text("SELECT tenant_id FROM eval_baselines WHERE eval_set_id = :s AND run_id = :r"),
+                {
+                    "s": uuid.UUID(set_id.removeprefix("es_")),
+                    "r": uuid.UUID(run_id.removeprefix("er_")),
+                },
             )
         ).scalar_one()
-        assert str(owner) == tenant_a["tenant_id"]
-        n = int(
-            (
-                await session.execute(
-                    text("SELECT count(*) FROM eval_baselines WHERE eval_set_id = :s"),
-                    {"s": uuid.UUID(set_id.removeprefix("es_"))},
-                )
-            ).scalar_one()
-        )
-        assert n == 1
+        assert str(row) == tenant_a["tenant_id"]
 
 
 def test_admin_evals_has_no_launch_and_no_raw_key() -> None:
@@ -321,12 +310,21 @@ def test_admin_evals_has_no_launch_and_no_raw_key() -> None:
     assert routes, "the console router must expose routes"
     # Every route is under /admin/evals — the session surface, never /v1.
     assert all(r.path.startswith("/admin/evals") for r in routes)  # type: ignore[attr-defined]
-    # There is NO run-launch route (a POST to .../runs) — launch bills a live key and stays on /v1.
+    # The read-focused console has NO authoring at all: its ONLY mutating method is the baseline
+    # PUT. No POST route exists (no set/case create, no launch) — authoring + launch stay on /v1,
+    # which is what keeps a raw key out of the console entirely.
     for r in routes:
-        methods = r.methods or set()  # type: ignore[attr-defined]
-        assert not (
-            "POST" in methods and r.path.rstrip("/").endswith("/runs")  # type: ignore[attr-defined]
-        ), "the console must NOT launch runs (that needs a raw key)"
+        methods = set(r.methods or set())  # type: ignore[attr-defined]
+        assert "POST" not in methods, f"the console must expose no POST route (found {r.path})"  # type: ignore[attr-defined]
+    mutating = {
+        (r.path, m)  # type: ignore[attr-defined]
+        for r in routes
+        for m in (r.methods or set())  # type: ignore[attr-defined]
+        if m in {"POST", "PUT", "PATCH", "DELETE"}
+    }
+    assert mutating == {("/admin/evals/sets/{set_id}/baseline", "PUT")}, (
+        f"the only console write is the baseline pin; found {mutating}"
+    )
     # The console never imports the raw-key extractor, so it CANNOT dial an upstream / handle a
     # raw key — proven by its absence from the module namespace (a symbol you never imported you
     # cannot call). The docstring may name it to explain the absence; the code must not bind it.

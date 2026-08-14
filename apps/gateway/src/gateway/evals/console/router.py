@@ -1,8 +1,8 @@
 """FastAPI router for the evals CONSOLE (/admin/evals/*) — evals-console §3.
 
 This is the SESSION-authed control-plane twin of the /v1/evals API-key surface. It exists so
-the dashboard BFF (which forwards the operator's session JWT as a Bearer token) can read and
-author evals without ever holding a raw API key.
+the dashboard BFF (which forwards the operator's session JWT as a Bearer token) can READ the
+eval regression gate — and pin its baseline — without ever holding a raw API key.
 
 Auth (M1): every endpoint depends on ``get_current_identity`` (Bearer JWT -> ``Identity`` with
 ``tenant_id`` + ``role``) — NOT ``_authenticate`` (which reads an ``sk-...`` API key). Any token
@@ -10,16 +10,17 @@ failure raises ProblemError(401) from the shared catalog dependency.
 
 Reuse, not fork (R:LOGIC_FORK, M1): this router computes NOTHING new. It resolves the tenant
 from the session Identity and calls the SAME stores and the SAME verdict core the /v1 surface
-uses — ``SqlAlchemyEvalStore`` (+ the Create* use-cases), ``SqlAlchemyEvalRunStore``,
-``SqlAlchemyEvalBaselineStore``, and ``build_verdict_body``. The wire objects are the frozen
-builders from the /v1 routers (``_eval_set_object`` / ``_eval_case_object`` / ``_run_object``),
-so /admin and /v1 render byte-identical objects.
+uses — ``SqlAlchemyEvalStore``, ``SqlAlchemyEvalRunStore``, ``SqlAlchemyEvalBaselineStore``, and
+``build_verdict_body``. The wire objects are the frozen builders from the /v1 routers
+(``_eval_set_object`` / ``_eval_case_object`` / ``_run_object``), so /admin and /v1 render
+byte-identical objects.
 
-No launch, no raw key (M2, R:RAW_KEY_IN_CONSOLE): there is deliberately NO run-launch route
-here — launching dials upstreams and must bill the launching key as live traffic
-(eval-run-executor A1), which needs a raw key the session must never hold. Launch stays on the
-/v1 API-key path; the console links to it. This module never imports or calls
-``_extract_raw_key``.
+Read + baseline-pin only, no raw key (M2, R:RAW_KEY_IN_CONSOLE): the surface is the reads plus
+``PUT .../baseline`` (pin the reference run — the verdict READ needs it). There is deliberately
+NO set/case authoring and NO run-launch route here — launching dials upstreams and must bill the
+launching key as live traffic (eval-run-executor A1), which needs a raw key the session must
+never hold. Both authoring and launch stay on the /v1 API-key path; the console links to them.
+This module never imports or calls ``_extract_raw_key``.
 
 Tenant isolation (M1, R:CROSS_TENANT): every store call passes ``identity.tenant_id``; an absent
 OR cross-tenant set/run is a uniform 404 (ERR_EVAL_SET_NOT_FOUND / ERR_EVAL_RUN_NOT_FOUND).
@@ -38,12 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.catalog.api.deps import get_current_identity
 from gateway.core.db import get_session
-from gateway.core.error_catalog import (
-    EVAL_CASE_INVALID,
-    EVAL_RUN_NOT_FOUND,
-    EVAL_SET_NAME_CONFLICT,
-    EVAL_SET_NOT_FOUND,
-)
+from gateway.core.error_catalog import EVAL_RUN_NOT_FOUND, EVAL_SET_NOT_FOUND
 
 # Wire-object builders + the ONE verdict core are owned by the /v1 routers; reusing them (rather
 # than re-deriving) is exactly what keeps /admin and /v1 from drifting (R:LOGIC_FORK). Same
@@ -53,11 +49,6 @@ from gateway.evals.api.router import (
     _eval_set_object,  # pyright: ignore[reportPrivateUsage]
     _unix,  # pyright: ignore[reportPrivateUsage]
 )
-from gateway.evals.application.use_cases import (
-    CreateEvalCaseUseCase,
-    CreateEvalSetUseCase,
-)
-from gateway.evals.domain.errors import EvalSetNameConflict, EvalSetNotFound
 from gateway.evals.infrastructure.repository import SqlAlchemyEvalStore
 from gateway.evals.runs.api.run_router import _run_object  # pyright: ignore[reportPrivateUsage]
 from gateway.evals.runs.infrastructure.repository import SqlAlchemyEvalRunStore
@@ -79,8 +70,6 @@ evals_console_router = APIRouter(tags=["evals-console"])
 # class the verdict core counts with, so per-case `passed` never disagrees with the run verdict.
 _SCORER = DeterministicScorer()
 
-_MAX_NAME_LEN = 256
-
 
 def _run_store(request: Request) -> SqlAlchemyEvalRunStore:
     return SqlAlchemyEvalRunStore(request.app.state.sessionmaker)
@@ -88,13 +77,6 @@ def _run_store(request: Request) -> SqlAlchemyEvalRunStore:
 
 def _baseline_store(request: Request) -> SqlAlchemyEvalBaselineStore:
     return SqlAlchemyEvalBaselineStore(request.app.state.sessionmaker)
-
-
-def _require_name(value: Any) -> str:
-    """A set name must be a non-empty string of <= 256 chars — else 422, nothing persisted."""
-    if not isinstance(value, str) or not value.strip() or len(value) > _MAX_NAME_LEN:
-        raise EVAL_CASE_INVALID.exc()
-    return value
 
 
 @evals_console_router.get("/admin/evals/sets", status_code=200, response_model=None)
@@ -230,66 +212,6 @@ async def get_run_cases(
             ).passed
         data.append(row)
     return {"object": "list", "data": data}
-
-
-@evals_console_router.post("/admin/evals/sets", status_code=201, response_model=None)
-async def create_set(
-    body: dict[str, Any],
-    identity: Annotated[Identity, Depends(get_current_identity)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, Any]:
-    """Create a payload-free eval set for the session tenant (M2, authoring)."""
-    name = _require_name(body.get("name"))
-    description = body.get("description")
-    if description is not None and not isinstance(description, str):
-        raise EVAL_CASE_INVALID.exc()
-
-    store = SqlAlchemyEvalStore(session)
-    try:
-        row = await CreateEvalSetUseCase(store).execute(
-            tenant_id=identity.tenant_id, name=name, description=description
-        )
-    except EvalSetNameConflict:
-        raise EVAL_SET_NAME_CONFLICT.exc() from None
-    await session.commit()
-    return _eval_set_object(row)
-
-
-@evals_console_router.post("/admin/evals/sets/{set_id}/cases", status_code=201, response_model=None)
-async def add_case(
-    set_id: str,
-    body: dict[str, Any],
-    identity: Annotated[Identity, Depends(get_current_identity)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, Any]:
-    """Append a case (request_body + assertion) to a tenant's set (M2, authoring).
-
-    The ZDR gate inside ``create_case`` raises ProblemError(403) if the tenant is ZDR-locked;
-    it propagates as native problem+json and nothing is committed (the payload never lands).
-    """
-    request_body = body.get("request_body")
-    assertion = body.get("assertion")
-    if not isinstance(request_body, dict) or not request_body:
-        raise EVAL_CASE_INVALID.exc()
-    if not isinstance(assertion, dict) or not assertion:
-        raise EVAL_CASE_INVALID.exc()
-
-    resolved = parse_set_wire_id(set_id)
-    if resolved is None:
-        raise EVAL_SET_NOT_FOUND.exc()
-
-    store = SqlAlchemyEvalStore(session)
-    try:
-        row = await CreateEvalCaseUseCase(store).execute(
-            tenant_id=identity.tenant_id,
-            eval_set_id=resolved,
-            request_body=request_body,
-            assertion=assertion,
-        )
-    except EvalSetNotFound:
-        raise EVAL_SET_NOT_FOUND.exc() from None
-    await session.commit()
-    return _eval_case_object(row)
 
 
 @evals_console_router.put(

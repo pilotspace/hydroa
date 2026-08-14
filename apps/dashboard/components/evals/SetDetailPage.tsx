@@ -1,29 +1,28 @@
 "use client";
 
 /**
- * SetDetailPage — evals-console TASK.md §3 CONTRACT M1/M5/M6/M9. The middle of the IA:
- * an eval set's cases, its runs (clickable rows -> the run's verdict page, keyboard
- * navigable per M5), and its pinned baseline. Launch is explicitly NOT handled here —
- * an informational note only ("launch via the /v1 API key"), never a launch button,
- * never a raw key.
+ * SetDetailPage — evals-console TASK.md §3 CONTRACT M1/M5/M6. The middle of the IA: an
+ * eval set's cases (read-only), its runs (clickable rows -> the run's verdict page,
+ * keyboard navigable per M5), and its pinned baseline. This is the READ-focused console:
+ * cases are authored and runs are launched via the /v1 API — an informational note only,
+ * never an add-case button, never a launch button, never a raw key. The one write here is
+ * pinning a baseline (the verdict READ needs a reference run).
  *
  * M6 identity gate: identical reasoning to EvalsListPage/RunVerdictPage.
  */
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { bffGet } from "@/lib/bff-client";
-import { Button, Empty, ErrorState, Loading, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { Empty, ErrorState, Loading, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
-import { AddCaseDialog } from "./AddCaseDialog";
 import { EvalStatusBadge } from "./EvalStatusBadge";
 import { PinBaselineControl } from "./PinBaselineControl";
 import { formatEpochSeconds } from "./format";
 import { getEvalsErrorTitle } from "./errors";
-import type { EvalCase, EvalSetDetail } from "./types";
+import type { EvalSetDetail } from "./types";
 
 const SUBSYSTEM = "Evals";
 
@@ -40,7 +39,6 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
   const queryClient = useQueryClient();
   const { data: currentUser, isLoading: identityLoading } = useCurrentUser();
   const identityReady = !identityLoading && currentUser !== null;
-  const [addCaseOpen, setAddCaseOpen] = useState(false);
 
   const setQuery = useQuery<EvalSetDetail>({
     queryKey: setDetailQueryKey(setId),
@@ -55,12 +53,6 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
   }
 
   const detail = setQuery.data;
-
-  function handleCaseCreated(newCase: EvalCase) {
-    queryClient.setQueryData<EvalSetDetail>(setDetailQueryKey(setId), (prev) =>
-      prev ? { ...prev, cases: [...prev.cases, newCase] } : prev,
-    );
-  }
 
   function handleBaselinePinned(baselineRunId: string) {
     queryClient.setQueryData<EvalSetDetail>(setDetailQueryKey(setId), (prev) =>
@@ -78,13 +70,6 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
         title={detail?.name ?? "Eval set"}
         titleId="eval-set-heading"
         description={detail?.description ?? undefined}
-        actions={
-          detail ? (
-            <Button type="button" onClick={() => setAddCaseOpen(true)}>
-              Add case
-            </Button>
-          ) : undefined
-        }
       />
 
       {setQuery.isLoading ? (
@@ -94,8 +79,8 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
       ) : detail ? (
         <>
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-            Runs are launched via the <code className="font-mono">/v1</code> API key — this console reads
-            results, it never starts a run.
+            Cases and runs are managed via the <code className="font-mono">/v1</code> API — this console
+            reads the verdict and pins a baseline, it never authors cases or starts a run.
           </div>
 
           <div className="flex flex-col gap-3">
@@ -103,12 +88,7 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
             {detail.cases.length === 0 ? (
               <Empty
                 title="No cases yet"
-                description="Add a case to start building this eval set."
-                action={
-                  <Button type="button" onClick={() => setAddCaseOpen(true)}>
-                    Add case
-                  </Button>
-                }
+                description="Add cases to this set through the /v1 API (POST /v1/evals/sets/{id}/cases)."
               />
             ) : (
               <Table aria-label="Eval cases">
@@ -187,8 +167,6 @@ export function SetDetailPage({ setId }: SetDetailPageProps) {
           </div>
         </>
       ) : null}
-
-      <AddCaseDialog open={addCaseOpen} onClose={() => setAddCaseOpen(false)} setId={setId} onCreated={handleCaseCreated} />
     </section>
   );
 }

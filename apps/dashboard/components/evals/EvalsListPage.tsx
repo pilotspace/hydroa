@@ -1,37 +1,33 @@
 "use client";
 
 /**
- * EvalsListPage — evals-console TASK.md §3 CONTRACT M1/M5/M6/M9. Top of the verdict-
- * first IA: Sets list -> Set detail -> Run verdict. GET /admin/evals/sets is NOT
- * cursor-paginated (design_requirements) — the full returned list renders, no
- * pagination stack (mirrors the AgentsConsolePage idiom rather than InvoicesListPage's
- * cursor stack, since this list has no cursor at all).
+ * EvalsListPage — evals-console TASK.md §3 CONTRACT M1/M5/M6. Top of the verdict-first
+ * IA: Sets list -> Set detail -> Run verdict. This is the READ-focused console: sets and
+ * cases are authored via the /v1 API, so there is no in-console create — the empty state
+ * points the operator to the API instead (E4). GET /admin/evals/sets is NOT cursor-
+ * paginated (design_requirements) — the full returned list renders, no pagination stack.
  *
  * M6 identity gate: see RunVerdictPage's own docblock — identical reasoning, applied
  * here to the sets query.
  */
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { bffGet } from "@/lib/bff-client";
-import { Button, Empty, ErrorState, Loading, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { Empty, ErrorState, Loading, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser } from "@/lib/hooks/use-current-user";
-import { CreateSetDialog } from "./CreateSetDialog";
 import { formatEpochSeconds } from "./format";
 import { getEvalsErrorTitle } from "./errors";
-import type { EvalSetSummary, EvalSetsListResponse } from "./types";
+import type { EvalSetsListResponse } from "./types";
 
 const SUBSYSTEM = "Evals";
 const EVAL_SETS_QUERY_KEY = ["eval-sets"];
 
 export function EvalsListPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: currentUser, isLoading: identityLoading } = useCurrentUser();
   const identityReady = !identityLoading && currentUser !== null;
-  const [createOpen, setCreateOpen] = useState(false);
 
   const setsQuery = useQuery<EvalSetsListResponse>({
     queryKey: EVAL_SETS_QUERY_KEY,
@@ -47,28 +43,17 @@ export function EvalsListPage() {
 
   const items = setsQuery.data?.data ?? [];
 
-  function handleCreated(set: EvalSetSummary) {
-    queryClient.setQueryData<EvalSetsListResponse>(EVAL_SETS_QUERY_KEY, (prev) =>
-      prev ? { ...prev, data: [...prev.data, set] } : { object: "list", data: [set] },
-    );
-  }
-
   return (
     <section aria-labelledby="evals-heading" className="flex flex-col gap-6">
       <PageHeader
         title="Evals"
         titleId="evals-heading"
         description="Regression gates for your model configuration — verdict-first, with a per-case diff on drill-down."
-        actions={
-          <Button type="button" onClick={() => setCreateOpen(true)}>
-            New eval set
-          </Button>
-        }
       />
 
       <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-        Runs are launched via the <code className="font-mono">/v1</code> API key — this console reads
-        results, it never starts a run.
+        Eval sets, cases, and runs are managed via the <code className="font-mono">/v1</code> API — this
+        console reads the verdict and pins a baseline, it never authors sets or starts a run.
       </div>
 
       {setsQuery.isLoading ? (
@@ -78,12 +63,7 @@ export function EvalsListPage() {
       ) : items.length === 0 ? (
         <Empty
           title="No eval sets yet"
-          description="Create an eval set to start tracking a regression gate."
-          action={
-            <Button type="button" onClick={() => setCreateOpen(true)}>
-              New eval set
-            </Button>
-          }
+          description="Create an eval set and add cases through the /v1 API (POST /v1/evals/sets), then launch a run — its verdict shows up here."
         />
       ) : (
         <Table aria-label="Eval sets">
@@ -124,8 +104,6 @@ export function EvalsListPage() {
           </TableBody>
         </Table>
       )}
-
-      <CreateSetDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={handleCreated} />
     </section>
   );
 }

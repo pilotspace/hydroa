@@ -322,15 +322,17 @@ describe("SetDetailPage — run rows are keyboard navigable (M5)", () => {
   });
 });
 
-describe("EvalsListPage — empty state offers a create affordance (EDGES)", () => {
-  it("test_empty_sets_shows_create_affordance", async () => {
+describe("EvalsListPage — empty state points to the /v1 API (EDGES)", () => {
+  it("test_empty_sets_points_to_api", async () => {
     installBaseHandlers();
     server.use(http.get(SETS_URL, () => HttpResponse.json({ object: "list", data: [] })));
 
     renderEvalsList();
 
     await waitFor(() => expect(within(section()).getByText(/no eval sets yet/i)).toBeInTheDocument());
-    const createButtons = within(section()).getAllByRole("button", { name: /new eval set/i });
-    expect(createButtons.length).toBeGreaterThan(0);
+    // Read-focused console: no in-console create — the empty state directs the operator to the
+    // /v1 API to author sets, and there is NO create button anywhere in the section.
+    expect(within(section()).getByText(/\/v1\/evals\/sets/i)).toBeInTheDocument();
+    expect(within(section()).queryByRole("button", { name: /new eval set/i })).not.toBeInTheDocument();
   });
 });

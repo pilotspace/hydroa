@@ -1180,31 +1180,6 @@ const ROUTES: Route[] = [
     }),
   },
 
-  // source: components/evals/CreateSetDialog.tsx (EvalSetSummary echo)
-  {
-    method: "POST",
-    pattern: /^admin\/evals\/sets$/,
-    build: () => ({
-      id: "es_new00001",
-      object: "eval.set",
-      created_at: 1751587200,
-      name: "New Eval Set",
-      description: null,
-      case_count: 0,
-    }),
-  },
-  // source: components/evals/AddCaseDialog.tsx (EvalCase echo)
-  {
-    method: "POST",
-    pattern: /^admin\/evals\/sets\/([^/]+)\/cases$/,
-    build: ([, setId]) => ({
-      id: "ec_new00001",
-      object: "eval.case",
-      created_at: 1751587300,
-      eval_set_id: setId,
-      assertion: { kind: "exact_match", expected: "…" },
-    }),
-  },
   // source: components/evals/PinBaselineControl.tsx (EvalBaselinePutResponse)
   {
     method: "PUT",

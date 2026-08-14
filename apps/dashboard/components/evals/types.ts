@@ -1,9 +1,9 @@
 /**
  * components/evals/types.ts — hand-written TS interfaces for the evals console
  * (evals-console TASK.md §3 CONTRACT, R7). The gateway wire shapes below are
- * FROZEN — see the task's <execution_context> for the exact contract. Zod is
- * used ONLY for the create-set / add-case dialog INPUTS (CreateSetDialog,
- * AddCaseDialog); every response shape here is a plain hand-written interface.
+ * FROZEN — see the task's <execution_context> for the exact contract. This is the
+ * READ-focused console (set/case authoring lives on the /v1 API), so every shape
+ * here types a GET response or the baseline-pin PUT; no user-input schemas.
  */
 
 export interface EvalSetSummary {
