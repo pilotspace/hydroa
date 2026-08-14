@@ -1,6 +1,24 @@
 {
  "edges": [
   [
+   "/tasks/baseline-and-verdict.d/runs/1.md",
+   "task",
+   "/tasks/baseline-and-verdict.md",
+   "/tasks/baseline-and-verdict.md"
+  ],
+  [
+   "/tasks/baseline-and-verdict.d/runs/2.md",
+   "task",
+   "/tasks/baseline-and-verdict.md",
+   "/tasks/baseline-and-verdict.md"
+  ],
+  [
+   "/tasks/baseline-and-verdict.d/runs/3.md",
+   "task",
+   "/tasks/baseline-and-verdict.md",
+   "/tasks/baseline-and-verdict.md"
+  ],
+  [
    "/tasks/baseline-and-verdict.md",
    "needs",
    "eval-run-executor.md",
@@ -13,16 +31,100 @@
    "/tasks/deterministic-scorers.md"
   ],
   [
+   "/tasks/deterministic-scorers.d/runs/1.md",
+   "task",
+   "/tasks/deterministic-scorers.md",
+   "/tasks/deterministic-scorers.md"
+  ],
+  [
+   "/tasks/deterministic-scorers.d/runs/2.md",
+   "task",
+   "/tasks/deterministic-scorers.md",
+   "/tasks/deterministic-scorers.md"
+  ],
+  [
    "/tasks/deterministic-scorers.md",
    "needs",
    "eval-set-store.md",
    "/tasks/eval-set-store.md"
   ],
   [
+   "/tasks/eval-run-executor.d/runs/1.md",
+   "task",
+   "/tasks/eval-run-executor.md",
+   "/tasks/eval-run-executor.md"
+  ],
+  [
+   "/tasks/eval-run-executor.d/runs/2.md",
+   "task",
+   "/tasks/eval-run-executor.md",
+   "/tasks/eval-run-executor.md"
+  ],
+  [
+   "/tasks/eval-run-executor.d/runs/3.md",
+   "task",
+   "/tasks/eval-run-executor.md",
+   "/tasks/eval-run-executor.md"
+  ],
+  [
    "/tasks/eval-run-executor.md",
    "needs",
    "eval-set-store.md",
    "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/1.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/2.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/3.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/4.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/5.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/eval-set-store.d/runs/6.md",
+   "task",
+   "/tasks/eval-set-store.md",
+   "/tasks/eval-set-store.md"
+  ],
+  [
+   "/tasks/evals-console.d/runs/1.md",
+   "task",
+   "/tasks/evals-console.md",
+   "/tasks/evals-console.md"
+  ],
+  [
+   "/tasks/evals-console.d/runs/2.md",
+   "task",
+   "/tasks/evals-console.md",
+   "/tasks/evals-console.md"
+  ],
+  [
+   "/tasks/evals-console.d/runs/3.md",
+   "task",
+   "/tasks/evals-console.md",
+   "/tasks/evals-console.md"
   ],
   [
    "/tasks/evals-console.md",
@@ -61,8 +163,18 @@
     "at": "2026-08-12",
     "by": "add/3.2.0"
    },
-   "status": "direction",
+   "status": "archived",
    "title": "Evals \u2014 regression gate on model swaps",
+   "type": "Milestone",
+   "verified": []
+  },
+  "/milestones/soc2-groundwork.md": {
+   "generated": {
+    "at": "2026-08-14",
+    "by": "add/3.2.0"
+   },
+   "status": "direction",
+   "title": "SOC 2 groundwork \u2014 internal readiness (1.0.0)",
    "type": "Milestone",
    "verified": []
   },
@@ -288,7 +400,104 @@
    "title": "System",
    "type": "Spec"
   },
+  "/tasks/baseline-and-verdict.d/runs/1.md": {
+   "computation": "env GATEWAY_TEST_DATABASE_URL=postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test uv run pytest tests/evals_verdict/test_baseline_and_verdict.py -p no:cacheprovider --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/bv-junit.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "11/11 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_verdict.test_baseline_and_verdict::test_baseline_durable_across_store_instances",
+     "tests.evals_verdict.test_baseline_and_verdict::test_cross_tenant_pin_and_verdict_uniform_404",
+     "tests.evals_verdict.test_baseline_and_verdict::test_fail_verdict_reports_both_scores",
+     "tests.evals_verdict.test_baseline_and_verdict::test_no_baseline_is_explicit_state_not_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_and_repin_idempotent_one_baseline",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_rejects_run_not_in_set",
+     "tests.evals_verdict.test_baseline_and_verdict::test_score_is_completed_scorer_pass_over_snapshot_total",
+     "tests.evals_verdict.test_baseline_and_verdict::test_unscoreable_completed_case_is_not_a_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_equal_rationals_pass_exact_no_float",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_better_passes",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_worse_fails"
+    ],
+    "stdout": "============================== 11 passed in 3.77s =============================="
+   },
+   "runtime": "process",
+   "task": "/tasks/baseline-and-verdict.md",
+   "type": "Run"
+  },
+  "/tasks/baseline-and-verdict.d/runs/2.md": {
+   "computation": "env GATEWAY_TEST_DATABASE_URL=postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test uv run pytest tests/evals_verdict/test_baseline_and_verdict.py -p no:cacheprovider --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/bv-junit2.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "11/11 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_verdict.test_baseline_and_verdict::test_baseline_durable_across_store_instances",
+     "tests.evals_verdict.test_baseline_and_verdict::test_cross_tenant_pin_and_verdict_uniform_404",
+     "tests.evals_verdict.test_baseline_and_verdict::test_fail_verdict_reports_both_scores",
+     "tests.evals_verdict.test_baseline_and_verdict::test_no_baseline_is_explicit_state_not_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_and_repin_idempotent_one_baseline",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_rejects_run_not_in_set",
+     "tests.evals_verdict.test_baseline_and_verdict::test_score_is_completed_scorer_pass_over_snapshot_total",
+     "tests.evals_verdict.test_baseline_and_verdict::test_unscoreable_completed_case_is_not_a_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_equal_rationals_pass_exact_no_float",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_better_passes",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_worse_fails"
+    ],
+    "stdout": "============================== 11 passed in 3.78s =============================="
+   },
+   "runtime": "process",
+   "task": "/tasks/baseline-and-verdict.md",
+   "type": "Run"
+  },
+  "/tasks/baseline-and-verdict.d/runs/3.md": {
+   "computation": "env GATEWAY_TEST_DATABASE_URL=postgresql+asyncpg://gateway:gateway@localhost:5433/gateway_test uv run pytest tests/evals_verdict/test_baseline_and_verdict.py -p no:cacheprovider --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/bv-junit3.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "11/11 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_verdict.test_baseline_and_verdict::test_baseline_durable_across_store_instances",
+     "tests.evals_verdict.test_baseline_and_verdict::test_cross_tenant_pin_and_verdict_uniform_404",
+     "tests.evals_verdict.test_baseline_and_verdict::test_fail_verdict_reports_both_scores",
+     "tests.evals_verdict.test_baseline_and_verdict::test_no_baseline_is_explicit_state_not_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_and_repin_idempotent_one_baseline",
+     "tests.evals_verdict.test_baseline_and_verdict::test_pin_rejects_run_not_in_set",
+     "tests.evals_verdict.test_baseline_and_verdict::test_score_is_completed_scorer_pass_over_snapshot_total",
+     "tests.evals_verdict.test_baseline_and_verdict::test_unscoreable_completed_case_is_not_a_pass",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_equal_rationals_pass_exact_no_float",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_better_passes",
+     "tests.evals_verdict.test_baseline_and_verdict::test_verdict_strictly_worse_fails"
+    ],
+    "stdout": "============================== 11 passed in 5.71s =============================="
+   },
+   "runtime": "process",
+   "task": "/tasks/baseline-and-verdict.md",
+   "type": "Run"
+  },
   "/tasks/baseline-and-verdict.md": {
+   "advised_by": "backend-architect",
    "generated": {
     "at": "2026-08-12",
     "by": "add/3.2.0"
@@ -301,12 +510,148 @@
     "eval-run-executor.md",
     "deterministic-scorers.md"
    ],
-   "status": "direction",
+   "status": "done",
    "title": "baseline-and-verdict",
    "type": "Task",
-   "verified": []
+   "verified": [
+    {
+     "act": "freeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:b3b0c7c9d979e935"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:07ac0a49ea25675e",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/baseline-and-verdict.d/runs/1.md"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:c36dc332a064e7cb"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:bdd7133a96fd03e6",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/baseline-and-verdict.d/runs/2.md"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:b02b3665f259e34f"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:96abcb2ef423cb3c",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/baseline-and-verdict.d/runs/3.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:96abcb2ef423cb3c",
+     "by": "Tin Dang",
+     "outcome": "PASS",
+     "reason": "Self-driving verify per the refrozen contract (sha256:b02b3665f259e34f; reseal fixed the covers: token FORMAT \u2014 comma-separated ids in one covers:, not repeated \u00b7 covers: segments \u2014 binding the four rejects, edges E1-E8, and A1 to tests that already prove them; additive, no rule/gives/test-logic change). 11 CHECKS green binding M1-M6, A1-A4, A6, E1-E8 and every reject: score fail-closed over the launch snapshot (refused/errored/unscoreable counted, never a pass), unscoreable-completed-not-a-pass, verdict strictly-worse=fail / strictly-better=pass / equal-rationals=pass via EXACT integer cross-multiply (R:FLOAT_TIE), no-baseline is the explicit no_baseline state (R:SILENT_PASS_NO_BASELINE), pin idempotent + rejects run-not-in-set + cross-tenant uniform 404 (R:CROSS_TENANT), durable across store instances (M6), score re-derived on demand (R:STALE_SCORE). pyright/ruff clean; migration-parity + guardrails no-new-tables green; four-manifest maintained. Human four-eyes owed at the PR gate.",
+     "receipt": "/tasks/baseline-and-verdict.d/runs/3.md"
+    }
+   ]
+  },
+  "/tasks/deterministic-scorers.d/runs/1.md": {
+   "computation": "uv run pytest tests/evals/test_deterministic_scorers.py -p no:randomly -q --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/scorers_junit.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "7/7 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals.test_deterministic_scorers::test_empty_output_scores_not_errors",
+     "tests.evals.test_deterministic_scorers::test_fail_detail_is_actionable_and_payload_free",
+     "tests.evals.test_deterministic_scorers::test_four_scorers_pass_and_fail_their_own_case",
+     "tests.evals.test_deterministic_scorers::test_malformed_expected_fails_closed",
+     "tests.evals.test_deterministic_scorers::test_regex_and_json_scoring_is_bounded",
+     "tests.evals.test_deterministic_scorers::test_scoring_is_deterministic_across_calls",
+     "tests.evals.test_deterministic_scorers::test_unsupported_kind_fails_closed_not_crash"
+    ],
+    "stdout": "7 passed in 0.11s"
+   },
+   "runtime": "process",
+   "task": "/tasks/deterministic-scorers.md",
+   "type": "Run"
+  },
+  "/tasks/deterministic-scorers.d/runs/2.md": {
+   "computation": "uv run pytest tests/evals/test_deterministic_scorers.py -p no:randomly -q --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/scorers_junit2.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "9/9 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals.test_deterministic_scorers::test_empty_output_scores_not_errors",
+     "tests.evals.test_deterministic_scorers::test_fail_detail_is_actionable_and_payload_free",
+     "tests.evals.test_deterministic_scorers::test_four_scorers_pass_and_fail_their_own_case",
+     "tests.evals.test_deterministic_scorers::test_malformed_expected_fails_closed",
+     "tests.evals.test_deterministic_scorers::test_regex_and_json_scoring_is_bounded",
+     "tests.evals.test_deterministic_scorers::test_score_result_is_single_kind_no_combinator",
+     "tests.evals.test_deterministic_scorers::test_scorers_are_pure_no_io",
+     "tests.evals.test_deterministic_scorers::test_scoring_is_deterministic_across_calls",
+     "tests.evals.test_deterministic_scorers::test_unsupported_kind_fails_closed_not_crash"
+    ],
+    "stdout": "9 passed in 0.12s"
+   },
+   "runtime": "process",
+   "task": "/tasks/deterministic-scorers.md",
+   "type": "Run"
   },
   "/tasks/deterministic-scorers.md": {
+   "advised_by": "backend-architect",
    "generated": {
     "at": "2026-08-12",
     "by": "add/3.2.0"
@@ -318,12 +663,152 @@
    "needs": [
     "eval-set-store.md"
    ],
-   "status": "direction",
+   "status": "done",
    "title": "deterministic-scorers",
    "type": "Task",
-   "verified": []
+   "verified": [
+    {
+     "act": "freeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:7986be6c142caa1e"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:62c340d35c23e6df",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/deterministic-scorers.d/runs/1.md"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:82510f967e2137ad"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:197a643b28a51b73",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/deterministic-scorers.d/runs/2.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:197a643b28a51b73",
+     "by": "Tin Dang",
+     "outcome": "PASS",
+     "reason": "Self-driving verify per the frozen contract (refrozen sha256:82510f96 after binding the A1 purity + A5 single-kind probes). 9 tests green binding M1-M6, A1-A6, and all three rejects: determinism, fail-closed on unsupported-kind + malformed-expected, bounded regex (guardrail nested-quantifier/backref heuristic) + JSON, empty-output, payload-free detail, purity (no session/app/network), single-kind result. pyright/ruff clean; grep-verified PURE (no sqlalchemy/fastapi/httpx/redis). Human four-eyes owed at the PR gate.",
+     "receipt": "/tasks/deterministic-scorers.d/runs/2.md"
+    }
+   ]
+  },
+  "/tasks/eval-run-executor.d/runs/1.md": {
+   "computation": "uv run pytest tests/evals_runs/test_eval_run_executor.py -q --no-cov -p no:randomly --junitxml tests/evals_runs/_add_junit.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "unknown",
+    "kind": "command-exit",
+    "note": "",
+    "stdout": "10 passed in 5.76s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-run-executor.md",
+   "type": "Run"
+  },
+  "/tasks/eval-run-executor.d/runs/2.md": {
+   "computation": "uv run pytest tests/evals_runs/test_eval_run_executor.py -q --no-cov -p no:randomly --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/evals_runs_add.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "10/10 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_runs.test_eval_run_executor::test_cross_tenant_and_absent_run_uniform_404",
+     "tests.evals_runs.test_eval_run_executor::test_empty_set_run_completes_vacuously",
+     "tests.evals_runs.test_eval_run_executor::test_one_usage_record_per_dialed_case",
+     "tests.evals_runs.test_eval_run_executor::test_over_budget_run_refuses_every_case_no_dial",
+     "tests.evals_runs.test_eval_run_executor::test_per_tenant_breaker_isolation",
+     "tests.evals_runs.test_eval_run_executor::test_results_aligned_to_case_creation_order",
+     "tests.evals_runs.test_eval_run_executor::test_resume_does_not_rebill_terminal_cases",
+     "tests.evals_runs.test_eval_run_executor::test_run_enters_governance_per_case",
+     "tests.evals_runs.test_eval_run_executor::test_timeout_case_errored_run_continues",
+     "tests.evals_runs.test_eval_run_executor::test_zdr_run_refused_atomically_zero_results"
+    ],
+    "stdout": "10 passed in 5.65s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-run-executor.md",
+   "type": "Run"
+  },
+  "/tasks/eval-run-executor.d/runs/3.md": {
+   "computation": "uv run pytest tests/evals_runs/test_eval_run_executor.py -q --no-cov -p no:randomly --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/evals_runs_final.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "13/13 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_runs.test_eval_run_executor::test_bounded_per_tenant_concurrency",
+     "tests.evals_runs.test_eval_run_executor::test_cross_tenant_and_absent_run_uniform_404",
+     "tests.evals_runs.test_eval_run_executor::test_cross_tenant_launch_and_billing_identity",
+     "tests.evals_runs.test_eval_run_executor::test_empty_set_run_completes_vacuously",
+     "tests.evals_runs.test_eval_run_executor::test_one_usage_record_per_dialed_case",
+     "tests.evals_runs.test_eval_run_executor::test_over_budget_run_refuses_every_case_no_dial",
+     "tests.evals_runs.test_eval_run_executor::test_per_tenant_breaker_isolation",
+     "tests.evals_runs.test_eval_run_executor::test_results_aligned_to_case_creation_order",
+     "tests.evals_runs.test_eval_run_executor::test_resume_does_not_rebill_terminal_cases",
+     "tests.evals_runs.test_eval_run_executor::test_run_enters_governance_per_case",
+     "tests.evals_runs.test_eval_run_executor::test_run_snapshot_fixed_at_launch",
+     "tests.evals_runs.test_eval_run_executor::test_timeout_case_errored_run_continues",
+     "tests.evals_runs.test_eval_run_executor::test_zdr_run_refused_atomically_zero_results"
+    ],
+    "stdout": "13 passed in 7.19s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-run-executor.md",
+   "type": "Run"
   },
   "/tasks/eval-run-executor.md": {
+   "advised_by": "appsec-engineer",
    "generated": {
     "at": "2026-08-12",
     "by": "add/3.2.0"
@@ -335,10 +820,207 @@
    "needs": [
     "eval-set-store.md"
    ],
-   "status": "direction",
+   "status": "done",
    "title": "eval-run-executor",
    "type": "Task",
-   "verified": []
+   "verified": [
+    {
+     "act": "freeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:1353206db5fb398c"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:1181f2f2c2711ebd",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-run-executor.d/runs/1.md"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-run-executor.d/runs/2.md"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:2abaa8687a94642b"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:c478d7392f02d99d",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-run-executor.d/runs/3.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:c478d7392f02d99d",
+     "by": "add-worker",
+     "outcome": "PASS",
+     "reason": "13/13 CHECKS bound green (M1-M8, A1-A6, E1-E6, R:*); migration-parity + guardrails manifests + pyright + ruff all green; per-tenant breaker isolation, ZDR-atomic launch/mid-run refusal, auth-scoped resume (no key material at rest), bounded per-tenant concurrency all verified",
+     "receipt": "/tasks/eval-run-executor.d/runs/3.md"
+    }
+   ]
+  },
+  "/tasks/eval-set-store.d/runs/1.md": {
+   "computation": "uv run pytest tests/evals/test_eval_set_store.py -p no:randomly -q --no-cov",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "unknown",
+    "kind": "command-exit",
+    "note": "",
+    "stdout": "6 passed in 2.79s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
+  },
+  "/tasks/eval-set-store.d/runs/2.md": {
+   "computation": "uv run pytest tests/migrations/test_migrations.py -p no:randomly -q --no-cov",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "unknown",
+    "kind": "command-exit",
+    "note": "",
+    "stdout": "6 passed, 9 warnings in 5.19s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
+  },
+  "/tasks/eval-set-store.d/runs/3.md": {
+   "computation": "uv run pytest tests/evals/test_eval_set_store.py -p no:randomly -q --no-cov",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "unknown",
+    "kind": "command-exit",
+    "note": "",
+    "stdout": "6 passed in 2.75s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
+  },
+  "/tasks/eval-set-store.d/runs/4.md": {
+   "computation": "uv run pytest tests/migrations/test_migrations.py -p no:randomly -q --no-cov",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "unknown",
+    "kind": "command-exit",
+    "note": "",
+    "stdout": "6 passed, 9 warnings in 5.09s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
+  },
+  "/tasks/eval-set-store.d/runs/5.md": {
+   "computation": "uv run pytest tests/evals/test_eval_set_store.py -p no:randomly -q --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/evals_junit.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "6/6 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals.test_eval_set_store::test_case_requires_request_and_assertion",
+     "tests.evals.test_eval_set_store::test_create_case_persists_payload_and_assertion",
+     "tests.evals.test_eval_set_store::test_create_set_is_tenant_scoped",
+     "tests.evals.test_eval_set_store::test_cross_tenant_and_absent_set_uniform_404",
+     "tests.evals.test_eval_set_store::test_zdr_case_write_refused_atomically",
+     "tests.evals.test_eval_set_store::test_zdr_tenant_can_create_set_but_not_case"
+    ],
+    "stdout": "6 passed in 2.67s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
+  },
+  "/tasks/eval-set-store.d/runs/6.md": {
+   "computation": "uv run pytest tests/evals/test_eval_set_store.py -p no:randomly -q --no-cov --junitxml=/private/tmp/claude-501/-Users-tindang-workspaces-tind-repo-ai-proxy/88454d31-bfec-4421-87a2-2d625a0ab229/scratchpad/evals_junit2.xml",
+   "generated": {
+    "at": "2026-08-13",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-13",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "10/10 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals.test_eval_set_store::test_case_requires_request_and_assertion",
+     "tests.evals.test_eval_set_store::test_cases_listed_in_creation_order",
+     "tests.evals.test_eval_set_store::test_create_case_persists_payload_and_assertion",
+     "tests.evals.test_eval_set_store::test_create_set_is_tenant_scoped",
+     "tests.evals.test_eval_set_store::test_cross_tenant_and_absent_set_uniform_404",
+     "tests.evals.test_eval_set_store::test_duplicate_set_name_rejected",
+     "tests.evals.test_eval_set_store::test_unknown_assertion_kind_is_accepted_at_store_time",
+     "tests.evals.test_eval_set_store::test_zdr_case_write_refused_atomically",
+     "tests.evals.test_eval_set_store::test_zdr_refusal_message_is_actionable",
+     "tests.evals.test_eval_set_store::test_zdr_tenant_can_create_set_but_not_case"
+    ],
+    "stdout": "10 passed in 4.31s"
+   },
+   "runtime": "process",
+   "task": "/tasks/eval-set-store.md",
+   "type": "Run"
   },
   "/tasks/eval-set-store.md": {
    "advised_by": "appsec-engineer",
@@ -350,12 +1032,214 @@
     "S1 the eval-set / eval-case persistence contract + the ZDR disposition \u2014 the frozen case shape every downstream task hangs off"
    ],
    "milestone": "evals-regression-gate",
-   "status": "direction",
+   "status": "done",
    "title": "eval-set-store",
    "type": "Task",
-   "verified": []
+   "verified": [
+    {
+     "act": "freeze",
+     "at": "2026-08-12",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:8ea8c0edf0d46051"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-12",
+     "authority": "process",
+     "brief": "sha256:0fe59aa41c22954f",
+     "by": "cli"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-12",
+     "authority": "process",
+     "brief": "sha256:0fe59aa41c22954f",
+     "by": "cli"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-12",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:8ea8c0edf0d46051"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/1.md"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/2.md"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:0fe59aa41c22954f",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/3.md"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/4.md"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/5.md"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "Tin Dang",
+     "direction": "sha256:5f9b8e1d63fff8cf"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:f746719ca156bd72",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/eval-set-store.d/runs/6.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:f746719ca156bd72",
+     "by": "Tin Dang",
+     "outcome": "PASS",
+     "reason": "Self-driving verify per the frozen contract (refrozen sha256:5f9b8e1d after binding 4 declared probes/edge that the first pass under-covered \u2014 including E4 duplicate-name, which was an unimplemented 500 and is now a 409 ERR_EVAL_SET_NAME_CONFLICT). 10 contract tests green binding every Must/Reject/real-edge/probed-assumption; migrations parity green; pyright/ruff clean; 48 adjacent vector-store tests still green. Human four-eyes still owed at the PR gate before merge \u2014 this gate is process authority, not independent review.",
+     "receipt": "/tasks/eval-set-store.d/runs/6.md"
+    }
+   ]
+  },
+  "/tasks/evals-console.d/runs/1.md": {
+   "computation": "bash tmp/evals_gate.sh /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml",
+   "generated": {
+    "at": "2026-08-14",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-14",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "13/13 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_authoring_session_writes",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_has_no_launch_and_no_raw_key",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_session_scoped_reads",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_verdict_matches_v1_reuse"
+    ],
+    "stdout": "merge_junit: wrote 13 testcases -> /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml"
+   },
+   "runtime": "process",
+   "task": "/tasks/evals-console.md",
+   "type": "Run"
+  },
+  "/tasks/evals-console.d/runs/2.md": {
+   "computation": "bash tmp/evals_gate.sh /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml",
+   "generated": {
+    "at": "2026-08-14",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-14",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "13/13 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "a11y.spec.ts::test_evals_routes_axe_clean",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_authoring_session_writes",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_has_no_launch_and_no_raw_key",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_session_scoped_reads",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_verdict_matches_v1_reuse",
+     "tests/evals-console.test.tsx::test_case_diff_shows_expected_actual_reason",
+     "tests/evals-console.test.tsx::test_empty_sets_shows_create_affordance",
+     "tests/evals-console.test.tsx::test_error_state_names_subsystem_not_user_data",
+     "tests/evals-console.test.tsx::test_no_baseline_run_renders_explicit_state",
+     "tests/evals-console.test.tsx::test_pending_run_is_not_a_verdict",
+     "tests/evals-console.test.tsx::test_run_page_leads_with_verdict_banner",
+     "tests/evals-console.test.tsx::test_run_rows_keyboard_navigable",
+     "tests/evals-console.test.tsx::test_section_fail_closed_for_loading_identity"
+    ],
+    "stdout": "merge_junit: wrote 13 testcases -> /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml"
+   },
+   "runtime": "process",
+   "task": "/tasks/evals-console.md",
+   "type": "Run"
+  },
+  "/tasks/evals-console.d/runs/3.md": {
+   "computation": "bash tmp/evals_gate.sh /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml",
+   "generated": {
+    "at": "2026-08-14",
+    "by": "process:run"
+   },
+   "receipt": {
+    "at": "2026-08-14",
+    "exit": "0",
+    "freshness": "mtime",
+    "ids": "13/13 reported",
+    "kind": "test-ids",
+    "note": "",
+    "passed": [
+     "a11y.spec.ts::test_evals_routes_axe_clean",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_has_no_launch_and_no_raw_key",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_session_pins_baseline",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_session_scoped_reads",
+     "tests.evals_admin.test_evals_admin_console::test_admin_evals_verdict_matches_v1_reuse",
+     "tests/evals-console.test.tsx::test_case_diff_shows_expected_actual_reason",
+     "tests/evals-console.test.tsx::test_empty_sets_points_to_api",
+     "tests/evals-console.test.tsx::test_error_state_names_subsystem_not_user_data",
+     "tests/evals-console.test.tsx::test_no_baseline_run_renders_explicit_state",
+     "tests/evals-console.test.tsx::test_pending_run_is_not_a_verdict",
+     "tests/evals-console.test.tsx::test_run_page_leads_with_verdict_banner",
+     "tests/evals-console.test.tsx::test_run_rows_keyboard_navigable",
+     "tests/evals-console.test.tsx::test_section_fail_closed_for_loading_identity"
+    ],
+    "stdout": "merge_junit: wrote 13 testcases -> /Users/tindang/workspaces/tind-repo/ai-proxy/tmp/junit_merged.xml"
+   },
+   "runtime": "process",
+   "task": "/tasks/evals-console.md",
+   "type": "Run"
   },
   "/tasks/evals-console.md": {
+   "advised_by": "ui-designer",
    "generated": {
     "at": "2026-08-12",
     "by": "add/3.2.0"
@@ -367,10 +1251,88 @@
    "needs": [
     "baseline-and-verdict.md"
    ],
-   "status": "direction",
+   "status": "done",
    "title": "evals-console",
    "type": "Task",
-   "verified": []
+   "verified": [
+    {
+     "act": "freeze",
+     "at": "2026-08-13",
+     "authority": "process",
+     "by": "cli",
+     "direction": "sha256:0b0747287fa1ed99"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-13",
+     "authority": "process",
+     "brief": "sha256:60cf00293d919fbc",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-14",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/evals-console.d/runs/1.md"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-14",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/evals-console.d/runs/2.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-14",
+     "authority": "process",
+     "brief": "sha256:60cf00293d919fbc",
+     "by": "Tin Dang",
+     "outcome": "PASS",
+     "receipt": "/tasks/evals-console.d/runs/2.md"
+    },
+    {
+     "act": "reopen",
+     "at": "2026-08-14",
+     "by": "loop",
+     "reason": "focus the build on the verdict-read experience \u2014 trim set/case authoring to a follow-up",
+     "to": "direction"
+    },
+    {
+     "act": "refreeze",
+     "at": "2026-08-14",
+     "authority": "process",
+     "by": "cli",
+     "direction": "sha256:a09b4f0786d59b93"
+    },
+    {
+     "act": "brief",
+     "at": "2026-08-14",
+     "authority": "process",
+     "brief": "sha256:681d18d37063356b",
+     "by": "cli"
+    },
+    {
+     "act": "run",
+     "at": "2026-08-14",
+     "authority": "process",
+     "by": "process:run",
+     "outcome": "PASS",
+     "receipt": "/tasks/evals-console.d/runs/3.md"
+    },
+    {
+     "act": "gate",
+     "at": "2026-08-14",
+     "authority": "process",
+     "brief": "sha256:681d18d37063356b",
+     "by": "Tin Dang",
+     "outcome": "PASS",
+     "receipt": "/tasks/evals-console.d/runs/3.md"
+    }
+   ]
   }
  }
 }
