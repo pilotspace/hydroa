@@ -1,0 +1,41 @@
+{
+  "_comment": "CC9.2 DECLARED subprocessor register — the human-maintained list vendor_register.py reconciles against live usage. A processor the system reaches but that is absent here is a HARD finding; a customer-data vendor missing a required field or a signed, in-window DPA fails CLOSED to `incomplete`. Edited by a human on review; the tool never writes this file. dpa_expiry is ISO-8601 UTC. Fill in real DPA dates/regions as vendor agreements are signed; the values below are placeholders to be verified.",
+  "subprocessors": [
+    {
+      "name": "openai",
+      "purpose": "LLM inference (chat / responses / embeddings) for tenants routing to OpenAI models",
+      "data_categories": ["prompts", "completions"],
+      "region": "us",
+      "processes_customer_data": true,
+      "dpa_status": "pending",
+      "dpa_expiry": null
+    },
+    {
+      "name": "anthropic",
+      "purpose": "LLM inference for tenants routing to Anthropic models",
+      "data_categories": ["prompts", "completions"],
+      "region": "us",
+      "processes_customer_data": true,
+      "dpa_status": "pending",
+      "dpa_expiry": null
+    },
+    {
+      "name": "aws-bedrock",
+      "purpose": "LLM inference for tenants routing to Bedrock-hosted models",
+      "data_categories": ["prompts", "completions"],
+      "region": "us",
+      "processes_customer_data": true,
+      "dpa_status": "pending",
+      "dpa_expiry": null
+    },
+    {
+      "name": "grafana-cloud",
+      "purpose": "metrics / dashboards — infrastructure telemetry only, no customer prompt content",
+      "data_categories": ["operational-metrics"],
+      "region": "eu",
+      "processes_customer_data": false,
+      "dpa_status": "none",
+      "dpa_expiry": null
+    }
+  ]
+}
