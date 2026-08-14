@@ -66,9 +66,7 @@ class SqlAlchemyEvalRunStore:
                 session.expunge(row)
             return row
 
-    async def list_runs(
-        self, *, tenant_id: uuid.UUID, eval_set_id: uuid.UUID
-    ) -> list[EvalRunRow]:
+    async def list_runs(self, *, tenant_id: uuid.UUID, eval_set_id: uuid.UUID) -> list[EvalRunRow]:
         """A set's runs, newest first (A2 order). Tenant-scoped in the resolving query (M6)."""
         async with self._sessionmaker() as session:
             stmt = (
