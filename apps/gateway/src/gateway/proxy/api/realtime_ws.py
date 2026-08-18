@@ -210,6 +210,11 @@ async def _real_stt(
             input_modality_guard_enabled=_settings.input_modality_guard_enabled,
             authenticator=_authenticator,
             tenant_model_preset_store=_tenant_model_preset_store,
+            # upload-bounds-realtime-stt §3 M1: the SAME per-file cap knob the HTTP STT
+            # path injects (audio_deps.py) — never a realtime-specific twin. The WS
+            # utterance_too_large gate above stays the protocol-level bound; this is the
+            # use-case-owned boundary the parent upload-bounds-audio task contracts.
+            max_file_bytes=_settings.max_audio_upload_bytes,
         )
         _registry: ProviderRegistry = app.state.provider_registry
         _recorder: UsageRecorder = app.state.usage_recorder
