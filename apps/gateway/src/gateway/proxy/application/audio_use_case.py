@@ -42,6 +42,7 @@ from gateway.core.error_catalog import (
     AUTH_KEY_INVALID,
     MODEL_MODALITY_MISMATCH,
     MODEL_UNKNOWN,
+    PAYLOAD_AUDIO_TOO_LARGE,
     PAYLOAD_FILE_REQUIRED,
     PAYLOAD_INPUT_REQUIRED,
     PAYLOAD_INPUT_TOO_LONG,
@@ -193,6 +194,29 @@ _STT_PASSTHROUGH_FIELDS = (
 _TRANSLATION_PASSTHROUGH_FIELDS = ("prompt", "response_format", "temperature")
 
 
+async def _read_capped_audio_upload(field: Any, max_bytes: int) -> bytes:
+    """Read an STT upload field's bytes, rejecting an oversized file BEFORE upstream/bill.
+
+    Uses the BOUNDED-read idiom of files/api/router.py::create_file — ``read(max_bytes + 1)``
+    — rather than the images read-then-check shape: one byte past the cap is enough to
+    decide, so an oversize upload never fully materializes in this handler's memory even if
+    the outer BodySizeLimitMiddleware /v1/audio/ cap is ever raised or removed. A file at or
+    below the cap is returned whole (``read(cap + 1)`` yields the entire body when it is
+    <= cap).
+
+    0 (or negative, defensively) ⇒ per-file cap disabled — the escape-hatch convention of
+    image_edit_max_bytes / tts_max_input_characters (upload-bounds-audio TASK.md §3 M6/A4);
+    the read still happens, just unchecked. The edge guard (main._audio_route_cap) sits a
+    headroom above this cap so THIS check owns the exact boundary (M3).
+    """
+    if max_bytes > 0:
+        data: bytes = await field.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise PAYLOAD_AUDIO_TOO_LARGE.exc() from None
+        return data
+    return await field.read()
+
+
 class TranscriptionUseCase:
     """Orchestrate a single POST /v1/audio/transcriptions (STT) request."""
 
@@ -208,6 +232,7 @@ class TranscriptionUseCase:
         authenticator: KeyAuthenticator | None = None,
         tenant_model_preset_store: TenantModelPresetStore | None = None,
         guardrail_evaluator: Any = None,
+        max_file_bytes: int = 0,
     ) -> None:
         self._governance = governance
         self._session = session
@@ -229,6 +254,10 @@ class TranscriptionUseCase:
         # into `governance` — never a second instance.
         self._authenticator = authenticator
         self._tenant_model_preset_store = tenant_model_preset_store
+        # upload-bounds-audio §3 M6: per-FILE upload cap (bytes) enforced at the Step-6
+        # read. 0 ⇒ per-file check disabled (legacy/test construction stays uncapped,
+        # byte-identical); production DI injects settings.max_audio_upload_bytes.
+        self._max_file_bytes = max_file_bytes
 
     async def execute(
         self,
@@ -327,8 +356,11 @@ class TranscriptionUseCase:
         # Step 5: Resolve provider adapter
         provider_adapter = select_provider(row.modality, row.provider, registry)
 
-        # Step 6: Read file bytes and build multipart payload
-        file_bytes = await file_field.read()
+        # Step 6: Read file bytes (bounded — upload-bounds-audio §3 M1/M2: an oversized
+        # file is refused 413 ERR_PAYLOAD_AUDIO_TOO_LARGE here, AFTER governance authorize
+        # but BEFORE the upstream call and BEFORE any usage record) and build the multipart
+        # payload. Serves BOTH transcriptions and translations (upstream_path switch).
+        file_bytes = await _read_capped_audio_upload(file_field, self._max_file_bytes)
         files: dict[str, Any] = {
             "file": (
                 file_field.filename or "audio",

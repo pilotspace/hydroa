@@ -137,6 +137,10 @@ def get_transcription_use_case(
         tenant_model_preset_store=tenant_model_preset_store,
         # guardrails-nonchat-parity (audit Issue 1): post-leg transcript PII masking.
         guardrail_evaluator=resolve_guardrail_evaluator(request, tenant_credential_resolver),
+        # upload-bounds-audio §3 M1/M6: per-FILE upload cap. env:
+        # GATEWAY_MAX_AUDIO_UPLOAD_BYTES — the same knob main._audio_route_cap raises the
+        # coarse /v1/audio/ edge cap above, so THIS check owns the exact boundary.
+        max_file_bytes=request.app.state.settings.max_audio_upload_bytes,
     )
 
 

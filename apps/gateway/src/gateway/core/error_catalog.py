@@ -1481,6 +1481,16 @@ PAYLOAD_IMAGE_TOO_LARGE = ErrorSpec(
     413, "ERR_PAYLOAD_IMAGE_TOO_LARGE", "Uploaded image exceeds the maximum allowed size"
 )
 
+#: POST /v1/audio/transcriptions | /v1/audio/translations — the uploaded `file` exceeds
+#: `Settings.max_audio_upload_bytes`. Raised BEFORE upstream/bill (no partial charge) —
+#: the per-FILE sibling of PAYLOAD_IMAGE_TOO_LARGE (upload-bounds-audio TASK.md §3 M1/M2).
+#: Distinct from the coarse edge ERR_REQUEST_BODY_TOO_LARGE so an SDK can tell "shrink the
+#: file" from "the whole request body was too big" (A6); the /v1/audio/ route cap carries
+#: multipart headroom (main._audio_route_cap) so THIS check owns the exact boundary.
+PAYLOAD_AUDIO_TOO_LARGE = ErrorSpec(
+    413, "ERR_PAYLOAD_AUDIO_TOO_LARGE", "Uploaded audio file exceeds the maximum allowed size"
+)
+
 #: POST /v1/images/edits | /v1/images/variations — model unknown/inactive in the
 #: catalog. Deliberately a TASK-LOCAL 404 (not the shared 400 MODEL_UNKNOWN used by
 #: chat/embeddings/generations/audio) — the frozen §4 red suite (test_ie7/IV-analog)

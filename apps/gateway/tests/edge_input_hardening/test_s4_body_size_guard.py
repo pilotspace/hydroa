@@ -191,8 +191,17 @@ async def test_s4_4_audio_over_audio_cap_rejected_with_audio_specific_limit(
     client: httpx.AsyncClient,
 ) -> None:
     """The audio route gets the wider audio cap (route_caps longest-prefix-match), not the
-    tighter JSON cap — proven via the declared-Content-Length fast path."""
-    over_audio_cap = SMALL_MAX_AUDIO_UPLOAD_BYTES + 1
+    tighter JSON cap — proven via the declared-Content-Length fast path.
+
+    SANCTIONED EDIT (upload-bounds-audio TASK.md §3 M3, 2026-08-18): the /v1/audio/ route
+    cap now carries 1 MiB multipart headroom over max_audio_upload_bytes (main.
+    _audio_route_cap — the _files_route_cap precedent), so TranscriptionUseCase owns the
+    precise per-file boundary. This check's INTENT is unchanged — the audio route's edge
+    cap is the wider audio-derived one and refuses with ERR_REQUEST_BODY_TOO_LARGE — the
+    probe just moved one byte past the NEW edge boundary (cap+headroom+1)."""
+    from gateway.main import _audio_route_cap
+
+    over_audio_cap = _audio_route_cap(SMALL_MAX_AUDIO_UPLOAD_BYTES) + 1
     assert over_audio_cap > SMALL_MAX_JSON_BODY_BYTES, "audio cap must exceed the JSON cap"
     resp = await client.post(
         TRANSCRIPTIONS_PATH,
