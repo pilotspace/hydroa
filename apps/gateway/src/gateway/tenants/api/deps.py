@@ -6,15 +6,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_TOKEN_MISSING
 from gateway.tenants.application.use_cases import (
+    ConfirmPasswordResetUseCase,
     ConfirmPendingSignupUseCase,
     GetIdentityUseCase,
     IssuePendingSignupUseCase,
     LoginUseCase,
+    LogoutUseCase,
+    RequestPasswordResetUseCase,
     SignupUseCase,
 )
 from gateway.tenants.domain.ports import PasswordHasher, TokenService
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.tenants.infrastructure.repository import SqlAlchemyIdentityRepository
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 
 def get_hasher(request: Request) -> PasswordHasher:
@@ -62,6 +66,12 @@ def get_identity_use_case(
             session=session,
             timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
         ),
+        # auth-hardening-login-sessions TASK.md §3 M5 — REQUIRED keyword: this site
+        # cannot silently skip the revocation check.
+        revocation_guard_factory=lambda: DbSessionRevocationGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.session_revocation_check_timeout_seconds,
+        ),
     )
 
 
@@ -89,6 +99,42 @@ def get_confirm_pending_signup_use_case(
     request: Request, session: AsyncSession
 ) -> ConfirmPendingSignupUseCase:
     return ConfirmPendingSignupUseCase(SqlAlchemyIdentityRepository(session))
+
+
+def get_request_password_reset_use_case(
+    request: Request, session: AsyncSession
+) -> RequestPasswordResetUseCase:
+    """auth-hardening-login-sessions TASK.md §3 M2/M3 (FROZEN @ v1, SECURITY). Plain
+    (request, session) shape — mirrors get_issue_pending_signup_use_case above."""
+    settings = request.app.state.settings
+    return RequestPasswordResetUseCase(
+        SqlAlchemyIdentityRepository(session),
+        request.app.state.email_sender,
+        reset_ttl_seconds=settings.password_reset_ttl_seconds,
+        origin=settings.dashboard_public_origin,
+    )
+
+
+def get_confirm_password_reset_use_case(
+    request: Request, session: AsyncSession
+) -> ConfirmPasswordResetUseCase:
+    """auth-hardening-login-sessions TASK.md §3 M3/M4 (FROZEN @ v1, SECURITY). Reuses
+    the SAME request.app.state.password_hasher instance every sibling use-case reads."""
+    return ConfirmPasswordResetUseCase(
+        SqlAlchemyIdentityRepository(session),
+        request.app.state.password_hasher,
+        session_factory=request.app.state.sessionmaker,
+    )
+
+
+def get_logout_use_case(request: Request, session: AsyncSession) -> LogoutUseCase:
+    """auth-hardening-login-sessions TASK.md §3 M5 (FROZEN @ v1, SECURITY)."""
+    settings = request.app.state.settings
+    return LogoutUseCase(
+        SqlAlchemyIdentityRepository(session),
+        jwt_ttl_seconds=settings.jwt_ttl_seconds,
+        session_factory=request.app.state.sessionmaker,
+    )
 
 
 def get_bearer_token(request: Request) -> str:

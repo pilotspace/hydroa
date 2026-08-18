@@ -26,6 +26,7 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
+    AUTH_UNAVAILABLE,
     DNS_LOOKUP_FAILED,
     DOMAIN_ALREADY_VERIFIED,
     DOMAIN_CLAIM_EXPIRED,
@@ -84,8 +85,10 @@ from gateway.domain_capture.domain.errors import (
 )
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.domain.errors import SessionRevocationUnavailableError
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.tenants.infrastructure.repository import get_tenant_by_id
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 domain_claims_router = APIRouter(prefix="/admin/domain-claims", tags=["domain-claims-admin"])
 
@@ -103,9 +106,19 @@ async def _get_owner_identity(request: Request, session: AsyncSession) -> Identi
             session=session,
             timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
         ),
+        # auth-hardening-login-sessions TASK.md §3 M5 — REQUIRED keyword: this site
+        # cannot silently skip the revocation check.
+        revocation_guard_factory=lambda: DbSessionRevocationGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.session_revocation_check_timeout_seconds,
+        ),
     )
     try:
         identity = await use_case.execute(token)
+    except SessionRevocationUnavailableError:
+        # M6 (auth-hardening-login-sessions): store failure is a 503, never a 401
+        # that lies about a live token — and never swallowed by the catch-all below.
+        raise AUTH_UNAVAILABLE.exc() from None
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
 

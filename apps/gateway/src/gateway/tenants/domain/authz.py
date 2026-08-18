@@ -25,15 +25,20 @@ import fastapi
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
+from gateway.core.error_catalog import (
+    AUTH_FORBIDDEN,
+    AUTH_TOKEN_INVALID,
+    AUTH_TOKEN_MISSING,
+    AUTH_UNAVAILABLE,
+)
 from gateway.tenants.domain.entities import Identity, Role
-from gateway.tenants.domain.errors import InvalidTokenError
+from gateway.tenants.domain.errors import InvalidTokenError, SessionRevocationUnavailableError
 
 if TYPE_CHECKING:
     # Type-only (impersonation-live-session-guard TASK.md §3 Part B): ensure_impersonation_
     # session_live's own body imports nothing at runtime (zero framework/infra imports,
     # CONVENTIONS.md), so this stays TYPE_CHECKING-only rather than a real top-level import.
-    from gateway.tenants.domain.ports import ImpersonationSessionGuard
+    from gateway.tenants.domain.ports import ImpersonationSessionGuard, SessionRevocationGuard
 
 __all__ = [
     "ROLE_PERMISSIONS",
@@ -41,6 +46,7 @@ __all__ = [
     "Role",
     "authorize_tenant_scope",
     "ensure_impersonation_session_live",
+    "ensure_session_not_revoked",
     "require_active_user",
     "require_permission",
     "require_superadmin",
@@ -218,6 +224,26 @@ async def ensure_impersonation_session_live(
         await guard.ensure_live(identity.impersonation)
 
 
+async def ensure_session_not_revoked(identity: Identity, guard: SessionRevocationGuard) -> None:
+    """The ONE place a revoked session becomes a 401 (auth-hardening-login-sessions
+    TASK.md §3 M5, FROZEN @ v1): a revoked=True answer raises the SAME InvalidTokenError
+    as a forged/expired token, so the edge response is indistinguishable (no revocation
+    oracle). A SessionRevocationUnavailableError from the guard propagates UNTOUCHED —
+    the call sites map it to ERR_AUTH_UNAVAILABLE (503, M6), never to a 401 that would
+    lie about a live token."""
+    try:
+        revoked = await guard.is_revoked(identity)
+    except SessionRevocationUnavailableError:
+        raise
+    except Exception as exc:
+        # Defense in depth (M6): even an adapter BUG (an exception the guard failed to
+        # translate itself) is an unavailable store, never a silent allow and never a
+        # 401 — the fail-closed mapping lives HERE so no concrete guard can drop it.
+        raise SessionRevocationUnavailableError from exc
+    if revoked:
+        raise InvalidTokenError
+
+
 # ---------------------------------------------------------------------------
 # Inline identity resolver (avoids circular import with keys/api/deps)
 # ---------------------------------------------------------------------------
@@ -251,7 +277,25 @@ async def _resolve_identity(
                 ),
             ),
         )
+        # auth-hardening-login-sessions TASK.md §3 M5 — revocation call site 1/5,
+        # wired at the SAME seam as the impersonation guard above.
+        from gateway.tenants.infrastructure.session_revocation import (
+            DbSessionRevocationGuard,
+        )
+
+        await ensure_session_not_revoked(
+            identity,
+            DbSessionRevocationGuard(
+                session=session,
+                timeout_seconds=(
+                    request.app.state.settings.session_revocation_check_timeout_seconds
+                ),
+            ),
+        )
         return identity
+    except SessionRevocationUnavailableError:
+        # M6: the store blinked — NOT a known-bad token, so never the 401 below.
+        raise AUTH_UNAVAILABLE.exc() from None
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 

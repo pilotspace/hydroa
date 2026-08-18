@@ -11,16 +11,18 @@ from gateway.catalog.application.use_cases import ListModelsForTenantUseCase, Sy
 from gateway.catalog.domain.ports import CatalogSource
 from gateway.catalog.infrastructure.repository import SqlAlchemyCatalogRepository
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
+from gateway.core.error_catalog import AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING, AUTH_UNAVAILABLE
 from gateway.tenants.domain.authz import (
     ROLE_PERMISSIONS,
     Permission,
     ensure_impersonation_session_live,
+    ensure_session_not_revoked,
 )
 from gateway.tenants.domain.entities import Identity
-from gateway.tenants.domain.errors import InvalidTokenError
+from gateway.tenants.domain.errors import InvalidTokenError, SessionRevocationUnavailableError
 from gateway.tenants.domain.ports import TokenService
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 
 def get_catalog_source(request: Request) -> CatalogSource:
@@ -73,7 +75,20 @@ async def get_current_identity(
                 timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
             ),
         )
+        # auth-hardening-login-sessions TASK.md §3 M5 — revocation call site 3/5.
+        await ensure_session_not_revoked(
+            identity,
+            DbSessionRevocationGuard(
+                session=session,
+                timeout_seconds=(
+                    request.app.state.settings.session_revocation_check_timeout_seconds
+                ),
+            ),
+        )
         return identity
+    except SessionRevocationUnavailableError:
+        # M6: store failure is a 503, never a 401 that lies about a live token.
+        raise AUTH_UNAVAILABLE.exc() from None
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 

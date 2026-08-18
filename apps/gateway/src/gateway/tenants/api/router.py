@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,10 @@ from gateway.core.error_catalog import (
     AUTH_CREDENTIALS_INVALID,
     AUTH_EMAIL_TAKEN,
     AUTH_PASSWORD_WEAK,
+    AUTH_RESET_EXPIRED,
+    AUTH_RESET_INVALID,
     AUTH_TOKEN_INVALID,
+    AUTH_UNAVAILABLE,
     PLAN_SEAT_CAP_EXCEEDED,
     RATE_LIMITED,
     SIGNUP_CONFIRM_EXPIRED,
@@ -26,10 +29,13 @@ from gateway.domain_capture.api.deps import (
 )
 from gateway.tenants.api.deps import (
     get_bearer_token,
+    get_confirm_password_reset_use_case,
     get_confirm_pending_signup_use_case,
     get_identity_use_case,
     get_issue_pending_signup_use_case,
     get_login_use_case,
+    get_logout_use_case,
+    get_request_password_reset_use_case,
     get_signup_use_case,
 )
 from gateway.tenants.api.schemas import (
@@ -37,6 +43,9 @@ from gateway.tenants.api.schemas import (
     LoginRequest,
     LoginResponse,
     MeResponse,
+    OkResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     SignupPendingResponse,
     SignupRequest,
     SignupResponse,
@@ -51,9 +60,12 @@ from gateway.tenants.domain.errors import (
     IndividualPlanMissingError,
     InvalidCredentialsError,
     InvalidTokenError,
+    PasswordResetExpiredError,
+    PasswordResetInvalidError,
     PendingSignupExpiredError,
     PendingSignupNotFoundError,
     SeatCapExceededError,
+    SessionRevocationUnavailableError,
     WeakPasswordError,
 )
 from gateway.tenants.infrastructure.invite_public_rate_limiter import (
@@ -265,9 +277,27 @@ async def signup_confirm(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(
+    request: Request,
     body: LoginRequest,
     use_case: Annotated[LoginUseCase, Depends(get_login_use_case)],
 ) -> LoginResponse:
+    # auth-hardening-login-sessions TASK.md §3 M1 (FROZEN @ v1, SECURITY): rate-limit
+    # FIRST — before the argon2 verify ever runs (a limited attempt costs zero hasher
+    # work). Per-IP + per-email fixed windows via the EXISTING InvitePublicRateLimiter
+    # (internally fail-open on Redis outage — availability posture A2); client IP ONLY
+    # via resolve_trusted_client_ip (R:RAW_CLIENT_IP). Lockout is limiter decay, never
+    # persistent account state (R:LOCKOUT_DOS). The 429 is byte-identical for known and
+    # unknown emails (R:ENUMERATION_ORACLE).
+    settings = request.app.state.settings
+    limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
+    try:
+        await limiter.check(action="login_ip", key=client_ip, limit=settings.login_ip_rpm)
+        await limiter.check(
+            action="login_email", key=body.email.lower(), limit=settings.login_email_rpm
+        )
+    except InviteRateLimitedError as exc:
+        raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
     try:
         token, expires_in = await use_case.execute(email=body.email, password=body.password)
     except InvalidCredentialsError:
@@ -283,6 +313,10 @@ async def me(
 ) -> MeResponse:
     try:
         identity = await use_case.execute(token)
+    except SessionRevocationUnavailableError:
+        # auth-hardening-login-sessions M6: revocation store failure is a 503 —
+        # never a 401 that lies about a live token.
+        raise AUTH_UNAVAILABLE.exc() from None
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
     # domain-claims-console TASK.md §4 CR: expose the caller's OWN tenant name so the
@@ -296,3 +330,75 @@ async def me(
         role=str(identity.role),
         tenant_name=tenant.name if tenant is not None else "",
     )
+
+
+@router.post("/password-reset", status_code=202, response_model=OkResponse)
+async def request_password_reset(
+    request: Request,
+    body: PasswordResetRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OkResponse:
+    """auth-hardening-login-sessions TASK.md §3 M2/M3 (FROZEN @ v1, SECURITY): PUBLIC,
+    rate-limited FIRST, then a UNIFORM 202 whether or not the email is registered — the
+    divergent work (token mint + row + email) is fire-and-forget inside the use case
+    (R:ENUMERATION_ORACLE)."""
+    settings = request.app.state.settings
+    limiter: InvitePublicRateLimiter = request.app.state.invite_public_limiter
+    client_ip = resolve_trusted_client_ip(request, settings.trusted_proxy_hops)
+    normalized_email = body.email.lower()
+    try:
+        await limiter.check(
+            action="password_reset_ip", key=client_ip, limit=settings.password_reset_ip_rpm
+        )
+        await limiter.check(
+            action="password_reset_email",
+            key=normalized_email,
+            limit=settings.password_reset_email_rpm,
+        )
+    except InviteRateLimitedError as exc:
+        raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
+    use_case = get_request_password_reset_use_case(request, session)
+    await use_case.execute(email=normalized_email)
+    return OkResponse()
+
+
+@router.post("/password-reset/confirm", response_model=OkResponse)
+async def confirm_password_reset(
+    request: Request,
+    body: PasswordResetConfirmRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OkResponse:
+    """auth-hardening-login-sessions TASK.md §3 M3/M4 (FROZEN @ v1, SECURITY): the token
+    is the ONLY credential; distinguishing invalid/expired/weak here is safe (the
+    R-sec-6 precedent — reachable only by whoever possesses the emailed token). Check
+    order is contractual (A16): validity -> expiry -> weak-LAST (never consumes)."""
+    use_case = get_confirm_password_reset_use_case(request, session)
+    try:
+        await use_case.execute(token=body.token, new_password=body.new_password)
+    except PasswordResetInvalidError:
+        raise AUTH_RESET_INVALID.exc() from None
+    except PasswordResetExpiredError:
+        raise AUTH_RESET_EXPIRED.exc() from None
+    except WeakPasswordError:
+        raise AUTH_PASSWORD_WEAK.exc() from None
+    return OkResponse()
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    request: Request,
+    token: Annotated[str, Depends(get_bearer_token)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    """auth-hardening-login-sessions TASK.md §3 M5 (FROZEN @ v1, SECURITY): denylist the
+    presented session's jti server-side — the identity seams refuse it from the next
+    request on. 401 on an invalid/expired token (nothing to revoke); a legacy no-jti
+    token still 204s (audited, watermark-only revocable, A7)."""
+    tokens = request.app.state.token_service
+    try:
+        identity = tokens.decode(token)
+    except InvalidTokenError:
+        raise AUTH_TOKEN_INVALID.exc() from None
+    use_case = get_logout_use_case(request, session)
+    await use_case.execute(identity=identity)
+    return Response(status_code=204)

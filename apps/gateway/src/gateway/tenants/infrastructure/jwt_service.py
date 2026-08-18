@@ -44,6 +44,12 @@ class JwtTokenService:
             "iat": now,
             "exp": now + ttl,
             "iss": self._issuer,
+            # auth-hardening-login-sessions TASK.md §3 M5 (FROZEN @ v1): every newly
+            # issued session token is individually revocable by this id. Deliberately
+            # NOT added to decode()'s required-claims set below — a legacy token minted
+            # before this claim existed still decodes (A7) and stays revocable only via
+            # the users.sessions_not_before watermark.
+            "jti": uuid.uuid4().hex,
         }
         if impersonation is not None:
             # Byte-identical claims dict when None (M2) — this key is added ONLY for an
@@ -87,12 +93,19 @@ class JwtTokenService:
                 # future minting bug can never smuggle SUPERADMIN-level ROLE_PERMISSIONS
                 # through an impersonation identity.
                 raise InvalidTokenError
+            # jti/iat surfaced for the revocation seam (auth-hardening M5). `.get` on
+            # both: jti is optional by design (legacy tokens), and iat — though in the
+            # required set — is read defensively the same way.
+            raw_jti = claims.get("jti")
+            raw_iat = claims.get("iat")
             identity = Identity(
                 user_id=uuid.UUID(claims["sub"]),
                 tenant_id=uuid.UUID(claims["tenant_id"]),
                 email=claims["email"],
                 role=role,
                 impersonation=impersonation,
+                jti=raw_jti if isinstance(raw_jti, str) else None,
+                iat=int(raw_iat) if isinstance(raw_iat, (int, float)) else None,
             )
             # Observability contract M2: every successfully authenticated
             # /admin/* request carries tenant_id in its access log line.

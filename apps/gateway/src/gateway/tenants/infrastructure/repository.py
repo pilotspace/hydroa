@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,18 @@ from gateway.auth.domain.errors import OidcTenantConflictError
 from gateway.auth.domain.saml_errors import SamlTenantConflictError
 from gateway.core.ids import uuid7
 from gateway.tenants.application.entitlements import assert_seat_available
-from gateway.tenants.domain.entities import PendingPersonalSignup, Role, User
+from gateway.tenants.domain.entities import (
+    PasswordResetToken,
+    PendingPersonalSignup,
+    Role,
+    User,
+)
 from gateway.tenants.domain.errors import EmailAlreadyRegisteredError, SeatCapExceededError
 from gateway.tenants.infrastructure.orm import (
+    PasswordResetTokenRow,
     PendingPersonalSignupRow,
     PlanRow,
+    RevokedAuthSessionRow,
     SeatMembershipEventRow,
     TenantRow,
     UserRow,
@@ -421,3 +428,80 @@ class SqlAlchemyIdentityRepository:
         result = await self._session.execute(stmt)
         await self._session.commit()
         return result.scalar_one_or_none() is not None
+
+    async def create_password_reset_token(
+        self, *, user_id: uuid.UUID, token_hash: str, expires_at: datetime
+    ) -> None:
+        """auth-hardening-login-sessions TASK.md §3 M3 (FROZEN @ v1, SECURITY): persist
+        one hashed-at-rest reset row. Plain INSERT (no upsert): multiple outstanding
+        tokens per user are allowed within the TTL window — each is single-use, the
+        rate limiter (password_reset_email_rpm) bounds their mint rate."""
+        self._session.add(
+            PasswordResetTokenRow(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+        )
+        await self._session.commit()
+
+    async def get_password_reset_token(self, *, token_hash: str) -> PasswordResetToken | None:
+        row = (
+            await self._session.execute(
+                select(PasswordResetTokenRow, UserRow)
+                .join(UserRow, UserRow.id == PasswordResetTokenRow.user_id)
+                .where(PasswordResetTokenRow.token_hash == token_hash)
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        token_row, user_row = row
+        return PasswordResetToken(
+            user_id=user_row.id,
+            tenant_id=user_row.tenant_id,
+            email=user_row.email,
+            expires_at=token_row.expires_at,
+            used_at=token_row.used_at,
+        )
+
+    async def consume_password_reset_token(
+        self, *, token_hash: str, password_hash: str, not_before: datetime
+    ) -> bool:
+        """auth-hardening-login-sessions TASK.md §3 M3/M4 (FROZEN @ v1, SECURITY): ONE
+        transaction — the guarded token UPDATE (WHERE used_at IS NULL, the
+        consume_pending_signup row-lock idiom: a concurrent double-confirm blocks on the
+        row lock, re-evaluates the WHERE, matches nothing) then the user's new
+        password_hash + sessions_not_before watermark. rowcount==0 ⇒ rollback, False —
+        nothing persists."""
+        result = await self._session.execute(
+            update(PasswordResetTokenRow)
+            .where(
+                PasswordResetTokenRow.token_hash == token_hash,
+                PasswordResetTokenRow.used_at.is_(None),
+            )
+            .values(used_at=func.now())
+            .returning(PasswordResetTokenRow.user_id)
+        )
+        consumed_user_id = result.scalar_one_or_none()
+        if consumed_user_id is None:
+            await self._session.rollback()
+            return False
+        await self._session.execute(
+            update(UserRow)
+            .where(UserRow.id == consumed_user_id)
+            .values(password_hash=password_hash, sessions_not_before=not_before)
+        )
+        await self._session.commit()
+        return True
+
+    async def revoke_session(self, *, jti: str, user_id: uuid.UUID, expires_at: datetime) -> None:
+        """auth-hardening-login-sessions TASK.md §3 M5 (FROZEN @ v1, SECURITY):
+        idempotent denylist INSERT (on_conflict_do_nothing — a double-logout of the same
+        jti is a no-op, never an error) with an opportunistic GC of already-expired rows
+        in the same transaction, so the denylist stays bounded by jwt_ttl_seconds without
+        a background sweeper."""
+        await self._session.execute(
+            delete(RevokedAuthSessionRow).where(RevokedAuthSessionRow.expires_at < func.now())
+        )
+        await self._session.execute(
+            pg_insert(RevokedAuthSessionRow)
+            .values(jti=jti, user_id=user_id, expires_at=expires_at)
+            .on_conflict_do_nothing(index_elements=[RevokedAuthSessionRow.jti])
+        )
+        await self._session.commit()

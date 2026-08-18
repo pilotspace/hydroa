@@ -43,6 +43,19 @@ class User:
 
 
 @dataclass(frozen=True, slots=True)
+class PasswordResetToken:
+    """One hashed-at-rest reset token row JOINED with its user's identity fields
+    (auth-hardening-login-sessions TASK.md §3 M3, FROZEN @ v1) — the user fields ride
+    along so the confirm path can audit (tenant_id/user_id/email) without a second read."""
+
+    user_id: uuid.UUID
+    tenant_id: uuid.UUID
+    email: str
+    expires_at: datetime
+    used_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class ImpersonationContext:
     """Present on an Identity iff it is an impersonation session — the REAL superadmin's
     own identity + the session-store row's id (impersonation-session-lifecycle TASK.md §3
@@ -67,6 +80,12 @@ class Identity:
     # Default None keeps every EXISTING Identity(...) construction call site (there is
     # exactly one, JwtTokenService.decode()) and every ordinary token unaffected.
     impersonation: ImpersonationContext | None = None
+    # NEW additive fields (auth-hardening-login-sessions TASK.md §3 S3, FROZEN @ v1).
+    # jti None = legacy token minted before the jti claim existed (A7: still valid,
+    # revocable only via users.sessions_not_before). iat is carried for the watermark
+    # comparison; both default None so every existing construction site is unaffected.
+    jti: str | None = None
+    iat: int | None = None
 
 
 class InviteStatus(StrEnum):

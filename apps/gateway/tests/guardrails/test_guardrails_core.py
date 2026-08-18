@@ -1434,6 +1434,12 @@ async def test_guardrails_core_migration_column_exists(
     # Guardrails-core still adds no tables of its own; invariant intent unchanged. (Surfaced by
     # the domain-onboarding-softening pre-close full-suite cross-task-drift check — this manifest
     # lives separately from tests/migrations EXPECTED_TABLES, which the 6a task already updated.)
+    # SANCTIONED EDIT (auth-hardening-login-sessions §3 manifest maintenance, 2026-08-18):
+    # added password_reset_tokens + revoked_auth_sessions — additive migration b6d2e8f19a45
+    # (FROZEN task auth-hardening-login-sessions §3, release-hardening-p0), NEW tables owned by
+    # the tenants/ context, registered on Base.metadata via tenants/infrastructure/orm.py
+    # side-effect import (same precedent as every entry above). Guardrails-core still adds no
+    # tables of its own; invariant intent unchanged.
     # SANCTIONED EDIT (frontdoor-persona-routing pre-merge full-suite cross-task-drift check,
     # 2026-07-21): added pending_personal_signups (scoped-self-serve-signup §3, migration
     # b8e1c4f2a9d6, owned by tenants/ context) and access_requests (signup-refusal-router,
@@ -1513,7 +1519,8 @@ async def test_guardrails_core_migration_column_exists(
                 " 'stored_responses','vector_stores','vector_store_files',"
                 " 'vector_store_chunks','finetune_jobs','finetune_job_events',"
                 " 'eval_sets','eval_cases','eval_runs','eval_case_results',"
-                " 'eval_baselines')"
+                " 'eval_baselines',"
+                " 'password_reset_tokens','revoked_auth_sessions')"
             )
         )
     ).fetchall()

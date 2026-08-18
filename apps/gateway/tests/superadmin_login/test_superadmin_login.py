@@ -167,7 +167,12 @@ async def test_superadmin_login_returns_correctly_shaped_jwt(
     # assumed). verify_signature=False is safe here: we are inspecting shape, not trusting
     # an untrusted token — the signature itself is exercised by the functional decode above.
     raw_claims = jwt.decode(token, options={"verify_signature": False})
-    assert set(raw_claims.keys()) == {"sub", "tenant_id", "role", "email", "exp", "iat", "iss"}
+    # SANCTIONED EDIT (auth-hardening-login-sessions §3 M5, 2026-08-18): newly issued
+    # session tokens carry a revocable "jti" — additive; every other shape assertion here
+    # is unchanged.
+    assert set(raw_claims.keys()) == {
+        "sub", "tenant_id", "role", "email", "exp", "iat", "iss", "jti",
+    }
     assert raw_claims["role"] == "superadmin"
     assert raw_claims["tenant_id"] == str(platform_tenant_id)
     assert raw_claims["email"] == SUPERADMIN_EMAIL

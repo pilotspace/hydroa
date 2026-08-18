@@ -49,12 +49,14 @@ from gateway.agent_oauth.infrastructure.ip_rate_limiter import (
 )
 from gateway.agent_oauth.infrastructure.repository import SqlAlchemyAgentOAuthRepository
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_TOKEN_INVALID
+from gateway.core.error_catalog import AUTH_TOKEN_INVALID, AUTH_UNAVAILABLE
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
 from gateway.tenants.api.deps import get_bearer_token
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity
+from gateway.tenants.domain.errors import SessionRevocationUnavailableError
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 agent_oauth_approval_router = APIRouter(prefix="/oauth/device", tags=["agent-oauth"])
 
@@ -136,9 +138,19 @@ async def _require_identity(
             session=session,
             timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
         ),
+        # auth-hardening-login-sessions TASK.md §3 M5 — REQUIRED keyword: this site
+        # cannot silently skip the revocation check.
+        revocation_guard_factory=lambda: DbSessionRevocationGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.session_revocation_check_timeout_seconds,
+        ),
     )
     try:
         return await use_case.execute(token)
+    except SessionRevocationUnavailableError:
+        # M6 (auth-hardening-login-sessions): store failure is a 503, never a 401
+        # that lies about a live token — and never swallowed by the catch-all below.
+        raise AUTH_UNAVAILABLE.exc() from None
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
 
