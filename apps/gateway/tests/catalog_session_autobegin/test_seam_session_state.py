@@ -31,7 +31,12 @@ from gateway.core.db import get_session
 from gateway.tenants.domain.entities import Identity, Role
 from gateway.tenants.domain.errors import SessionRevocationUnavailableError
 from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
-from tests.catalog_session_autobegin.conftest import auth, signup_and_login
+from tests.catalog_session_autobegin.conftest import (
+    auth,
+    mint_impersonated_owner_token,
+    owner_user_id,
+    signup_and_login,
+)
 
 # Routes behind each distinct authenticated seam. The seam name is what a failure reports,
 # because "some route left a transaction open" is not actionable (A19).
@@ -46,16 +51,31 @@ from tests.catalog_session_autobegin.conftest import auth, signup_and_login
 # and would report a permanent, meaningless green. Listing it here would claim coverage this
 # mechanism cannot provide. That seam is covered instead by
 # `test_guard_restores_only_what_it_opened`, which drives the guard directly.
-SEAMS: list[tuple[str, str, str, dict[str, Any] | None]] = [
-    ("catalog.api.deps:get_current_identity", "GET", "/admin/models", None),
-    ("keys.api.deps:get_identity", "GET", "/admin/keys", None),
-    ("keys.api.deps:get_identity -> teams", "GET", "/admin/teams", None),
-    ("tenants.domain.authz:_resolve_identity", "GET", "/admin/audit/export", None),
+# `impersonated` selects the token: an ORDINARY identity never reaches
+# DbImpersonationSessionGuard at all, because authz.py::ensure_impersonation_session_live
+# calls the guard IFF `identity.impersonation is not None`. A fourth refute pass proved
+# that omission made this whole sweep vacuous for that guard: deleting its success-path
+# restore left every row here green while POST /admin/catalog/sync raised the motivating
+# InvalidRequestError 500. The impersonated row is what makes the sweep load-bearing for
+# all THREE guards instead of two.
+SEAMS: list[tuple[str, str, str, dict[str, Any] | None, bool]] = [
+    ("catalog.api.deps:get_current_identity", "GET", "/admin/models", None, False),
+    ("keys.api.deps:get_identity", "GET", "/admin/keys", None, False),
+    ("keys.api.deps:get_identity -> teams", "GET", "/admin/teams", None, False),
+    ("tenants.domain.authz:_resolve_identity", "GET", "/admin/audit/export", None, False),
     (
         "tenants.infrastructure:DbUserLivenessGuard (require_active_user)",
         "POST",
         "/admin/keys",
         {"name": "seam-sweep-probe"},
+        False,
+    ),
+    (
+        "tenants.infrastructure:DbImpersonationSessionGuard (impersonated identity)",
+        "GET",
+        "/admin/models",
+        None,
+        True,
     ),
 ]
 
@@ -102,6 +122,7 @@ class _SessionSpy:
 async def test_no_seam_leaves_the_shared_session_in_a_transaction(
     client: httpx.AsyncClient,
     app: Any,
+    db_session: AsyncSession,
 ) -> None:
     """covers: M4, M5, A3, A15, A16, A17, A18, A19, A20, S4 — every authenticated seam
     leaves the shared request session with NO open transaction, established by driving the
@@ -111,43 +132,57 @@ async def test_no_seam_leaves_the_shared_session_in_a_transaction(
     left_open=True while the two dependency-level-patched seams report False — that split
     is the whole point, and it is invisible to the AST guard.
     """
-    jwt, _tenant_id = await signup_and_login(
+    jwt, tenant_id = await signup_and_login(
         client, tenant_name="Seam Sweep", email="owner@seam-sweep.io"
+    )
+    target_id = await owner_user_id(db_session, email="owner@seam-sweep.io")
+    impersonated_jwt = await mint_impersonated_owner_token(
+        app,
+        db_session,
+        target_tenant_id=uuid.UUID(str(tenant_id)),
+        target_user_id=target_id,
+        target_email="owner@seam-sweep.io",
     )
 
     spy = _SessionSpy()
-    spy.install(app, {path for _s, _m, path, _b in SEAMS})
+    spy.install(app, {path for _s, _m, path, _b, _i in SEAMS})
     try:
         offenders: list[str] = []
         undrivable: list[str] = []
-        for seam, method, path, body in SEAMS:
+        for seam, method, path, body, impersonated in SEAMS:
             spy.samples.clear()
-            resp = await client.request(method, path, headers=auth(jwt), json=body)
+            token = impersonated_jwt if impersonated else jwt
+            resp = await client.request(method, path, headers=auth(token), json=body)
+            # F3: the verdict is read BEFORE the drivability triage, deliberately. The
+            # defect this sweep exists to catch manifests as exactly a 500
+            # (InvalidRequestError), so triaging 5xx away first would discard the sample
+            # that proves it — the seam would be filed "undrivable" and skipped.
+            if spy.samples and spy.left_open:
+                offenders.append(f"{seam} ({method} {path} -> {resp.status_code})")
+                continue
             # A16: a route we cannot drive is REPORTED, never silently skipped — a skip
             # here is the masked-gate failure mode.
-            if resp.status_code >= 500:
-                undrivable.append(f"{seam} ({method} {path} -> {resp.status_code})")
-                continue
             if not spy.samples:
                 undrivable.append(f"{seam} ({method} {path} -> no session resolved)")
-                continue
-            if spy.left_open:
-                offenders.append(f"{seam} ({method} {path})")
+            elif resp.status_code >= 500:
+                undrivable.append(f"{seam} ({method} {path} -> {resp.status_code})")
 
         assert not offenders, (
             "these authenticated seams left the SHARED request session in a transaction; "
             "any repository that owns `async with session.begin()` behind them raises "
             f"InvalidRequestError: {offenders}"
         )
-        # Anti-vacuity: if every seam became undrivable the assert above would pass while
-        # proving nothing (a gate that never reaches a verdict reports green).
-        assert len(undrivable) < len(SEAMS), (
-            f"the sweep reached NO verdict — every seam was undrivable: {undrivable}"
+        # Anti-vacuity: EVERY seam must reach a verdict, not just one of them. A floor of
+        # "at least one seam was drivable" would let four of the six regress into
+        # undrivable and still report green (F3) — which is the masked-gate shape.
+        assert not undrivable, (
+            "the sweep did not reach a verdict on every seam; an undrivable seam is a "
+            f"finding to fix, never a row to tolerate: {undrivable}"
         )
         assert spy.samples, "the session spy was never installed on a real request"
     finally:
         for route in app.routes:
-            if isinstance(route, APIRoute) and route.path in {p for _s, _m, p, _b in SEAMS}:
+            if isinstance(route, APIRoute) and route.path in {p for _s, _m, p, _b, _i in SEAMS}:
                 route.dependant.dependencies = [
                     d
                     for d in route.dependant.dependencies

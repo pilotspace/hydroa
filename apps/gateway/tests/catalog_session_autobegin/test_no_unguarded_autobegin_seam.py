@@ -74,12 +74,32 @@ def _guard_names_by_construction(trees: dict[pathlib.Path, ast.Module]) -> set[s
 def _has_conditional_restore(cls: ast.ClassDef) -> bool:
     """The M3 shape: sample `in_transaction()` BEFORE the read, and roll back only if this
     guard opened it. Both halves are required — an unconditional rollback is exactly the
-    per-dependency mistake, and a sample with no rollback restores nothing."""
+    per-dependency mistake, and a sample with no rollback restores nothing.
+
+    The SUCCESS-PATH qualifier is load-bearing, and a fourth refute pass is why it is here.
+    An earlier version of this predicate asked only "does `rollback` appear anywhere in the
+    class". Every guard also carries a best-effort rollback inside its `except` handler
+    (M5), which satisfied that question on its own — so deleting the success-path restore
+    outright left this census GREEN while the motivating InvalidRequestError 500 was live.
+    A guard proven green on the defect it exists to catch is worse than no guard.
+
+    So the rollback must be reachable when NOTHING was raised: at least one that is not
+    nested inside an `except` handler.
+    """
     samples = any(
         isinstance(n, ast.Attribute) and n.attr == "in_transaction" for n in ast.walk(cls)
     )
-    rolls_back = any(isinstance(n, ast.Attribute) and n.attr == "rollback" for n in ast.walk(cls))
-    return samples and rolls_back
+
+    handled: set[int] = set()
+    for node in ast.walk(cls):
+        if isinstance(node, ast.ExceptHandler):
+            handled.update(id(child) for child in ast.walk(node))
+
+    restores_on_success = any(
+        isinstance(n, ast.Attribute) and n.attr == "rollback" and id(n) not in handled
+        for n in ast.walk(cls)
+    )
+    return samples and restores_on_success
 
 
 def _census() -> tuple[list[str], list[str]]:
