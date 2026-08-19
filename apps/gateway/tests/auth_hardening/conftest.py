@@ -29,7 +29,6 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.config import Settings
@@ -189,7 +188,3 @@ async def seed_password_user(
     db_session.add(user)
     await db_session.commit()
     return tenant.id, user.id
-
-
-async def count_rows(db_session: AsyncSession, table: str) -> int:
-    return int((await db_session.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one())

@@ -18,6 +18,7 @@ mint-time escalation window this guard exists to close.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 
 import structlog
@@ -39,6 +40,19 @@ class DbUserLivenessGuard:
         self._timeout_seconds = timeout_seconds
 
     async def ensure_active(self, user_id: uuid.UUID) -> None:
+        """catalog-sync-session-autobegin TASK.md §3 M3/M4 — LEAVES THE SESSION AS IT FOUND
+        IT, by the same rule as DbSessionRevocationGuard.is_revoked (see that docstring).
+
+        This is the THIRD read-only guard of this shape, and the one that proves M4's point:
+        it is wired by authz.py::require_active_user, which runs AFTER the revocation guard
+        on the credential-MINT routes (POST /admin/keys, /admin/keys/{id}/rotate,
+        /admin/scim/tokens and its rotate). Without the restore it simply re-opens the
+        transaction the revocation guard just closed — the exact composition failure that
+        killed the earlier per-dependency design. Latent rather than live today only because
+        those repositories use commit() rather than `async with session.begin()`; that is
+        R:SILENT_CLASS, not safety.
+        """
+        opened_transaction = not self._session.in_transaction()
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 row = (
@@ -55,7 +69,15 @@ class DbUserLivenessGuard:
                 user_id=str(user_id),
                 error=type(exc).__name__,
             )
+            if opened_transaction:
+                # Best-effort ONLY here (M5): the store already failed, so a rollback failure
+                # is the same outage and must not displace the fail-closed rejection.
+                with contextlib.suppress(Exception):
+                    await self._session.rollback()
             raise InvalidTokenError from exc
+        # Success path: a rollback failure is a REAL fault and is NOT suppressed (M5).
+        if opened_transaction and self._session.in_transaction():
+            await self._session.rollback()
         # A MISSING row is deliberately NOT treated as "inactive": every other identity
         # check in this codebase (require_permission/require_owner_or_admin/_resolve_
         # identity) is role/tenant-claims-only and never validates that user_id resolves

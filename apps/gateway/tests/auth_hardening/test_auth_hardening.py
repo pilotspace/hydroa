@@ -176,8 +176,10 @@ async def test_reset_token_hashed_and_single_use(hardening_app, db_session) -> N
     token = extract_reset_token(fake.sent[0])
 
     stored = (
-        await db_session.execute(text("SELECT token_hash FROM password_reset_tokens"))
-    ).scalars().all()
+        (await db_session.execute(text("SELECT token_hash FROM password_reset_tokens")))
+        .scalars()
+        .all()
+    )
     assert stored, "a reset request for a registered email must persist a token row"
     assert token not in stored, "the raw token must never be stored at rest"
 
@@ -281,7 +283,13 @@ async def test_legacy_token_without_jti_still_authenticates(hardening_app, db_se
     assert (await client.get(ME, headers=bearer(legacy))).status_code == 200
 
     fresh = await _login_token(client)
-    claims = pyjwt.decode(fresh, TEST_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False}, issuer=application.state.settings.jwt_issuer)
+    claims = pyjwt.decode(
+        fresh,
+        TEST_JWT_SECRET,
+        algorithms=["HS256"],
+        options={"verify_aud": False},
+        issuer=application.state.settings.jwt_issuer,
+    )
     assert "jti" in claims, "newly issued session JWTs must carry a jti"
 
 
@@ -319,6 +327,10 @@ async def test_revocation_store_outage_fails_closed_bounded(
 
     assert resp.status_code == 503, "store outage must fail CLOSED, never silently allow"
     assert resp.json().get("code") == "ERR_AUTH_UNAVAILABLE"
+    # TIME BUDGET: good path ~0.5s (session_revocation_check_timeout_seconds bounds the
+    # store read), bad path unbounded (an unbounded guard hangs until the client gives up).
+    # The 10.0s ceiling is a hang detector with ~20x margin over the good path, not a
+    # latency assertion — it must never go red on a slow-but-bounded refusal.
     assert elapsed < 10.0, "the outage refusal must be bounded, not a hang"
 
 

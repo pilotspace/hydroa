@@ -15,6 +15,7 @@ to close.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 
 import structlog
@@ -40,6 +41,12 @@ class DbImpersonationSessionGuard:
         self._timeout_seconds = timeout_seconds
 
     async def ensure_live(self, impersonation: ImpersonationContext) -> None:
+        """catalog-sync-session-autobegin TASK.md §3 M3 — LEAVES THE SESSION AS IT FOUND IT,
+        for the same reason and by the same rule as DbSessionRevocationGuard.is_revoked (see
+        that docstring). This guard queries only FOR AN IMPERSONATION SESSION, which is
+        exactly why it never tripped the original autobegin bug and why it must still carry
+        the restore: the seam is only quiet, not safe."""
+        opened_transaction = not self._session.in_transaction()
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 row = (
@@ -58,6 +65,15 @@ class DbImpersonationSessionGuard:
                 session_id=str(impersonation.session_id),
                 error=type(exc).__name__,
             )
+            if opened_transaction:
+                # Best-effort ONLY here: the store already failed, so a rollback failure is
+                # the same outage and must not displace the fail-closed rejection.
+                with contextlib.suppress(Exception):
+                    await self._session.rollback()
             raise InvalidTokenError from exc
+        # Success path: a rollback failure is a REAL fault — never suppressed (see the
+        # revocation guard's docstring for why swallowing it resurrects the clash).
+        if opened_transaction and self._session.in_transaction():
+            await self._session.rollback()
         if row is None or row.revoked_at is not None or row.expires_at <= datetime.now(UTC):
             raise InvalidTokenError

@@ -85,6 +85,12 @@ async def get_current_identity(
                 ),
             ),
         )
+        # catalog-sync-session-autobegin TASK.md §3 M4 — NO rollback here, deliberately.
+        # An earlier draft closed the transaction at this dependency; a refute pass proved
+        # that design does not compose (a nested dependency simply re-opens one) AND that
+        # keeping it as "defence in depth" actively MASKS the runtime seam sweep, because an
+        # unconditional close here hides a primitive that failed to restore. The guards
+        # above now each restore the state they found, conditionally (M3).
         return identity
     except SessionRevocationUnavailableError:
         # M6: store failure is a 503, never a 401 that lies about a live token.

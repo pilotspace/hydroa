@@ -83,6 +83,10 @@ async def get_identity(
                 ),
             ),
         )
+        # catalog-sync-session-autobegin TASK.md §3 M4 — NO rollback here, deliberately.
+        # See catalog/api/deps.py's twin comment: a per-dependency close does not compose,
+        # and keeping one as "defence in depth" MASKS the runtime seam sweep. The guards
+        # above each restore the state they found, conditionally (M3).
         return identity
     except SessionRevocationUnavailableError:
         # M6: store failure is a 503, never a 401 that lies about a live token.
