@@ -58,6 +58,7 @@ from gateway.finetune.infrastructure.orm import FinetuneJobEventRow, FinetuneJob
 from gateway.finetune.infrastructure.repository import FinetuneJobRepository
 from gateway.finetune.wire_id import parse_job_wire_id
 from gateway.proxy.domain.provider_credentials import ProviderCredentialError, ProviderKeyMissing
+from gateway.tenants.application.retention_policy import raise_if_zdr, raise_if_zdr_locked
 
 _log = logging.getLogger(__name__)
 
@@ -105,6 +106,16 @@ class FinetuneBrokerService:
         suffix: str | None,
         hyperparameters: dict[str, Any] | None,
     ) -> FinetuneJobRow:
+        # ZDR ENTRY GATE (zdr-retention-inventory-extension M4/A10) — the FIRST statement,
+        # before any file IO, any credential resolution, any row insert and above all any
+        # provider call: a finetune job persists the tenant's hyperparameters, suffix and
+        # provider error text, so a ZDR tenant must never buy a provider round-trip it is
+        # not allowed to keep the result of. Plain (non-locking) read, mirroring the evals
+        # launch gate (evals/runs/application/run_executor.py:104) — it is the cheap
+        # already-ZDR refusal, NOT the atomicity guarantee. That is the locked re-check at
+        # the bottom of this method: the two are a pair, and neither alone is the contract.
+        await raise_if_zdr(self._repo.session, tenant_id)
+
         # Derive provider server-side BEFORE any file/credential IO — never a client field.
         provider = resolve_finetune_provider(model)
         if provider is None:
@@ -174,16 +185,59 @@ class FinetuneBrokerService:
             )
             row.status = "failed"
             row.error = error_message
-            return row
+        else:
+            await self._repo.set_submit_result(
+                job_id=row.id, provider_job_id=provider_job_id, status="queued", error=None
+            )
+            await self._repo.add_event(
+                job_id=row.id, tenant_id=tenant_id, level="info", message="submitted"
+            )
+            row.status = "queued"
+            row.provider_job_id = provider_job_id
 
-        await self._repo.set_submit_result(
-            job_id=row.id, provider_job_id=provider_job_id, status="queued", error=None
-        )
-        await self._repo.add_event(
-            job_id=row.id, tenant_id=tenant_id, level="info", message="submitted"
-        )
-        row.status = "queued"
-        row.provider_job_id = provider_job_id
+        # ZDR RE-CHECK, ATOMIC WITH THE COMMIT (zdr-retention-inventory-extension M4/A9;
+        # [[zdr-toctou-async-write-paths]], HARD-STOPPED twice on this codebase).
+        #
+        # The entry gate above decided on a value read BEFORE the provider await; a flip
+        # landing inside that await would otherwise persist finetune_jobs +
+        # finetune_job_events rows at rest for a tenant who is ZDR by the time they
+        # commit. `raise_if_zdr_locked` (SELECT ... FOR UPDATE) makes the decision and the
+        # write atomic: a concurrent flip for this tenant either commits before this read
+        # (we block on its row lock, then read true, then refuse — nothing was ever
+        # committed, get_session's close rolls the whole transaction back) or lands after
+        # our commit (rows written, then removed by the sweeper's ZDR purge pass, which as
+        # of this task actually covers both finetune tables). It can never land between.
+        #
+        # PLACEMENT IS THE CONTRACT, both halves of it:
+        #   * LAST statement before the router's `await session.commit()`
+        #     (finetune/api/router.py) — every insert this method makes is already
+        #     flushed into this transaction, so refusing here discards all of them.
+        #   * AFTER the provider await returns, never at the insert — a lock taken before
+        #     `submit` would be HELD ACROSS AN OUTBOUND ROUND-TRIP, turning one slow
+        #     provider into a per-tenant head-of-line stall on every concurrent create.
+        #     Trading a TOCTOU for an availability defect is not a fix.
+        #
+        # Both submit outcomes pass through here: the failure branch persists rows too
+        # (status=failed carries the provider's error text), so it is gated identically.
+        try:
+            await raise_if_zdr_locked(self._repo.session, tenant_id)
+        except Exception:
+            # The refusal is correct and stays — but when submit already SUCCEEDED, the
+            # rollback erases our only record of a job that is now live upstream, burning
+            # the tenant's BYOK spend where nobody can poll or cancel it. Name it before
+            # the transaction dies, or it is unrecoverable. Log-only: never swallow.
+            # `row.provider_job_id`, not the local: on the submit-failure branch the
+            # local is never bound, and there is no upstream job to orphan anyway.
+            if row.provider_job_id is not None:
+                _log.warning(
+                    "finetune_job_orphaned_by_zdr_refusal",
+                    extra={
+                        "tenant_id": str(tenant_id),
+                        "provider": provider,
+                        "provider_job_id": row.provider_job_id,
+                    },
+                )
+            raise
         return row
 
     async def get_job(self, *, tenant_id: uuid.UUID, job_id: uuid.UUID) -> FinetuneJobRow | None:

@@ -25,6 +25,22 @@ class FinetuneJobRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    @property
+    def session(self) -> AsyncSession:
+        """The SQLAlchemy session this repository writes through.
+
+        Published READ-ONLY (zdr-retention-inventory-extension M4) for exactly one
+        caller: ``FinetuneBrokerService.create_job`` needs the SAME session its inserts
+        land in to run the ZDR gate — the entry ``raise_if_zdr`` and, after the provider
+        await returns, the ``raise_if_zdr_locked`` re-check that must be atomic with the
+        commit. A gate on any other session would be a check of a different transaction's
+        view, i.e. no gate at all.
+
+        Not a general escape hatch: every persistence operation stays a method on this
+        repository (no caller may execute its own statements through this handle).
+        """
+        return self._session
+
     async def commit(self) -> None:
         """Durably commit whatever this repository has flushed so far.
 
