@@ -1,7 +1,7 @@
 ---
 type: Task
 title: Route-walking audit guard + retrofit the five silent modules
-status: direction
+status: done
 depth: deep
 sensitivity: security
 milestone: release-hardening-p0
@@ -12,43 +12,109 @@ scope:
   - apps/gateway/src/gateway/finetune
   - apps/gateway/src/gateway/memory
   - apps/gateway/src/gateway/conversations
+  - apps/gateway/src/gateway/usage/api
+  - apps/gateway/src/gateway/compliance
+  - apps/gateway/src/gateway/domain_capture
+  - apps/gateway/src/gateway/catalog
   - apps/gateway/tests
 gives:
-  - S1 <the surface this publishes — an endpoint, function, or section>
+  - S1 the route-walking audit guard test — every mutating APIRoute on create_app() gets a verdict of audited or justified-exempt, unclassified routes fail by name, with an anti-vacuity self-check
+  - S2 audit emission on the five silent modules' mutating endpoints — each writes a key-actor AuditEvent after its mutating commit succeeds
+  - S4 audit emission on the nine JWT-authed silent /admin surfaces — domain_capture's seven domain-claim routes plus the catalog model upsert and sync, each writing a user-actor AuditEvent (promoted into scope by Tin at freeze: a domain-claim verify decides which tenant an email domain joins, which is higher-value CC6 evidence than the /v1 CRUD)
+  - S5 detectable audit-write failure — the fail-open except branch increments a counter, so "audit writes are failing" is observable without ever blocking the mutation
+  - S3 actor-legible evidence projection — the audit list, the NDJSON export and the compliance report each carry the actor identity that was actually written, so a key-actor row is not anonymous in the evidence it exists to produce
 generated: { by: add/3.2.0, at: 2026-08-18 }
-verified: []
+verified:
+  - { by: "Tin Dang", at: 2026-08-19, act: freeze, authority: human, direction: "sha256:aed72dd9e1e31bdd" }
+  - { by: "cli", at: 2026-08-19, act: brief, authority: process, brief: "sha256:e033c16d893c3b41" }
+  - { by: "process:run", at: 2026-08-19, act: run, authority: process, outcome: PASS, receipt: /tasks/audit-coverage-structural-guard.d/runs/1.md }
+  - { by: "Tin Dang", at: 2026-08-19, act: gate, authority: human, outcome: PASS, receipt: /tasks/audit-coverage-structural-guard.d/runs/1.md, brief: "sha256:e033c16d893c3b41" }
+advised_by: appsec-engineer
 ---
 ## CARD
-goal: <one line>
-why: <why this task exists — optional>
-beat: direction · next: add freeze audit-coverage-structural-guard
+goal: Every mutating gateway route either provably emits an audit event or sits on an explicit, justified exemption list enforced by a route-walking guard; the five silent modules (evals, vector_stores, finetune, memory, conversations) are retrofitted; and the rows they write are legible — with an actor — in the evidence surfaces that consume them.
+why: Deep-review P0 (artifact 6816985f): entire /v1 resource-CRUD modules mutate tenant data with zero audit trail (recon: `grep -rl record_audit` empty for all five), while SOC 2 CC-series evidence leans on audit_events. A structural walker makes the next silent MODULE impossible ([[masked-gate-never-reached-a-verdict]]: a guard that reaches no verdict reports green — hence the anti-vacuity check); a new silent ROUTE inside an already-audited module stays out of this guard's reach by construction (A4) and is a named follow-up, never a claim this task's green supports.
+beat: done · next: add status
 
 ## RULES
 <must>
-- M1 <the rule that must hold>
+- M1 The guard walks every APIRoute of create_app() whose methods intersect {POST, PUT, PATCH, DELETE} and reaches a verdict on EACH: audited (record_audit referenced in the handler's OWN IMMEDIATE package — e.g. gateway.evals.console, never the whole gateway.evals tree — its router file or that package's application layer) or exempt (a named row); a route in neither bucket fails the guard with method + path + module named. On the pre-retrofit tree it is RED naming the five modules' mutating routes.
+- M2 Each of the five modules' mutating endpoints, on success, writes an AuditEvent with a flat module.verb action (existing vocabulary: cache.update / rate_card.upsert family) DISTINCT per endpoint — a trail that cannot tell a create from a delete is not evidence — plus target_type = the bare resource noun, target_id = the resource id, tenant_id = the authed tenant, and the actor the route ACTUALLY authenticated: key-authed /v1 routes take actor_key_id = AuthzResult.key_id with actor_user_id None (the realtime_relay precedent); the JWT-authed /admin twin (evals/console/router.py:220, `identity: Identity`) takes actor_user_id/actor_email from the Identity, mirroring the other /admin emitters. Applying the key rule there would leave all three actor fields None, raise audit_missing_actor at the CALL SITE — outside record_audit's try — and 500 the route: a self-inflicted R:AUDIT_BLOCKS_REQUEST.
+- M3 Every exemption row carries (route, reason, task-citation) and the guard enforces that shape; the guard also self-checks its census — non-empty, and it must FIND known audited routes (keys/tenants) and known mutating routes, so a collection change can never hollow it out.
+- M4 Audit emission never changes the endpoint's outcome: with the audit writer broken (raising), the mutation still succeeds and returns its normal response (record_audit's fail-open contract, now pinned by a check).
+- M5 Nothing pre-existing weakens: already-audited modules keep their calls, audit_events DB-level immutability (no UPDATE/DELETE) stays untouched, and no existing test is edited except by SANCTIONED EDIT citing this task.
+- M6 A row written by the retrofit is ACTOR-LEGIBLE where the evidence is consumed: AuditEventItem and the scheduled-report projection carry the actor identity that was written (actor_key_id, and actor_user_id/actor_scim_token_id for symmetry), so the admin audit list, GET /admin/audit/export and the compliance report each show WHO — never a row whose only actor field is a null actor_email. Additive nullable fields only; no existing consumer changes shape.
+- M8 The nine promoted /admin surfaces each emit a DISTINCT-action AuditEvent on success with the JWT Identity as actor (actor_user_id/actor_email, the /admin emitter convention — never the key rule): domain_capture's claim create, delete, verify, member-verify, member-verify-resend, notify and notify-withdraw; catalog's model upsert and sync. After this they hold no exemption row at all — the guard classifies them audited on their own package's evidence.
+- M9 A failed audit write is DETECTABLE without being blocking: record_audit's except branch increments an observability counter alongside its existing log, so a window of silent evidence loss is visible to an operator. Fail-open posture is unchanged — this adds a signal, never a raise (R:AUDIT_BLOCKS_REQUEST still binds).
+- M7 Every exemption row's reason comes from a CLOSED vocabulary the guard enforces — the four labels being `read-only-POST`, `no-tenant-state`, `covered-by:` plus a named evidence stream, and `deferred:` plus a real task slug — so a freeze review is mechanical and the deferred rows are a countable backlog rather than free-text silence.
 </must>
 <reject>
-- R:<NAME> <what must never happen> -> "<NAME>"
+- R:VACUOUS_WALKER a guard whose census can be empty or that skips unclassifiable routes — reaching no verdict must FAIL, never pass ([[masked-gate-never-reached-a-verdict]]) -> "VACUOUS_WALKER"
+- R:BARE_EXEMPTION an exemption without a reason and task citation (a bare path buys silence) -> "BARE_EXEMPTION"
+- R:AUDIT_BLOCKS_REQUEST audit failure surfacing as a 5xx/4xx on the mutating endpoint (fail-open inverted) -> "AUDIT_BLOCKS_REQUEST"
+- R:ACTOR_FABRICATION inventing a user identity on key-authenticated surfaces (actor_user_id must stay None; the key IS the actor) or dropping the actor entirely — including "fix" M6 by writing the key name into actor_email, which also poisons the export's exact-match actor filter -> "ACTOR_FABRICATION"
+- R:ANONYMOUS_EVIDENCE a retrofit row that reaches an evidence surface (list, export, compliance report) with no actor field populated at all — the record says what happened and not who, which is the control's whole point -> "ANONYMOUS_EVIDENCE"
 </reject>
 
 ## ASSUMPTIONS
-- A1 [who] covers: <S ids> · the request does not say <who may act / whose data>; taking <reading> -> <cost if wrong>
-- A2 [which] covers: <S ids> · the request does not say <which rows/cases are in>; taking <reading> -> <cost if wrong>
-- A3 [when] covers: <S ids> · the request does not say <where the boundary falls>; taking <reading> -> <cost if wrong>
-- A4 [absent] covers: <S ids> · the request does not say <what a missing value means>; taking <reading> -> <cost if wrong>
-- A5 [order] covers: <S ids> · the request does not say <what orders / breaks a tie>; taking <reading> -> <cost if wrong>
-- A6 [experience] covers: <S ids> · the request does not say <who receives this and what would make it hard for them>; taking <reading> -> <cost if wrong>
+- A1 [who] covers: S2 · the request does not say who the actor is on key-authed /v1 surfaces (AuthzResult has no user); taking: actor_key_id = authz.key_id, actor_user_id = None — the realtime_relay_ws.py:256 precedent, and the audit_missing_actor invariant accepts key-only actors · probe: every behavioral check asserts actor_key_id on the row -> if wrong, a user-mapping is an auth redesign, separate task
+- A2 [which] covers: S1, S4 · the exit criterion says "every mutating gateway route" but the milestone names five retrofit modules; taking: the walker censuses ALL routes; this task retrofits the five modules PLUS the ten /admin surfaces Tin promoted at freeze (domain_capture ×7, catalog ×2, access_requests ×1); the remaining seven silent /v1 CRUD offenders (artifacts ×2, files ×2, responses_store, batches, video) carry `deferred:audit-coverage-v1-crud` rows — a countable backlog, not permanent silence · probe: the guard is green ONLY with every remaining row justified, and the promoted ten hold no row at all -> if wrong, rows promote without touching the walker
+- A3 [which] covers: S1 · the request does not define "mutating"; taking: HTTP method ∈ {POST, PUT, PATCH, DELETE} on APIRoute; WebSocket routes excluded (the relay already audits itself; carveout-invariant precedent) -> if wrong, the method set is one constant
+- A4 [which] covers: S1 · the request does not say what PROVES a route audits; taking: an AST-detected record_audit CALL (never a substring — five prose mentions would otherwise absolve every violation) anywhere in the handler's own immediate package per M1, including that package's application layer, because audited packages routinely call record_audit from use_cases (tenants/application/use_cases.py:134). Deliberately coarser than per-handler: it catches whole-package silence, today's actual failure class, and the retrofit surfaces get fine-grained proof from the behavioral checks. Priced honestly — gateway.proxy.api's 17 routes rest on 3 call sites and gateway.tenants.api's 34 on 11, so a NEW silent route inside an already-audited package is invisible here -> if wrong (per-handler/call-graph proof wanted), that is the named stricter follow-up guard, additive
+- A5 [when] covers: S2 · the request does not say when the event is written; taking: AFTER the mutating commit succeeds, awaited INLINE — a DELIBERATE, disclosed override of the frozen audit-log-store §3 calling convention ("scheduled fire-and-forget … never awaited on the hot path", audit_writer.py:6-7), justified because record_audit is fail-open and bounded, task 1 already set this precedent on authenticated surfaces, and fire-and-forget loses the read-race ([[fire-and-forget-audit-test-flake]]). Cost, stated plainly: one synchronous session+commit added to POST /v1/memories and POST /v1/conversations/{id}/messages. This overrides a convention, never a guarantee — the audit-log-store's fail-open and immutability properties are untouched (M5) · probe: behavioral checks read the row immediately with no polling, which only holds under inline -> if wrong, ensure_future + poll-until-present is a mechanical swap of both the call and the checks
+- A6 [absent] covers: S2 · the request does not say what a broken audit path means for the caller; taking: fail-open — the mutation's response is byte-identical with the writer raising (M4) -> if wrong (fail-closed audit wanted), that is a compliance-posture decision for Tin, not a default
+- A7 [absent] covers: S1 · the request does not say what an unclassifiable route means (no module match, no methods attr); taking: fail-closed — unknown = violation, the walker never silently skips (R:VACUOUS_WALKER) -> if wrong, nothing leaks: rows get classified explicitly
+- A8 [order] covers: S2 · the request does not name the actions; taking: the flat dotted module-then-verb family with target_type the bare noun (evals.set_create, vector_store.create, finetune.job_create, memory.create, conversation.create, …) matching the existing cache.update / rate_card.upsert vocabulary -> if wrong, renames are a constant sweep, no shape change
+- A9 [order] covers: S1 · n/a · census order is immaterial; output sorted for stable failure messages
+- A10 [when] covers: S1 · n/a · the guard is a test — it runs on every CI collection; no runtime boundary of its own
+- A11 [who] covers: S1 · n/a · the walker acts as no principal — it imports create_app and reads route metadata only
+- A12 [experience] covers: S1 · the request does not say what a failing guard tells the next engineer; taking: the assertion names each victim (METHOD path ← module) and states the two exits (emit an audit event, or add a justified exemption row citing your task) -> if wrong, the guard still fails, just ruder
+- A14 [which] covers: S2 · the request does not enumerate which endpoints per module retrofit; taking: every STATE-CHANGING POST/PUT/PATCH/DELETE handler in the five modules (evals set/case/run/baseline — including the JWT-authed /admin twin evals/console/router.py:217 pin_baseline, which gets a real USER actor and must not ride a sibling's audit call; vector_stores create/delete/file-attach; finetune job create/cancel; memory create/delete; conversations create/patch/message-append/delete). A read-only POST inside these modules (POST /v1/memories/search, memory/api/router.py:378) is NOT retrofitted — it takes a read-only-POST exemption row, because a memory.search event would be evidence noise, not evidence . Because that row must stay CARRIED rather than be absorbed once its package is retrofitted, the walker checks exemption BEFORE the audited verdict, and its redundant-row hygiene assert applies to `deferred:` rows ONLY — a deferred row is a promise that must be deleted once kept, while read-only-POST/no-tenant-state/covered-by: are permanent statements of fact that must survive their package's retrofit · probe: the walker leaves no route of the five modules unclassified, and the only rows it carries for them are read-only-POST ones -> if wrong, a missed handler is exactly what the guard flags
+- A24 [who] covers: S4 · the request does not say who the actor is on the promoted /admin routes; taking: the JWT Identity these routes already authenticate (actor_user_id + actor_email), the same convention every other /admin emitter uses — these are the ONLY retrofit rows in this task with a real human actor · probe: their checks assert actor_user_id present, not actor_key_id -> if wrong, an unauthenticated /admin route would be a far bigger finding than this task
+- A25 [which] covers: S4 · the request does not enumerate the promoted set beyond "all 10 admin-surface rows"; taking: the nine JWT-authed routes of the promoted ten — domain_capture create/delete/verify/member-verify/member-verify-resend/notify/notify-withdraw, catalog PUT /admin/models/{model_id:path} and POST /admin/catalog/sync. POST /admin/auth/access-requests is PUBLIC and unauthenticated (Tin's call at freeze): it has no Identity, so M8's actor rule is structurally unsatisfiable there and it keeps a no-tenant-state exemption row — the queued request row is itself the record · probe: after the retrofit none of the nine appears on the exemption list -> if wrong, a miscounted row is exactly what the guard flags
+- A26 [when] covers: S4 · the request does not say when these emit; taking: after their own mutating commit, inline, identically to S2 (A5's override applies here too — one convention across the whole task) -> if wrong, the swap is mechanical and applies to both surfaces at once
+- A27 [absent] covers: S4 · the request does not say what an actor-less mutating route means; taking: it stays exempt as `no-tenant-state` — both /internal/catalog/sync (Envoy-blocked, no tenant principal) and the public access-request intake carry no principal to attribute, and an event naming no actor is not the evidence M8 exists to produce -> if wrong, it needs a system-actor convention, which is a separate decision
+- A28 [order] covers: S4 · n/a · the ten are independent routes; no ordering or tie-break exists between their events
+- A29 [experience] covers: S4 · the request does not say what the /admin reader gains; taking: domain-claim lifecycle becomes answerable from the audit trail ("who verified this domain, when") — the CC6 question that motivated the promotion; no response body changes -> if wrong, a dedicated domain-claim history view is UDD follow-up
+- A30 [who] covers: S5 · n/a · the counter is operator-facing telemetry with no tenant principal and no per-tenant label
+- A31 [which] covers: S5 · the request does not say what is counted; taking: one increment per SWALLOWED audit-write exception in record_audit's except branch — not per attempt, not per row · probe: the check drives a failing write and asserts the counter moved -> if wrong, relabelling is one line
+- A32 [when] covers: S5 · n/a · the increment sits in the same except branch as the existing log, so its timing is that branch's
+- A33 [absent] covers: S5 · the request does not say what happens if the observability surface itself is unavailable; taking: the increment can never raise — a counter failure must not become the audit failure it is reporting, so it is best-effort inside the already-swallowing branch -> if wrong, a raising counter would invert fail-open, which R:AUDIT_BLOCKS_REQUEST forbids anyway
+- A34 [order] covers: S5 · n/a · a counter has no ordering semantics
+- A35 [experience] covers: S5 · the request does not say who consumes it; taking: the operator/alerting audience of the existing metrics surface — this makes "the control stopped operating" detectable, the CC7.2 question; tenants see nothing -> if wrong, an alert rule is ops config, not code
+- A18 [which] covers: S3 · the request does not say which evidence surfaces must change; taking: the four that project audit rows today — AuditEventItem (usage/api/router.py:854), GET /admin/audit/export (audit/api/router.py:192), the compliance bundle (compliance/api/router.py:692) and the scheduled report body (compliance/application/report_schedule_generator.py:251) · probe: the read-back check asserts a non-null actor through the export path -> if wrong, a missed consumer is one more field on one more projection
+- A19 [absent] covers: S3 · the request does not say what a NULL actor_email means downstream once key-actor rows are the majority; taking: it means "key actor, look at actor_key_id" — never "unknown"; the export's actor filter stays exact-match on actor_email (unchanged), so filtering by email still silently excludes key rows and that limitation is disclosed, not silently fixed here · probe: none — the filter is deliberately untouched -> if wrong, an actor-agnostic filter is a follow-up on the export contract
+- A20 [who] covers: S3 · n/a · the audience is unchanged — the same AUDIT_READ reader already receives key_id in the same compliance report (compliance/api/router.py:95,712; LogListItem.key_id), so widening the projection discloses nothing new
+- A21 [when] covers: S3 · n/a · projection is read-time; it re-reads rows already written, so there is no boundary or cutover — old rows simply project their existing (null) actor fields
+- A22 [order] covers: S3 · n/a · field order in a JSON projection carries no semantics
+- A23 [experience] covers: S3 · the request does not say what the evidence reader sees; taking: additive nullable fields on the existing envelope — an auditor reading an export sees an actor where there was none, and every existing consumer keeps working unchanged -> if wrong, a renamed/merged actor field is a v2 envelope decision, not this task
+- A13 [experience] covers: S2 · the request does not say what callers see; taking: success response bodies are UNCHANGED (audit is a side effect); events surface through the existing audit list endpoints -> if wrong, response-visible receipts are UDD follow-up
 every `gives:` surface is swept on every dimension; `[<dim>] n/a · <why>` retires one. one line, one silence — split, never bundle. `· probe: <what shipped behavior must show>` declares a reading checkable: cite its A id from CHECKS and the gate holds the PASS to it.
 
 ## PLAN
-contract: <the shape this publishes>
-scope: <files>
-
+contract: NEW tests/audit_coverage/ suite: test_route_walker.py (the guard — APIRoute census per test_carveout_invariant.py:25 precedent; module-subtree evidence; exemption dict with (reason, citation) values and SANCTIONED-EDIT comment convention per test_guardrails_core.py:1354; anti-vacuity self-check per test_provider_egress_injection.py:195) + test_five_modules_audited.py (behavioral: one test per module exercising ALL its mutating endpoints → audit_events rows asserted) + test_audit_fail_open.py. Retrofit: each of the five modules' handlers gains an inline `await record_audit(request.app.state.sessionmaker, AuditEvent(...))` after its commit (handlers without `request: Request` gain the param — FastAPI treats it as non-body).
+scope: domain_capture/api/domain_claims_router.py · catalog/api/router.py · access_requests/api/access_requests_router.py · audit/application/audit_writer.py (M9 counter) · apps/gateway/src/gateway/evals/api/router.py · evals/runs/api/run_router.py · evals/verdict/api/router.py · evals/console/router.py · vector_stores/api/router.py · finetune/api/router.py · memory/api/router.py · conversations/api/router.py · usage/api/router.py (AuditEventItem) · audit/api/router.py · compliance/api/router.py · compliance/application/report_schedule_generator.py · apps/gateway/tests/audit_coverage/
 ## EDGES
-- E1 <a boundary or failure case a check must cover — optional>
+- E1 pre-retrofit RED output names the five modules' 16 state-changing routes — A14's 15 plus the /admin console baseline twin — with POST /v1/memories/search carrying a read-only-POST exemption row rather than an audit event, and every other census offender on a justified row
+- E2 a mutating endpoint whose audit write raises still returns its normal success response (fail-open)
+- E3 an exemption row missing its reason or citation fails the guard by itself
+- E4 the census self-check fails if the walker finds zero mutating routes or loses a known-audited route (a refactor can't hollow the guard)
+- E5 a row written by a retrofit endpoint, read back through the evidence projection, carries an actor — never an all-null actor set
+- E6 an exemption row whose reason is outside the closed vocabulary fails the guard, even though it has a reason and a citation
+- E7 a domain-claim verify leaves an audit row naming the human who verified it (actor_user_id set, not a key)
+- E8 a swallowed audit-write failure increments the counter and still returns the endpoint's normal success response
 
 ## CHECKS
-- <test_name> · covers: M1 · <what it proves>
+- test_every_mutating_route_audited_or_exempt · covers: M1, M3, M7, A2, A3, A4, A7, A9, A10, A11, A12, A14, E1, E3, E4, E6, R:VACUOUS_WALKER, R:BARE_EXEMPTION · the walker: full census, per-route verdict, justified-exemption shape enforced, anti-vacuity (census floor + known-audited + known-mutating sentinels present); RED today naming the five modules' routes
+- test_evals_mutations_audited · covers: M2, A1, A8, A13 · set create, case create, run launch and BOTH baseline pins (the /v1 key-authed one and the /admin console twin) each leave a DISTINCT-action audit_events row; the /v1 rows carry actor_key_id with actor_user_id None, the /admin row carries the Identity's user actor
+- test_vector_store_mutations_audited · covers: M2, A1, A8 · create, delete, file-attach rows asserted same shape
+- test_finetune_mutations_audited · covers: M2, A1, A8 · job create, job cancel rows asserted same shape
+- test_memory_mutations_audited · covers: M2, A1, A8 · create, delete rows asserted same shape
+- test_conversations_mutations_audited · covers: M2, A1, A8, R:ACTOR_FABRICATION · create, patch, message-append, delete rows asserted; the actor asserts (key set, user None) are the fabrication pin
+- test_audit_failure_never_blocks_mutation · covers: M4, M5, A5, A6, E2, R:AUDIT_BLOCKS_REQUEST · with the audit writer's session factory raising, a representative mutating endpoint from the retrofit set still succeeds with its normal response and zero audit rows; the same suite run proves already-audited modules' tests untouched (M5 rides the full-suite receipt)
+- test_admin_surfaces_audited · covers: M8, A2, A24, A25, A26, A27, A28, A29, E7 · the nine promoted JWT-authed /admin routes each leave a DISTINCT-action audit row carrying the Identity as actor (actor_user_id/actor_email set, actor_key_id None) — the domain-claim verify row is asserted by name as the CC6 case that earned the promotion; POST /internal/catalog/sync and the public POST /admin/auth/access-requests stay exempt as no-tenant-state
+- test_audit_write_failure_is_detectable · covers: M9, A30, A31, A32, A33, A34, A35, E8 · with the audit writer's session raising, a mutating endpoint still returns its normal success response AND the swallowed-failure counter has moved; the counter itself never raises
+- test_retrofit_row_is_actor_legible_in_evidence · covers: M6, A18, A19, A20, A21, A22, A23, E5, R:ANONYMOUS_EVIDENCE · drive one retrofit endpoint, then read the row back through the evidence projection (GET /admin/audit/export and the scheduled-report `_audit_item`) and assert an actor identity is present — not merely stored on the row. RED today twice over: no row exists, and the projection has no actor field but actor_email to carry one
 red-first: every check MUST fail first.
 
 ## EVIDENCE

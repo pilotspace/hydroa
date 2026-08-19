@@ -34,6 +34,7 @@ from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers A
     ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.audit.api.router import audit_export_router
+from gateway.audit.application.audit_writer import bind_audit_metrics
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.api.saml_admin_router import saml_admin_router
@@ -1190,6 +1191,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.email_sender = build_email_sender(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    # M9 (audit-coverage-structural-guard): park THIS app's metrics registry on THIS
+    # app's sessionmaker so record_audit's fail-open except branch can count a swallowed
+    # audit write without a module-level global (which would be last-app-wins).
+    bind_audit_metrics(app.state.sessionmaker, app.state.metrics_registry)
     # residency-policy TASK.md §3 (FROZEN @ v2): ONE shared ResidencyLookup instance,
     # wired into BOTH enforcement tiers (Tier 1 governance checks via *_deps.py/
     # realtime_*.py/memory/api/router.py, Tier 2 router dial-constraint filter via

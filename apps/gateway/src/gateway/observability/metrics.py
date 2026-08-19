@@ -132,6 +132,17 @@ class MetricsRegistry:
         # credits-ledger TASK.md §3 (M11): incremented every time the credit gate
         # fail-opens on a ledger-store outage — pairs with the structured warning log
         # so the degrade is measurable/alertable, never just log-buried.
+        # audit-coverage-structural-guard TASK.md M9 (CC7.2): record_audit is fail-open,
+        # so a broken audit path is otherwise invisible — evidence goes missing while every
+        # request still returns 200. One increment per SWALLOWED audit-write exception,
+        # pairing with the writer's existing warning exactly as credits_gate_degraded_total
+        # pairs with the credit gate's. NO labels: one increment == one lost audit event.
+        self.audit_write_failed_total = Counter(
+            "gateway_audit_write_failed_total",
+            "Audit events lost because the write failed and was swallowed (fail-open)",
+            registry=registry,
+        )
+
         self.credits_gate_degraded_total = Counter(
             "gateway_credits_gate_degraded_total",
             "Credit gate fail-open events (ledger store unreachable) by operation",

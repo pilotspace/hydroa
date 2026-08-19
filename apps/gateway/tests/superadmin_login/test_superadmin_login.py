@@ -171,7 +171,14 @@ async def test_superadmin_login_returns_correctly_shaped_jwt(
     # session tokens carry a revocable "jti" — additive; every other shape assertion here
     # is unchanged.
     assert set(raw_claims.keys()) == {
-        "sub", "tenant_id", "role", "email", "exp", "iat", "iss", "jti",
+        "sub",
+        "tenant_id",
+        "role",
+        "email",
+        "exp",
+        "iat",
+        "iss",
+        "jti",
     }
     assert raw_claims["role"] == "superadmin"
     assert raw_claims["tenant_id"] == str(platform_tenant_id)

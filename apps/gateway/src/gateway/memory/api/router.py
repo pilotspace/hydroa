@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.config import Settings
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_KEY_EXPIRED, AUTH_KEY_INVALID
@@ -306,6 +307,15 @@ async def create_memory(
         meta=body.metadata,
     )
     await session.commit()
+    audit_event = build_audit_event(
+        action="memory.create",
+        target_type="memory",
+        target_id=str(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
 
     # Best-effort embedding — inline await so it completes before the response is returned.
     # Any exception is swallowed; failure leaves embedding NULL and the 201 is still returned.
@@ -425,6 +435,7 @@ async def search_memories(
     status_code=204,
 )
 async def delete_memory(
+    request: Request,
     memory_id: uuid.UUID,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[MemoryRepository, Depends(_get_repo)],
@@ -443,3 +454,12 @@ async def delete_memory(
         raise _not_found()
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="memory.delete",
+        target_type="memory",
+        target_id=str(memory_id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)

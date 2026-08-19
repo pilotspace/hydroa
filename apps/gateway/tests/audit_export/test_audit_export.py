@@ -56,6 +56,20 @@ from .conftest import (
 _ITEM_FIELDS = (
     "id",
     "actor_email",
+    # SANCTIONED EDIT — audit-coverage-structural-guard TASK.md §RULES M6 (M5 sanction:
+    # "no existing test is edited except by SANCTIONED EDIT citing this task").
+    # Disposition: ADDITIVE, nullable machine-actor fields on the SAME envelope; the
+    # exact-set assertion at the bottom of this file is preserved as an EQUALITY, not
+    # relaxed to a subset — the envelope grew, the guard did not weaken.
+    # Why the export had to grow: `actor_email` is structurally null for every
+    # key-authenticated caller, so the /v1 rows this task retrofits would have reached
+    # the archival evidence feed saying WHAT happened and never WHO
+    # (R:ANONYMOUS_EVIDENCE). A key identifier is NEVER written into `actor_email`
+    # (R:ACTOR_FABRICATION) — that would also poison this export's own exact-match
+    # actor filter, which is deliberately left untouched (A19).
+    "actor_key_id",
+    "actor_user_id",
+    "actor_scim_token_id",
     "action",
     "target_type",
     "target_id",

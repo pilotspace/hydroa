@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.conversations.infrastructure.repository import ConversationRepository
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_KEY_EXPIRED, AUTH_KEY_INVALID
@@ -202,6 +203,7 @@ class AppendMessageRequest(BaseModel):
     status_code=201,
 )
 async def create_conversation(
+    request: Request,
     body: CreateConversationRequest,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[ConversationRepository, Depends(_get_repo)],
@@ -214,6 +216,15 @@ async def create_conversation(
         title=body.title,
     )
     await session.commit()
+    audit_event = build_audit_event(
+        action="conversation.create",
+        target_type="conversation",
+        target_id=str(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return ConversationResponse(
         id=row.id,
         title=row.title,
@@ -304,6 +315,7 @@ async def get_conversation(
     response_model=ConversationResponse,
 )
 async def patch_conversation(
+    request: Request,
     conversation_id: uuid.UUID,
     body: PatchConversationRequest,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
@@ -325,6 +337,15 @@ async def patch_conversation(
         raise _not_found()
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="conversation.patch",
+        target_type="conversation",
+        target_id=str(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return ConversationResponse(
         id=row.id,
         title=row.title,
@@ -339,6 +360,7 @@ async def patch_conversation(
     status_code=201,
 )
 async def append_message(
+    request: Request,
     conversation_id: uuid.UUID,
     body: AppendMessageRequest,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
@@ -360,6 +382,16 @@ async def append_message(
         raise _not_found()
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="conversation.message_append",
+        target_type="conversation_message",
+        target_id=str(msg_row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"conversation_id": str(conversation_id), "role": msg_row.role},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return MessageResponse(
         id=msg_row.id,
         role=msg_row.role,
@@ -373,6 +405,7 @@ async def append_message(
     status_code=204,
 )
 async def delete_conversation(
+    request: Request,
     conversation_id: uuid.UUID,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[ConversationRepository, Depends(_get_repo)],
@@ -391,3 +424,12 @@ async def delete_conversation(
         raise _not_found()
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="conversation.delete",
+        target_type="conversation",
+        target_id=str(conversation_id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)

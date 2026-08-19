@@ -427,7 +427,14 @@ async def test_ordinary_token_issued_and_decoded_byte_identically(
     # sibling check's intent — no "impersonation" key on an ordinary token — is unchanged
     # and still asserted above; only the exact-set enumeration gains the new claim.
     assert set(raw_claims.keys()) == {
-        "sub", "tenant_id", "role", "email", "iat", "exp", "iss", "jti",
+        "sub",
+        "tenant_id",
+        "role",
+        "email",
+        "iat",
+        "exp",
+        "iss",
+        "jti",
     }
 
 

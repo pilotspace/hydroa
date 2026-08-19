@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import EVAL_RUN_NOT_FOUND, EVAL_SET_NOT_FOUND
 
@@ -117,6 +118,16 @@ async def pin_baseline(
     baseline = await _baseline_store(request).pin_baseline(
         tenant_id=authz.tenant_id, eval_set_id=resolved_set, run_id=resolved_run
     )
+    audit_event = build_audit_event(
+        action="evals.baseline_pin",
+        target_type="eval_set",
+        target_id=to_set_wire_id(resolved_set),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"baseline_run_id": to_run_wire_id(baseline.run_id)},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return {
         "object": "eval.baseline",
         "eval_set_id": to_set_wire_id(resolved_set),

@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import AUTH_KEY_EXPIRED, AUTH_KEY_INVALID, FINETUNE_JOB_NOT_FOUND
 from gateway.files.infrastructure.repository import FileRepository
@@ -169,6 +170,7 @@ def _event_object(row: FinetuneJobEventRow) -> dict[str, Any]:
 @finetune_router.post("/v1/fine_tuning/jobs", status_code=200)
 async def create_finetuning_job(
     body: CreateFineTuningJobRequest,
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     service: Annotated[FinetuneBrokerService, Depends(_get_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -190,6 +192,16 @@ async def create_finetuning_job(
         hyperparameters=body.hyperparameters,
     )
     await session.commit()
+    audit_event = build_audit_event(
+        action="finetune.job_create",
+        target_type="finetune_job",
+        target_id=to_job_wire_id(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"model": row.model, "status": row.status},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return _job_object(row)
 
 
@@ -227,6 +239,7 @@ async def get_finetuning_job(
 @finetune_router.post("/v1/fine_tuning/jobs/{job_id}/cancel", status_code=200)
 async def cancel_finetuning_job(
     job_id: str,
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     service: Annotated[FinetuneBrokerService, Depends(_get_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -238,6 +251,16 @@ async def cancel_finetuning_job(
     if row is None:
         raise _not_found()
     await session.commit()
+    audit_event = build_audit_event(
+        action="finetune.job_cancel",
+        target_type="finetune_job",
+        target_id=to_job_wire_id(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"status": row.status},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return _job_object(row)
 
 
