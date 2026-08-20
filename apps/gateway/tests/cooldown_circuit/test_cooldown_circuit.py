@@ -46,6 +46,15 @@ from .conftest import FakeRedis
 MODEL_A = "openai/gpt-4o"
 MODEL_B = "anthropic/claude-3-5-sonnet"
 
+# SUPERSESSION — tenant-scoped-breaker-cooldown (R9 P0 #3), S8/A20/A31.
+# The cooldown gate is now TENANT-PARTITIONED: keys are
+# `gateway:cooldown:{kind}:{tenant}:{model_id}` (tenant FIRST — model_id is
+# caller-controlled and may contain ":"), and every port method takes a required
+# keyword-only `tenant_id`. Each assertion below is the SAME invariant re-keyed
+# into one tenant's partition; none is weakened. Cross-TENANT isolation itself is
+# proven separately by tests/tenant_breaker_isolation.
+TENANT = "t-cooldown-suite"
+
 THRESHOLD = 3
 TTL_S = 60
 WINDOW_S = 60
@@ -107,15 +116,15 @@ async def test_cc1_three_failures_trip_cooldown(fake_redis: FakeRedis) -> None:
     """
     gate = _make_gate(fake_redis, threshold=3)
 
-    await gate.record_failure(MODEL_A)
-    await gate.record_failure(MODEL_A)
-    await gate.record_failure(MODEL_A)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
-    result = await gate.is_available(MODEL_A)
+    result = await gate.is_available(MODEL_A, tenant_id=TENANT)
 
     assert result is False, "Expected False after 3 failures at threshold=3"
 
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
     assert await fake_redis.exists(open_key) == 1, "Cooldown open key must be set after trip"
 
     tripped = _transition_count(gate, MODEL_A, "tripped")
@@ -134,17 +143,17 @@ async def test_cc2_success_clears_counter_prevents_trip(fake_redis: FakeRedis) -
     """
     gate = _make_gate(fake_redis, threshold=3)
 
-    await gate.record_failure(MODEL_A)
-    await gate.record_failure(MODEL_A)
-    await gate.record_success(MODEL_A)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
+    await gate.record_success(MODEL_A, tenant_id=TENANT)
     # Only 1 failure after reset — threshold=3 not reached
-    await gate.record_failure(MODEL_A)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
-    result = await gate.is_available(MODEL_A)
+    result = await gate.is_available(MODEL_A, tenant_id=TENANT)
 
     assert result is True, "Expected True: counter was cleared by record_success"
 
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
     assert await fake_redis.exists(open_key) == 0, (
         "Open key must NOT exist (threshold not re-reached)"
     )
@@ -162,9 +171,9 @@ async def test_cc3_threshold_zero_no_redis_traffic(fake_redis: FakeRedis) -> Non
     """
     gate = _make_gate(fake_redis, threshold=0)
 
-    results = [await gate.is_available(MODEL_A) for _ in range(10)]
+    results = [await gate.is_available(MODEL_A, tenant_id=TENANT) for _ in range(10)]
     for _ in range(5):
-        await gate.record_failure(MODEL_A)
+        await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
     assert all(results), "All is_available calls must return True when disabled"
     assert len(fake_redis.command_log) == 0, (
@@ -200,9 +209,9 @@ async def test_cc4_half_open_first_caller_gets_probe_second_gets_false(
 
     # Pre-condition: model is in half-open window
     # open key absent (TTL expired), half marker present, probe key absent
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
-    half_key = f"gateway:cooldown:half:{MODEL_A}"
-    probe_key = f"gateway:cooldown:probe:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
+    half_key = f"gateway:cooldown:half:{TENANT}:{MODEL_A}"
+    probe_key = f"gateway:cooldown:probe:{TENANT}:{MODEL_A}"
     assert await fake_redis.exists(open_key) == 0, "Precondition: open key must be absent"
     assert await fake_redis.exists(probe_key) == 0, "Precondition: probe key must be absent"
     # Arrange half-open window by setting the half marker directly
@@ -210,8 +219,8 @@ async def test_cc4_half_open_first_caller_gets_probe_second_gets_false(
     assert await fake_redis.exists(half_key) == 1, "Precondition: half marker must be present"
 
     results = await asyncio.gather(
-        gate.is_available(MODEL_A),
-        gate.is_available(MODEL_A),
+        gate.is_available(MODEL_A, tenant_id=TENANT),
+        gate.is_available(MODEL_A, tenant_id=TENANT),
     )
 
     true_count = sum(1 for r in results if r is True)
@@ -240,16 +249,16 @@ async def test_cc5_probe_failure_retrips_with_full_ttl(fake_redis: FakeRedis) ->
     """
     gate = _make_gate(fake_redis, threshold=3, ttl_s=TTL_S)
 
-    half_key = f"gateway:cooldown:half:{MODEL_A}"
-    probe_key = f"gateway:cooldown:probe:{MODEL_A}"
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
+    half_key = f"gateway:cooldown:half:{TENANT}:{MODEL_A}"
+    probe_key = f"gateway:cooldown:probe:{TENANT}:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
 
     # Pre-state: half marker present, probe token claimed, open key absent
     await fake_redis.set(half_key, "1", ex=2 * TTL_S)
     await fake_redis.set(probe_key, "1", ex=TTL_S)
     assert await fake_redis.exists(open_key) == 0, "Precondition: open key must be absent"
 
-    await gate.record_failure(MODEL_A)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
     # Open key must be re-SET with full TTL
     assert await fake_redis.exists(open_key) == 1, "Open key must be re-set after probe failure"
@@ -283,10 +292,10 @@ async def test_cc6_probe_success_fully_closes(fake_redis: FakeRedis) -> None:
     """
     gate = _make_gate(fake_redis, threshold=3, ttl_s=TTL_S)
 
-    half_key = f"gateway:cooldown:half:{MODEL_A}"
-    probe_key = f"gateway:cooldown:probe:{MODEL_A}"
-    fails_key = f"gateway:cooldown:fails:{MODEL_A}"
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
+    half_key = f"gateway:cooldown:half:{TENANT}:{MODEL_A}"
+    probe_key = f"gateway:cooldown:probe:{TENANT}:{MODEL_A}"
+    fails_key = f"gateway:cooldown:fails:{TENANT}:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
 
     # Pre-state: half marker present, probe token set, residual fail counter, open key absent
     await fake_redis.set(half_key, "1", ex=2 * TTL_S)
@@ -294,14 +303,14 @@ async def test_cc6_probe_success_fully_closes(fake_redis: FakeRedis) -> None:
     await fake_redis.set(fails_key, "2", ex=WINDOW_S)
     assert await fake_redis.exists(open_key) == 0, "Precondition: open key must be absent"
 
-    await gate.record_success(MODEL_A)
+    await gate.record_success(MODEL_A, tenant_id=TENANT)
 
     assert await fake_redis.exists(probe_key) == 0, "Probe key must be DELeted after success"
     assert await fake_redis.exists(fails_key) == 0, "Fails key must be DELeted after success"
     assert await fake_redis.exists(half_key) == 0, "Half marker must be DELeted after success"
 
     for i in range(3):
-        available = await gate.is_available(MODEL_A)
+        available = await gate.is_available(MODEL_A, tenant_id=TENANT)
         assert available is True, f"is_available call {i + 1} must return True after probe success"
 
     closed = _transition_count(gate, MODEL_A, "closed")
@@ -331,9 +340,9 @@ async def test_cc10_closed_model_no_probe_no_writes(fake_redis: FakeRedis) -> No
     gate = _make_gate(fake_redis, threshold=3, ttl_s=TTL_S)
 
     # Precondition: model has absolutely no Redis history
-    open_key = f"gateway:cooldown:open:{MODEL_A}"
-    half_key = f"gateway:cooldown:half:{MODEL_A}"
-    probe_key = f"gateway:cooldown:probe:{MODEL_A}"
+    open_key = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
+    half_key = f"gateway:cooldown:half:{TENANT}:{MODEL_A}"
+    probe_key = f"gateway:cooldown:probe:{TENANT}:{MODEL_A}"
     assert await fake_redis.exists(open_key) == 0, "Precondition: open key absent"
     assert await fake_redis.exists(half_key) == 0, "Precondition: half marker absent"
     assert await fake_redis.exists(probe_key) == 0, "Precondition: probe key absent"
@@ -342,8 +351,8 @@ async def test_cc10_closed_model_no_probe_no_writes(fake_redis: FakeRedis) -> No
     fake_redis.command_log.clear()
 
     results = await asyncio.gather(
-        gate.is_available(MODEL_A),
-        gate.is_available(MODEL_A),
+        gate.is_available(MODEL_A, tenant_id=TENANT),
+        gate.is_available(MODEL_A, tenant_id=TENANT),
     )
 
     assert all(r is True for r in results), (
@@ -380,11 +389,11 @@ async def test_cc7_redis_error_fail_open(
 
     # record_failure must be a no-op (must not raise)
     for _ in range(5):
-        await gate.record_failure(MODEL_A)
+        await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
     # is_available must return True (fail-OPEN)
     for _ in range(3):
-        result = await gate.is_available(MODEL_A)
+        result = await gate.is_available(MODEL_A, tenant_id=TENANT)
         assert result is True, "Fail-OPEN: is_available must return True when Redis is unavailable"
 
     # At least one WARNING must have been emitted
@@ -448,21 +457,21 @@ async def test_cc9_two_models_cool_independently(fake_redis: FakeRedis) -> None:
     gate = _make_gate(fake_redis, threshold=2)
 
     # Trip model A
-    await gate.record_failure(MODEL_A)
-    await gate.record_failure(MODEL_A)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
+    await gate.record_failure(MODEL_A, tenant_id=TENANT)
 
     # Only one failure for model B
-    await gate.record_failure(MODEL_B)
+    await gate.record_failure(MODEL_B, tenant_id=TENANT)
 
-    result_a = await gate.is_available(MODEL_A)
-    result_b = await gate.is_available(MODEL_B)
+    result_a = await gate.is_available(MODEL_A, tenant_id=TENANT)
+    result_b = await gate.is_available(MODEL_B, tenant_id=TENANT)
 
     assert result_a is False, (
         f"Model A must be cooled down (2 failures at threshold=2), got {result_a}"
     )
     assert result_b is True, f"Model B must be available (1 failure at threshold=2), got {result_b}"
 
-    open_key_a = f"gateway:cooldown:open:{MODEL_A}"
-    open_key_b = f"gateway:cooldown:open:{MODEL_B}"
+    open_key_a = f"gateway:cooldown:open:{TENANT}:{MODEL_A}"
+    open_key_b = f"gateway:cooldown:open:{TENANT}:{MODEL_B}"
     assert await fake_redis.exists(open_key_a) == 1, "Open key for model A must exist"
     assert await fake_redis.exists(open_key_b) == 0, "Open key for model B must NOT exist"

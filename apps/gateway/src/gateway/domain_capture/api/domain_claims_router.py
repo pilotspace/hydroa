@@ -22,10 +22,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_FORBIDDEN_OWNER_REQUIRED,
     AUTH_TOKEN_INVALID,
+    AUTH_UNAVAILABLE,
     DNS_LOOKUP_FAILED,
     DOMAIN_ALREADY_VERIFIED,
     DOMAIN_CLAIM_EXPIRED,
@@ -84,8 +86,10 @@ from gateway.domain_capture.domain.errors import (
 )
 from gateway.tenants.application.use_cases import GetIdentityUseCase
 from gateway.tenants.domain.entities import Identity, Role
+from gateway.tenants.domain.errors import SessionRevocationUnavailableError
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
 from gateway.tenants.infrastructure.repository import get_tenant_by_id
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 domain_claims_router = APIRouter(prefix="/admin/domain-claims", tags=["domain-claims-admin"])
 
@@ -103,9 +107,19 @@ async def _get_owner_identity(request: Request, session: AsyncSession) -> Identi
             session=session,
             timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
         ),
+        # auth-hardening-login-sessions TASK.md §3 M5 — REQUIRED keyword: this site
+        # cannot silently skip the revocation check.
+        revocation_guard_factory=lambda: DbSessionRevocationGuard(
+            session=session,
+            timeout_seconds=request.app.state.settings.session_revocation_check_timeout_seconds,
+        ),
     )
     try:
         identity = await use_case.execute(token)
+    except SessionRevocationUnavailableError:
+        # M6 (auth-hardening-login-sessions): store failure is a 503, never a 401
+        # that lies about a live token — and never swallowed by the catch-all below.
+        raise AUTH_UNAVAILABLE.exc() from None
     except Exception as exc:
         raise AUTH_TOKEN_INVALID.exc() from exc
 
@@ -121,6 +135,40 @@ async def _rate_limit(request: Request, *, action: str, tenant_id: uuid.UUID, li
         await limiter.check(action=action, tenant_id=tenant_id, limit=limit)
     except DomainClaimRateLimitedError as exc:
         raise RATE_LIMITED.exc(headers={"Retry-After": str(exc.retry_after)}) from None
+
+
+async def _audit_claim(
+    request: Request,
+    identity: Identity,
+    *,
+    action: str,
+    claim_id: uuid.UUID,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    """Record one domain-claim lifecycle event — the JWT Identity IS the actor (M8/A24).
+
+    audit-coverage-structural-guard TASK.md §RULES M8: the domain-claim lifecycle decides
+    which tenant every future email address on a domain silently joins, so "who verified
+    this domain, and when" must be answerable from the audit trail alone (CC6). These
+    routes authenticate a HUMAN's JWT, so `actor_user_id`/`actor_email` carry the actor and
+    `actor_key_id` stays None — the deliberate inverse of the key-authed /v1 rule
+    (R:ACTOR_FABRICATION binds in both directions).
+
+    Fail-open, awaited inline (A5/A26): `build_audit_event` never raises and `record_audit`
+    swallows every write failure in its own session, so a broken audit path can neither
+    change this route's HTTP outcome nor roll its mutation back.
+    """
+    audit_event = build_audit_event(
+        action=action,
+        target_type="domain_claim",
+        target_id=str(claim_id),
+        tenant_id=identity.tenant_id,
+        actor_user_id=identity.user_id,
+        actor_email=identity.email,
+        metadata=metadata,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
 
 
 @domain_claims_router.post("", status_code=201, response_model=DomainClaimCreateResponse)
@@ -149,6 +197,13 @@ async def create_domain_claim(
         raise DOMAIN_INVALID.exc() from None
     except DomainAlreadyVerifiedError:
         raise DOMAIN_ALREADY_VERIFIED.exc() from None
+    await _audit_claim(
+        request,
+        identity,
+        action="domain_claim.create",
+        claim_id=claim.id,
+        metadata={"domain": claim.domain, "status": claim.status.value},
+    )
     return to_create_response(claim)
 
 
@@ -220,6 +275,13 @@ async def verify_domain_claim(
         raise DOMAIN_VERIFICATION_FAILED.exc() from None
     except DomainAlreadyVerifiedError:
         raise DOMAIN_ALREADY_VERIFIED.exc() from None
+    await _audit_claim(
+        request,
+        identity,
+        action="domain_claim.verify",
+        claim_id=claim_id,
+        metadata={"domain": claim.domain, "status": claim.status.value},
+    )
     return to_verify_response(claim)
 
 
@@ -235,6 +297,7 @@ async def revoke_domain_claim(
         await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
     except DomainClaimNotFoundError:
         raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    await _audit_claim(request, identity, action="domain_claim.revoke", claim_id=claim_id)
 
 
 @domain_claims_router.post("/{claim_id}/notify", response_model=DomainClaimListItem)
@@ -264,6 +327,7 @@ async def opt_in_domain_claim_notify(
         raise DOMAIN_CLAIM_NOT_PENDING.exc() from None
     except DomainClaimExpiredError:
         raise DOMAIN_CLAIM_EXPIRED.exc() from None
+    await _audit_claim(request, identity, action="domain_claim.notify_optin", claim_id=claim_id)
     return to_list_item(claim)
 
 
@@ -306,6 +370,13 @@ async def member_verify_domain_claim(
         raise MEMBER_VERIFY_TOO_MANY_ATTEMPTS.exc() from None
     except MemberVerifyCodeInvalidError:
         raise MEMBER_VERIFY_CODE_INVALID.exc() from None
+    await _audit_claim(
+        request,
+        identity,
+        action="domain_claim.member_verify",
+        claim_id=claim_id,
+        metadata={"domain": claim.domain, "status": claim.status.value},
+    )
     return to_list_item(claim)
 
 
@@ -349,6 +420,9 @@ async def resend_member_verify_domain_claim(
         raise DOMAIN_GENERIC.exc() from None
     except MemberVerifyNotEligibleError:
         raise MEMBER_VERIFY_NOT_ELIGIBLE.exc() from None
+    await _audit_claim(
+        request, identity, action="domain_claim.member_verify_resend", claim_id=claim_id
+    )
     return to_list_item(claim)
 
 
@@ -366,3 +440,4 @@ async def opt_out_domain_claim_notify(
         await use_case.execute(claim_id=claim_id, tenant_id=identity.tenant_id)
     except DomainClaimNotFoundError:
         raise DOMAIN_CLAIM_NOT_FOUND.exc() from None
+    await _audit_claim(request, identity, action="domain_claim.notify_optout", claim_id=claim_id)

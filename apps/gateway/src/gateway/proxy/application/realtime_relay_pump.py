@@ -31,6 +31,7 @@ from gateway.proxy.domain.realtime_relay import (
     RealtimeRelaySession,
 )
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.rate_limits.application.passthrough import PassthroughBandwidthBucket
 from gateway.rate_limits.domain.errors import BandwidthExhaustedError
 from gateway.rate_limits.domain.ports import BandwidthBucket
@@ -60,7 +61,7 @@ def _is_audio(frame: object) -> bool:
     return isinstance(frame, (bytes, bytearray))
 
 
-class RelayPump:
+class RelayPump(TenantScopedBreakerMixin):
     """Pumps frames both ways between a client transport and a provider session."""
 
     def __init__(
@@ -73,11 +74,21 @@ class RelayPump:
         bandwidth_bucket: BandwidthBucket | None = None,
         key_id: uuid.UUID | None = None,
     ) -> None:
+        self._init_tenant_breakers()
         self._t = transport
         self._s = session
         self._connect_timeout = settings.realtime_relay_connect_timeout_seconds
         self._idle_timeout = settings.realtime_relay_idle_timeout_seconds
-        self._breaker = breaker or CircuitBreaker()
+        # R:GLOBAL_BREAKER / A10. `breaker` is the caller's EXPLICIT per-tenant breaker
+        # (the relay endpoint resolves it from the shared per-app registry, keyed by the
+        # WS-auth tenant). The fallback resolves one per tenant from this pump's own
+        # registry rather than constructing a bare CircuitBreaker.
+        #
+        # Resolved EAGERLY, here, and held for the connection's lifetime: a RelayPump
+        # OUTLIVES the scope that carries the tenant, so re-reading the tenant later —
+        # in run(), or in the duplex pump after the handshake scope is gone — would
+        # resolve the sentinel and put every tenant's relay traffic in ONE bucket.
+        self._breaker = breaker if breaker is not None else self._breaker_for()
         # realtime-relay-governance (B2 TASK.md §3, M5): mirrors the existing optional
         # `breaker` param — default PassthroughBandwidthBucket() is byte-identical / zero
         # pacing when unset (matches the v36 bandwidth-token-bucket default-OFF precedent).

@@ -58,6 +58,55 @@ EXISTING_SWEPT_TABLES: tuple[str, ...] = ("usage_records", "alert_events")
 # construction (R4): no field, no code path, ever touches it.
 ALL_SWEPT_TABLES: tuple[str, ...] = EXISTING_SWEPT_TABLES + NEW_PAYLOAD_TABLES
 
+# ---------------------------------------------------------------------------
+# The ZDR purge inventory (zdr-retention-inventory-extension TASK.md §3 M2 — FROZEN)
+#
+# THE one declaration of WHICH tables an unconditional ZDR purge empties for a
+# zdr_enabled=true tenant. `usage/application/retention_sweep.py` imports THIS OBJECT
+# and drives `_sweep_zdr_purge_pass` from it — there is deliberately no second list
+# anywhere, because a hand-maintained enumeration inside the sweeper is exactly how the
+# three newest payload stores (vector stores, evals, finetune) went unpurged for three
+# releases (deep-review P0 artifact 6816985f, R:SECOND_INVENTORY).
+#
+# The tuple names WHICH tables are purged, never HOW (A18). Three of these names —
+# artifacts, files, compliance_report_runs — are BLOB-BACKED: their bytes live in the
+# object store under an `object_key` that exists only ON the row, so they keep their
+# existing object-store-aware purgers (delete the blob first, DEFER the row when the
+# store is unreachable). Driving them through a generic row-DELETE would strand those
+# bytes where no later tick could ever find them (R:BLOB_ORPHAN). The dispatch that
+# enforces this lives beside the sweeper, next to the SQL it selects between.
+#
+# ORDERING: children before their containers (finetune_job_events before finetune_jobs)
+# so every child DELETE does its own work and is provably explicit rather than an FK
+# ON DELETE CASCADE side effect (R:CASCADE_RELIANCE). No FK ordering is REQUIRED — every
+# parent link here is ON DELETE CASCADE — but a purge that relies on the cascade cannot
+# survive a re-parented or denormalized row.
+#
+# ADDING A TABLE: add the name here AND register its purger in
+# retention_sweep._ZDR_PURGERS. The sweeper refuses to import with a name that has no
+# purger (fail-loud at import, never a silently-skipped table), and
+# tests/retention_zdr_inventory's structural guard fails for any tenant_id-carrying
+# payload-shaped table that is in neither this tuple nor its named exemption list.
+# ---------------------------------------------------------------------------
+ZDR_PURGE_TABLES: tuple[str, ...] = (
+    # --- the nine the pass already purged before this task ---------------------
+    "artifacts",  # blob-backed
+    "conversations",
+    "memories",
+    "batch_job_items",
+    "video_generation_jobs",
+    "stored_responses",
+    "files",  # blob-backed
+    "request_logs",
+    "compliance_report_runs",  # blob-backed
+    # --- the five the hand-enumeration silently missed (the P0) ----------------
+    "vector_store_chunks",  # chunk text + embeddings
+    "eval_cases",  # request bodies + assertions
+    "eval_case_results",  # model response text
+    "finetune_job_events",  # event payload (before its parent, see ORDERING)
+    "finetune_jobs",  # hyperparameters + provider error text
+)
+
 
 class _RetentionSettings(Protocol):
     """Minimal protocol for the Settings fields this module reads."""

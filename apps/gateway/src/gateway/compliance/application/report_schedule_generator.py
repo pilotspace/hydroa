@@ -252,6 +252,13 @@ def _audit_item(event: AuditEvent) -> dict[str, Any]:
     return {
         "id": str(event.id),
         "actor_email": event.actor_email,
+        # M6 / A18: the machine actor, additive and nullable — a key-authenticated row
+        # reaches the scheduled compliance report naming WHO, not just what.
+        "actor_key_id": str(event.actor_key_id) if event.actor_key_id else None,
+        "actor_user_id": str(event.actor_user_id) if event.actor_user_id else None,
+        "actor_scim_token_id": (
+            str(event.actor_scim_token_id) if event.actor_scim_token_id else None
+        ),
         "action": event.action,
         "target_type": event.target_type,
         "target_id": event.target_id,

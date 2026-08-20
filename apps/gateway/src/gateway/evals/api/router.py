@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
@@ -195,6 +196,7 @@ def _validate_case_payload(body: dict[str, Any]) -> JSONResponse | None:
 @evals_router.post("/v1/evals/sets", status_code=201, response_model=None)
 async def create_eval_set(
     body: dict[str, Any],
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     store: Annotated[SqlAlchemyEvalStore, Depends(_get_store)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -220,6 +222,15 @@ async def create_eval_set(
         # violation — nothing to commit, no silent second set.
         return _err(EVAL_SET_NAME_CONFLICT)
     await session.commit()
+    audit_event = build_audit_event(
+        action="evals.set_create",
+        target_type="eval_set",
+        target_id=to_set_wire_id(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return _eval_set_object(row)
 
 
@@ -244,6 +255,7 @@ async def list_eval_sets(
 async def create_eval_case(
     set_id: str,
     body: dict[str, Any],
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     store: Annotated[SqlAlchemyEvalStore, Depends(_get_store)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -278,6 +290,16 @@ async def create_eval_case(
         return _err_from_problem(exc)
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="evals.case_create",
+        target_type="eval_case",
+        target_id=to_case_wire_id(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"eval_set_id": to_set_wire_id(resolved)},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return _eval_case_object(row)
 
 

@@ -693,6 +693,9 @@ def _audit_event_to_item(event: AuditEvent) -> AuditEventItem:
     return AuditEventItem(
         id=str(event.id),
         actor_email=event.actor_email,
+        actor_key_id=str(event.actor_key_id) if event.actor_key_id else None,
+        actor_user_id=str(event.actor_user_id) if event.actor_user_id else None,
+        actor_scim_token_id=(str(event.actor_scim_token_id) if event.actor_scim_token_id else None),
         action=event.action,
         target_type=event.target_type,
         target_id=event.target_id,

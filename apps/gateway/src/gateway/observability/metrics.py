@@ -132,6 +132,17 @@ class MetricsRegistry:
         # credits-ledger TASK.md §3 (M11): incremented every time the credit gate
         # fail-opens on a ledger-store outage — pairs with the structured warning log
         # so the degrade is measurable/alertable, never just log-buried.
+        # audit-coverage-structural-guard TASK.md M9 (CC7.2): record_audit is fail-open,
+        # so a broken audit path is otherwise invisible — evidence goes missing while every
+        # request still returns 200. One increment per SWALLOWED audit-write exception,
+        # pairing with the writer's existing warning exactly as credits_gate_degraded_total
+        # pairs with the credit gate's. NO labels: one increment == one lost audit event.
+        self.audit_write_failed_total = Counter(
+            "gateway_audit_write_failed_total",
+            "Audit events lost because the write failed and was swallowed (fail-open)",
+            registry=registry,
+        )
+
         self.credits_gate_degraded_total = Counter(
             "gateway_credits_gate_degraded_total",
             "Credit gate fail-open events (ledger store unreachable) by operation",
@@ -157,10 +168,76 @@ def state_value(breaker: Any) -> float:
         return 0.0
 
 
+def aggregate_breaker_state(app: Any) -> float:
+    """WORST-STATE-WINS across every live CircuitBreaker the app can reach (S14/M14).
+
+    WHY THIS IS NOT `state_value(app.state.circuit_breaker)` ANY MORE
+    ----------------------------------------------------------------
+    It used to be. `app.state.circuit_breaker` is the single legacy process-wide
+    breaker, and once the realtime websocket path moved off it (M8) NOTHING in
+    production drives it — zero live `guard()` / `on_upstream_error()` /
+    `record_success()` call sites. The gauge was therefore pinned at 0.0 =
+    "closed" forever: an operator watching a green board through a live outage.
+    Reporting health over a surface nothing drives is the same masked-gate
+    failure mode as reporting "closed" over a partition you never inspected.
+
+    So the gauge now reads the SAME population the boot census walks (A33) —
+    every live breaker reachable from `app.state`, which after this task means
+    the per-tenant registries. The legacy breaker stays in that population
+    (it is still reachable, and if anything ever does drive it again the gauge
+    must not go blind to it), it simply stops being the ONLY thing counted.
+
+    WORST-STATE-WINS, open (2) > half_open (1) > closed (0) — A36. During an
+    incident the operator's question is "is anyone being refused", not "is the
+    average fine". A single victim tenant averaged into invisibility is exactly
+    the failure this metric exists to surface.
+
+    NO TENANT LABEL — A32. A `tenant` label would be unbounded and
+    attacker-influenceable through self-serve signup: R:UNBOUNDED reappearing as
+    Prometheus cardinality explosion. The tenant dimension is what this function
+    AGGREGATES OVER, never what it labels by. The metric name and the 0/1/2
+    encoding are byte-identical to before (A37).
+
+    Empty registries => 0.0 — A35. A freshly booted app has created no breakers
+    (they are lazy, A11), which means nothing has failed. That is honestly closed
+    over an INSPECTED and genuinely empty set, not the masked "closed over an
+    uninspected partition" M14 forbids.
+
+    Cost: computed at SCRAPE time only (A34), never on the request hot path —
+    M10 forbids new hot-path work, and a breaker read must not cost a tenant
+    latency. The walk is synchronous and bounded; it short-circuits the moment it
+    finds an OPEN breaker, since nothing can outrank open.
+
+    Never raises: any failure degrades to 0.0, matching the pre-existing
+    `state_value` contract that a metrics read never breaks the endpoint.
+    """
+    try:
+        # Imported lazily: `gateway.observability.metrics` is imported very early
+        # and very widely (the cooldown gate imports MetricsRegistry from here),
+        # so a module-level proxy import would risk an import cycle for a value
+        # only ever needed on the cold metrics path.
+        from gateway.proxy.infrastructure.tenant_breaker_registry import iter_live_breakers
+
+        scan = iter_live_breakers(app.state)
+    except Exception:  # sentinel: a metrics read never breaks the endpoint
+        return 0.0
+
+    worst = 0.0
+    for entry in scan.breakers:
+        value = state_value(entry.breaker)
+        if value > worst:
+            worst = value
+            if worst >= 2.0:  # OPEN — nothing outranks it, stop walking
+                break
+    return worst
+
+
 async def expose_metrics(app: Any) -> tuple[bytes, str]:
     """Build the Prometheus text body for GET /internal/metrics.
 
-    1. Reads live circuit-breaker state from app.state.circuit_breaker.
+    1. Aggregates live circuit-breaker state across every breaker the app can
+       reach — the per-tenant registries, worst-state-wins, no tenant label.
+       See `aggregate_breaker_state`.
     2. Reads Redis stream XLEN lazily; sets -1.0 on any Redis error.
     3. Returns (body_bytes, content_type_string).
 
@@ -168,12 +245,8 @@ async def expose_metrics(app: Any) -> tuple[bytes, str]:
     """
     metrics_registry: MetricsRegistry = app.state.metrics_registry
 
-    # --- live circuit-breaker state ---
-    try:
-        breaker = app.state.circuit_breaker
-        metrics_registry.circuit_breaker_state.set(state_value(breaker))
-    except Exception:  # sentinel: set 0 on any breaker read failure
-        metrics_registry.circuit_breaker_state.set(0.0)
+    # --- live circuit-breaker state (scrape-time aggregate, A34) ---
+    metrics_registry.circuit_breaker_state.set(aggregate_breaker_state(app))
 
     # --- flusher pending events (lazy XLEN) ---
     try:

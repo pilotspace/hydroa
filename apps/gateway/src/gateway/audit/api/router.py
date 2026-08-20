@@ -193,6 +193,9 @@ async def export_audit(
         AuditEventItem(
             id=str(e.id),
             actor_email=e.actor_email,
+            actor_key_id=str(e.actor_key_id) if e.actor_key_id else None,
+            actor_user_id=str(e.actor_user_id) if e.actor_user_id else None,
+            actor_scim_token_id=(str(e.actor_scim_token_id) if e.actor_scim_token_id else None),
             action=e.action,
             target_type=e.target_type,
             target_id=e.target_id,

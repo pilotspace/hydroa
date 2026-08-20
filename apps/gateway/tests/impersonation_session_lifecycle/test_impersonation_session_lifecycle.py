@@ -422,7 +422,20 @@ async def test_ordinary_token_issued_and_decoded_byte_identically(
         token, settings.jwt_secret, algorithms=["HS256"], issuer=settings.jwt_issuer
     )
     assert "impersonation" not in raw_claims
-    assert set(raw_claims.keys()) == {"sub", "tenant_id", "role", "email", "iat", "exp", "iss"}
+    # SANCTIONED EDIT (auth-hardening-login-sessions §3 M5, migration-free additive claim,
+    # 2026-08-18): every newly issued session token now carries a revocable "jti". This
+    # sibling check's intent — no "impersonation" key on an ordinary token — is unchanged
+    # and still asserted above; only the exact-set enumeration gains the new claim.
+    assert set(raw_claims.keys()) == {
+        "sub",
+        "tenant_id",
+        "role",
+        "email",
+        "iat",
+        "exp",
+        "iss",
+        "jti",
+    }
 
 
 # ===========================================================================

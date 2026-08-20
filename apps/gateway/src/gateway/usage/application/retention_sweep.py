@@ -74,6 +74,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from gateway.objectstore.errors import ObjectStoreUnavailableError
 
+# zdr-retention-inventory-extension TASK.md §3 M2 — THE inventory. Imported (not
+# re-declared) so the sweeper and every guard read ONE object: a second, equal-but-
+# separate list is precisely the drift that let vector_store_chunks, eval_cases,
+# eval_case_results, finetune_jobs and finetune_job_events go unpurged (R:SECOND_INVENTORY).
+from gateway.tenants.application.retention_policy import ZDR_PURGE_TABLES
+
 _log = logging.getLogger(__name__)
 
 
@@ -476,6 +482,91 @@ _DELETE_COMPLIANCE_REPORTS_BY_ID = text("DELETE FROM compliance_report_runs WHER
 _SELECT_COMPLIANCE_REPORTS_ZDR_TENANT = text(
     "SELECT id, object_key FROM compliance_report_runs WHERE tenant_id = :tid LIMIT :batch"
 )
+
+
+# ---------------------------------------------------------------------------
+# zdr-retention-inventory-extension TASK.md §3 — the five payload tables the pre-task
+# hand-enumeration silently missed (deep-review P0 artifact 6816985f).
+#
+# Each carries its OWN explicit tenant_id-scoped DELETE. NONE of them is left to an FK
+# ON DELETE CASCADE from its container (R:CASCADE_RELIANCE): the containers deliberately
+# SURVIVE a ZDR purge (vector_stores / vector_store_files / eval_sets / eval_runs carry
+# ids, names and status, not payload — A2), so a cascade would never fire for three of
+# these, and for finetune_job_events — whose parent IS deleted wholesale (A3) — a cascade
+# would still leave a re-parented or denormalized event row behind. Explicit, always.
+# ---------------------------------------------------------------------------
+
+_DELETE_VECTOR_STORE_CHUNKS_ZDR_TENANT = text(
+    "DELETE FROM vector_store_chunks WHERE id IN"
+    " (SELECT id FROM vector_store_chunks WHERE tenant_id = :tid LIMIT :batch)"
+)
+_DELETE_EVAL_CASES_ZDR_TENANT = text(
+    "DELETE FROM eval_cases WHERE id IN"
+    " (SELECT id FROM eval_cases WHERE tenant_id = :tid LIMIT :batch)"
+)
+_DELETE_EVAL_CASE_RESULTS_ZDR_TENANT = text(
+    "DELETE FROM eval_case_results WHERE id IN"
+    " (SELECT id FROM eval_case_results WHERE tenant_id = :tid LIMIT :batch)"
+)
+_DELETE_FINETUNE_JOB_EVENTS_ZDR_TENANT = text(
+    "DELETE FROM finetune_job_events WHERE id IN"
+    " (SELECT id FROM finetune_job_events WHERE tenant_id = :tid LIMIT :batch)"
+)
+_DELETE_FINETUNE_JOBS_ZDR_TENANT = text(
+    "DELETE FROM finetune_jobs WHERE id IN"
+    " (SELECT id FROM finetune_jobs WHERE tenant_id = :tid LIMIT :batch)"
+)
+
+
+# ---------------------------------------------------------------------------
+# The ZDR purge DISPATCH (A18: the inventory names WHICH tables, this names HOW).
+#
+# Two kinds of table, and conflating them is a data-loss defect in either direction:
+#   BLOB-BACKED (artifacts, files, compliance_report_runs) — the bytes live in the
+#     object store under an `object_key` that exists only ON the row. They keep their
+#     existing object-store-aware purgers: delete the blob FIRST, and DEFER the row when
+#     the store is unreachable so the next tick can retry. A generic row-DELETE here
+#     drops the only handle on those bytes — a permanent orphan (R:BLOB_ORPHAN).
+#   PLAIN — the payload is IN the row, so one bounded tenant_id-scoped DELETE is the
+#     whole purge.
+# ---------------------------------------------------------------------------
+
+_ZDR_BLOB_BACKED_TABLES: frozenset[str] = frozenset(
+    {"artifacts", "files", "compliance_report_runs"}
+)
+
+_ZDR_PLAIN_DELETES: dict[str, Any] = {
+    "conversations": _DELETE_CONVERSATIONS_ZDR_TENANT,
+    "memories": _DELETE_MEMORIES_ZDR_TENANT,
+    "batch_job_items": _DELETE_BATCH_ITEMS_ZDR_TENANT,
+    "video_generation_jobs": _DELETE_VIDEO_JOBS_ZDR_TENANT,
+    "stored_responses": _DELETE_STORED_RESPONSES_ZDR_TENANT,
+    "request_logs": _DELETE_REQUEST_LOGS_ZDR_TENANT,
+    "vector_store_chunks": _DELETE_VECTOR_STORE_CHUNKS_ZDR_TENANT,
+    "eval_cases": _DELETE_EVAL_CASES_ZDR_TENANT,
+    "eval_case_results": _DELETE_EVAL_CASE_RESULTS_ZDR_TENANT,
+    "finetune_job_events": _DELETE_FINETUNE_JOB_EVENTS_ZDR_TENANT,
+    "finetune_jobs": _DELETE_FINETUNE_JOBS_ZDR_TENANT,
+}
+
+_ZDR_REGISTERED_TABLES: frozenset[str] = frozenset(_ZDR_PLAIN_DELETES) | _ZDR_BLOB_BACKED_TABLES
+
+# FAIL LOUD AT IMPORT, never at 03:00 in a sweep nobody reads: a name declared in the
+# inventory with no purger registered would be silently skipped every tick — a green
+# structural guard over a table that is never actually purged, which is the same class of
+# lie this task exists to kill. Both directions are checked, because a purger for a table
+# that left the inventory is dead code that never runs. Deterministic (pure module
+# constants), so this can only ever fire in CI, never differentially in production.
+_ZDR_UNREGISTERED = tuple(sorted(set(ZDR_PURGE_TABLES) - _ZDR_REGISTERED_TABLES))
+_ZDR_ORPHANED_PURGERS = tuple(sorted(_ZDR_REGISTERED_TABLES - set(ZDR_PURGE_TABLES)))
+if _ZDR_UNREGISTERED or _ZDR_ORPHANED_PURGERS:  # pragma: no cover - import-time invariant
+    raise RuntimeError(
+        "ZDR purge dispatch is out of sync with retention_policy.ZDR_PURGE_TABLES: "
+        f"declared-but-unpurgeable={_ZDR_UNREGISTERED or ()}, "
+        f"purger-without-inventory-row={_ZDR_ORPHANED_PURGERS or ()}. "
+        "Every inventory table needs either a _ZDR_PLAIN_DELETES entry or a branch in "
+        "RetentionSweeper._purge_zdr_table_for_tenant."
+    )
 
 
 class RetentionSweeper:
@@ -989,13 +1080,57 @@ class RetentionSweeper:
             )
         return results
 
+    async def _purge_zdr_table_for_tenant(
+        self, table: str, tid_params: dict[str, Any], batch_size: int
+    ) -> int:
+        """Purge ONE inventory table for ONE ZDR tenant; returns rows deleted.
+
+        The dispatch A18 demands: the inventory tuple says WHICH tables are purged, this
+        says HOW. The three blob-backed tables keep their existing object-store-aware
+        purgers verbatim (blob first, row DEFERRED while the store is unreachable —
+        R:BLOB_ORPHAN); everything else is one bounded tenant_id-scoped DELETE.
+
+        Never raises: each purger already swallows-and-logs its own failures, so one
+        unreachable table cannot abort the rest of a tenant's purge (the pre-existing
+        fail-open-per-pass discipline).
+        """
+        if table == "artifacts":
+            return await self._purge_artifacts_batch(
+                _SELECT_ARTIFACTS_ZDR_TENANT, batch_size, extra_params=tid_params
+            )
+        if table == "files":
+            return await self._purge_files_batch(
+                _SELECT_FILES_ZDR_TENANT, batch_size, extra_params=tid_params
+            )
+        if table == "compliance_report_runs":
+            return await self._purge_compliance_reports_batch(
+                _SELECT_COMPLIANCE_REPORTS_ZDR_TENANT, batch_size, extra_params=tid_params
+            )
+        delete_sql = _ZDR_PLAIN_DELETES.get(table)
+        if delete_sql is None:  # pragma: no cover - the import-time check forbids this
+            _log.error(
+                "retention_sweep: ZDR inventory table %r has no registered purger and was "
+                "SKIPPED — a ZDR tenant's payload is surviving the sweep; register it in "
+                "_ZDR_PLAIN_DELETES or _purge_zdr_table_for_tenant",
+                table,
+            )
+            return 0
+        return await self._delete_batched_extra(table, delete_sql, tid_params, batch_size)
+
     async def _sweep_zdr_purge_pass(self, batch_size: int) -> dict[str, int]:
         """Unconditional (no-cutoff) per-tenant ZDR purge — every row, every sweep tick,
-        for every tenant with zdr_enabled=true, across the 5 payload tables, PLUS
-        ObjectStore.delete() for s3-backed artifacts and a bounded Redis SCAN+DEL over
-        that tenant's resp-cache:/vec-cache: namespaces. Self-healing: re-runs every tick
-        for as long as zdr_enabled=true, so a mid-purge crash is recovered automatically
-        at the next tick — no job-tracking table (TASK.md §1 Assumption).
+        for every tenant with zdr_enabled=true, across EVERY table in
+        ``retention_policy.ZDR_PURGE_TABLES``, PLUS ObjectStore.delete() for s3-backed
+        rows and a bounded Redis SCAN+DEL over that tenant's resp-cache:/vec-cache:
+        namespaces. Self-healing: re-runs every tick for as long as zdr_enabled=true, so a
+        mid-purge crash is recovered automatically at the next tick — no job-tracking
+        table (TASK.md §1 Assumption).
+
+        The table set is the IMPORTED tuple, never a local enumeration
+        (zdr-retention-inventory-extension M2): the previous hand-written list here fell
+        three payload stores behind the schema without a single test noticing
+        (R:SECOND_INVENTORY). Adding a table is now one row in that tuple plus its purger
+        registration, and the import-time check above refuses the half-done version.
 
         Iterates PER TENANT (rather than one bulk all-tenants DELETE) so each table's
         rows-deleted count is attributable to a single tenant — required by TASK.md §3
@@ -1026,77 +1161,12 @@ class RetentionSweeper:
 
         for (tenant_id,) in tenant_rows:
             tid_params = {"tid": str(tenant_id)}
-            _fire_audit(
-                tenant_id,
-                "artifacts",
-                await self._purge_artifacts_batch(
-                    _SELECT_ARTIFACTS_ZDR_TENANT, batch_size, extra_params=tid_params
-                ),
-            )
-            _fire_audit(
-                tenant_id,
-                "conversations",
-                await self._delete_batched_extra(
-                    "conversations", _DELETE_CONVERSATIONS_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            _fire_audit(
-                tenant_id,
-                "memories",
-                await self._delete_batched_extra(
-                    "memories", _DELETE_MEMORIES_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            _fire_audit(
-                tenant_id,
-                "batch_job_items",
-                await self._delete_batched_extra(
-                    "batch_job_items", _DELETE_BATCH_ITEMS_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            _fire_audit(
-                tenant_id,
-                "video_generation_jobs",
-                await self._delete_batched_extra(
-                    "video_generation_jobs", _DELETE_VIDEO_JOBS_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            # responses-state-store PLAN.md §3 M8 — a ZDR tenant's stored responses must be
-            # purged unconditionally alongside the other payload tables (self-healing).
-            _fire_audit(
-                tenant_id,
-                "stored_responses",
-                await self._delete_batched_extra(
-                    "stored_responses", _DELETE_STORED_RESPONSES_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            # files-uploads-api PLAN.md §3 — a ZDR tenant's uploaded files must be purged
-            # unconditionally alongside the other payload tables (object-store-aware).
-            _fire_audit(
-                tenant_id,
-                "files",
-                await self._purge_files_batch(
-                    _SELECT_FILES_ZDR_TENANT, batch_size, extra_params=tid_params
-                ),
-            )
-            # payload-capture-store — MED fix: request_logs must be purged unconditionally
-            # alongside the 5 original payload tables for a ZDR tenant (previously omitted).
-            _fire_audit(
-                tenant_id,
-                "request_logs",
-                await self._delete_batched_extra(
-                    "request_logs", _DELETE_REQUEST_LOGS_ZDR_TENANT, tid_params, batch_size
-                ),
-            )
-            # compliance-report-center TASK.md §3 M21 — additive, same unconditional
-            # per-tenant ZDR purge discipline as artifacts above.
-            _fire_audit(
-                tenant_id,
-                "compliance_report_runs",
-                await self._purge_compliance_reports_batch(
-                    _SELECT_COMPLIANCE_REPORTS_ZDR_TENANT, batch_size, extra_params=tid_params
-                ),
-            )
+            for table in ZDR_PURGE_TABLES:
+                _fire_audit(
+                    tenant_id,
+                    table,
+                    await self._purge_zdr_table_for_tenant(table, tid_params, batch_size),
+                )
 
         await self._purge_zdr_redis_namespaces()
         return results

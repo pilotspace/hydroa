@@ -48,6 +48,7 @@ from gateway.proxy.api.realtime_ws import (
 )
 from gateway.proxy.application.realtime_relay_pump import RelayPump
 from gateway.proxy.domain.realtime_relay import RealtimeRelayClosed, RealtimeRelaySession
+from gateway.proxy.infrastructure.tenant_breaker_registry import registry_for_state
 
 _log = logging.getLogger(__name__)
 
@@ -431,7 +432,19 @@ async def realtime_relay(websocket: WebSocket) -> None:
     # path already reads (deps.py) — this task threads it into the relay endpoint too, it
     # does not invent a second one.
     transport = _StarletteRelayTransport(websocket)
-    breaker = getattr(app.state, "realtime_relay_breaker", None)
+    # R:GLOBAL_BREAKER. This used to read an operator-injectable
+    # `app.state.realtime_relay_breaker` — a single process-wide breaker seam on a
+    # tenant-reachable path (nothing wired it, so every connection silently got a
+    # FRESH breaker instead, i.e. no real upstream protection either). Both halves
+    # are fixed here: one breaker PER TENANT, shared across that tenant's
+    # connections (so it actually protects the provider) and shared with no other
+    # tenant (so one tenant's failures can never refuse another's session).
+    # Keyed off the ONE-TIME WS-auth tenant, which is in hand here — the relay path
+    # never calls set_provider_credential, so the credential contextvar is unset and
+    # a contextvar-derived key would drop every tenant into the sentinel bucket.
+    breaker = registry_for_state(app.state, "realtime_relay_breakers").get_or_create(
+        authz.tenant_id
+    )
     bandwidth_bucket = getattr(app.state, "bandwidth_bucket", None)
     pump = RelayPump(
         transport,

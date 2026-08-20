@@ -330,7 +330,7 @@ class FallbackModelRouter:
             next_model = order[i + 1] if i + 1 < len(order) else "_exhausted"
 
             # Step 1: health gate check — skip = fell_through without an upstream call.
-            if gate is not None and not await gate.is_available(candidate):
+            if gate is not None and not await gate.is_available(candidate, tenant_id=tenant_id):
                 structlog.get_logger().warning(
                     "model_fallback: candidate gated unavailable, skipping",
                     alias=alias,
@@ -367,7 +367,7 @@ class FallbackModelRouter:
                         if max_retry_after is None or exc.retry_after > max_retry_after:
                             max_retry_after = exc.retry_after
                 if gate is not None:
-                    await gate.record_failure(candidate)
+                    await gate.record_failure(candidate, tenant_id=tenant_id)
                 structlog.get_logger().warning(
                     "model_fallback: candidate exhausted, falling through",
                     alias=alias,
@@ -396,7 +396,7 @@ class FallbackModelRouter:
                 trigger = classify_fallback_trigger(status, body)
                 if trigger is not None:
                     if gate is not None:
-                        await gate.record_success(candidate)
+                        await gate.record_success(candidate, tenant_id=tenant_id)
                     self._inc_counter(
                         alias=alias, from_model=candidate, to_model=next_model, outcome=trigger
                     )
@@ -411,7 +411,7 @@ class FallbackModelRouter:
                 await load_gate.record_latency(candidate, elapsed_ms)
 
             if gate is not None:
-                await gate.record_success(candidate)
+                await gate.record_success(candidate, tenant_id=tenant_id)
 
             if last_fallen is not None:
                 self._inc_counter(

@@ -36,6 +36,7 @@ from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_TOKEN_INVALID,
     AUTH_TOKEN_MISSING,
+    AUTH_UNAVAILABLE,
     KEY_NOT_FOUND_IN_TENANT,
     PAYLOAD_END_DATE_INVALID,
     PAYLOAD_GROUP_BY_INVALID,
@@ -49,12 +50,14 @@ from gateway.tenants.domain.authz import (
     ROLE_PERMISSIONS,
     Permission,
     ensure_impersonation_session_live,
+    ensure_session_not_revoked,
     require_permission,
 )
 from gateway.tenants.domain.entities import Identity
-from gateway.tenants.domain.errors import InvalidTokenError
+from gateway.tenants.domain.errors import InvalidTokenError, SessionRevocationUnavailableError
 from gateway.tenants.domain.ports import TokenService
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 from gateway.usage.api.schemas import (
     CostByTagResponse,
     ReconciliationResponse,
@@ -97,7 +100,20 @@ async def _extract_identity(
                 timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
             ),
         )
+        # auth-hardening-login-sessions TASK.md §3 M5 — revocation call site 4/5.
+        await ensure_session_not_revoked(
+            identity,
+            DbSessionRevocationGuard(
+                session=session,
+                timeout_seconds=(
+                    request.app.state.settings.session_revocation_check_timeout_seconds
+                ),
+            ),
+        )
         return identity
+    except SessionRevocationUnavailableError:
+        # M6: store failure is a 503, never a 401 that lies about a live token.
+        raise AUTH_UNAVAILABLE.exc() from None
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 
@@ -842,6 +858,15 @@ class AuditEventItem(BaseModel):
 
     id: str
     actor_email: str | None
+    # audit-coverage-structural-guard TASK.md M6 / A18 / A23 — ADDITIVE, NULLABLE, and
+    # deliberately not a rename: `actor_email` alone is structurally null for every
+    # key-authenticated caller, so a retrofitted /v1 row reached this envelope saying WHAT
+    # happened and never WHO (R:ANONYMOUS_EVIDENCE). These three carry the machine actor the
+    # row actually stores. A key identifier is NEVER written into actor_email
+    # (R:ACTOR_FABRICATION) — that would also poison the export's exact-match actor filter.
+    actor_key_id: str | None = None
+    actor_user_id: str | None = None
+    actor_scim_token_id: str | None = None
     action: str
     target_type: str | None
     target_id: str | None
@@ -886,6 +911,9 @@ async def get_audit(
         AuditEventItem(
             id=str(e.id),
             actor_email=e.actor_email,
+            actor_key_id=str(e.actor_key_id) if e.actor_key_id else None,
+            actor_user_id=str(e.actor_user_id) if e.actor_user_id else None,
+            actor_scim_token_id=(str(e.actor_scim_token_id) if e.actor_scim_token_id else None),
             action=e.action,
             target_type=e.target_type,
             target_id=e.target_id,

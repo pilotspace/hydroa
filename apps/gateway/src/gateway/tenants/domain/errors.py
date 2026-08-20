@@ -150,3 +150,32 @@ class PendingSignupExpiredError(IdentityError):
     v1, SECURITY). The row is deleted as cleanup by the caller before this is raised."""
 
     pass
+
+
+class PasswordResetInvalidError(IdentityError):
+    """POST /admin/auth/password-reset/confirm — token unknown or already consumed
+    (auth-hardening-login-sessions TASK.md §3 M3/E5, FROZEN @ v1, SECURITY). Distinct
+    from expired per A11: the caller possesses the emailed token, so R-sec-6 makes
+    distinguishing invalid/expired safe (the pending-signup precedent)."""
+
+    pass
+
+
+class PasswordResetExpiredError(IdentityError):
+    """POST /admin/auth/password-reset/confirm — a matching token row existed but its
+    expires_at is at/before now (auth-hardening-login-sessions TASK.md §3 A5/E6, fail
+    closed at the boundary instant)."""
+
+    pass
+
+
+class SessionRevocationUnavailableError(IdentityError):
+    """The session-revocation store could not answer within its bound
+    (auth-hardening-login-sessions TASK.md §3 M6/E11, FROZEN @ v1, SECURITY).
+
+    Fail-CLOSED marker: callers translate this to the 503-class ERR_AUTH_UNAVAILABLE —
+    NEVER to a silent allow (a revocation decision, not an availability gate; mirrors
+    DbImpersonationSessionGuard's fail-closed convention) and NEVER to a 401 (the
+    caller's token is not known-bad; telling them it is would be a lie)."""
+
+    pass

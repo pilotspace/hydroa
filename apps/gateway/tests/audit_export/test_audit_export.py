@@ -56,6 +56,20 @@ from .conftest import (
 _ITEM_FIELDS = (
     "id",
     "actor_email",
+    # SANCTIONED EDIT — audit-coverage-structural-guard TASK.md §RULES M6 (M5 sanction:
+    # "no existing test is edited except by SANCTIONED EDIT citing this task").
+    # Disposition: ADDITIVE, nullable machine-actor fields on the SAME envelope; the
+    # exact-set assertion at the bottom of this file is preserved as an EQUALITY, not
+    # relaxed to a subset — the envelope grew, the guard did not weaken.
+    # Why the export had to grow: `actor_email` is structurally null for every
+    # key-authenticated caller, so the /v1 rows this task retrofits would have reached
+    # the archival evidence feed saying WHAT happened and never WHO
+    # (R:ANONYMOUS_EVIDENCE). A key identifier is NEVER written into `actor_email`
+    # (R:ACTOR_FABRICATION) — that would also poison this export's own exact-match
+    # actor filter, which is deliberately left untouched (A19).
+    "actor_key_id",
+    "actor_user_id",
+    "actor_scim_token_id",
     "action",
     "target_type",
     "target_id",
@@ -744,7 +758,19 @@ async def test_export_empty_result_set(client: Any, db_session: AsyncSession, ap
     assert resp.text == ""
     assert resp.headers["x-audit-export-has-more"] == "false"
 
-    resp_json = await client.get(EXPORT, params={"format": "json"}, headers=auth(token))
+    # A SECOND tenant, deliberately: the export endpoint AUDITS ITSELF
+    # (router.py action="audit.export"), so the GET above leaves an `audit.export` row
+    # behind for THIS tenant. Re-exporting the same tenant therefore no longer sees an
+    # empty set — it sees that self-audit — and asserting `items == []` on it only ever
+    # passed because the fire-and-forget audit write lost the read-race. The R9 audit
+    # retrofit routes emissions through the shared writer so the row now lands reliably,
+    # which turned a latent flake into a deterministic failure under CI load. A call's
+    # own self-audit is never in its own response, so a virgin tenant makes the
+    # empty-set assertion mean what it says instead of depending on losing a race.
+    _owner2, tid2 = await signup_tenant(client, tenant_name="Empty Set JSON", email="esj@audit.io")
+    token2 = mint_role_token(app, tenant_id=tid2, role=Role.OWNER, email="esj-sub@audit.io")
+
+    resp_json = await client.get(EXPORT, params={"format": "json"}, headers=auth(token2))
     assert resp_json.status_code == 200, resp_json.text
     assert resp_json.json() == {"items": [], "next_cursor": None, "has_more": False}
 

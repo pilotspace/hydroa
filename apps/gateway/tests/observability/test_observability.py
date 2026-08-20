@@ -348,7 +348,26 @@ async def test_metrics_breaker_state_closed() -> None:
 
 @pytest.mark.asyncio
 async def test_metrics_breaker_state_open() -> None:
-    """M5 — after tripping the breaker to OPEN, gauge reports 2.0."""
+    """M5 — after tripping the breaker to OPEN, gauge reports 2.0.
+
+    WHAT THIS TEST DOES *NOT* PROVE (tenant-scoped-breaker-cooldown, R9 P0 #3)
+    -------------------------------------------------------------------------
+    It trips `app.state.circuit_breaker` DIRECTLY, so all it establishes is that
+    the gauge tracks whatever breakers the app can reach. It says NOTHING about
+    whether anything in PRODUCTION ever moves one — and for years it did not:
+    `app.state.circuit_breaker` is the single legacy process-wide breaker, and
+    once the realtime websocket path moved off it (M8) there were zero live
+    `guard()` / `on_upstream_error()` / `record_success()` call sites against it.
+    The gauge was pinned at 0.0 = "closed" forever and this test stayed green
+    throughout, because a test that drives the instrument by hand can never
+    notice that the instrument is disconnected.
+
+    The check that DOES prove it is
+    `tests/tenant_breaker_isolation::test_breaker_state_gauge_reports_a_breaker
+    _production_drives`, which opens a breaker inside a tenant registry — the
+    population production actually drives — and asserts the exported gauge moves.
+    Keep both: this one pins the 0/1/2 encoding, that one pins the source of truth.
+    """
     app = _make_app()
     breaker = app.state.circuit_breaker
 

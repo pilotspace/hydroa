@@ -95,6 +95,26 @@ class LocalFakeRedis:
             raise ConnectionError("LocalFakeRedis: simulated connection error")
         return self._get_live(key)
 
+    async def scan(
+        self, cursor: int = 0, match: str | None = None, count: int | None = None
+    ) -> tuple[int, list[str]]:
+        """Single-shot SCAN over live keys (cursor always returns to 0).
+
+        tenant-scoped-breaker-cooldown (R9 P0 #3): snapshot_state(tenant_id=None) —
+        the superadmin routing board's cross-partition aggregate — walks the
+        keyspace with SCAN. `match` is only ever the fixed key prefix plus "*"
+        (the gate never puts caller data in the pattern), so a prefix compare is a
+        faithful stand-in for Redis glob here.
+        """
+        del count
+        if self._raise:
+            raise ConnectionError("LocalFakeRedis: simulated connection error")
+        keys = [k for k in list(self._store) if self._get_live(k) is not None]
+        if match is not None:
+            prefix = match[:-1] if match.endswith("*") else match
+            keys = [k for k in keys if k.startswith(prefix)]
+        return 0, keys
+
     async def set(
         self,
         key: str,
@@ -133,7 +153,7 @@ class FakeGate:
         self._states: dict[str, str] = states or {}
         self.calls: list[str] = []
 
-    async def snapshot_state(self, model_id: str) -> str:
+    async def snapshot_state(self, model_id: str, *, tenant_id: object = None) -> str:
         self.calls.append(model_id)
         return self._states.get(model_id, "closed")
 
@@ -141,14 +161,14 @@ class FakeGate:
 class ErrorGate:
     """Gate whose snapshot_state always raises ConnectionError (for RA4)."""
 
-    async def snapshot_state(self, model_id: str) -> str:
+    async def snapshot_state(self, model_id: str, *, tenant_id: object = None) -> str:
         raise ConnectionError("ErrorGate: simulated Redis error")
 
 
 class CalledGate:
     """Gate that raises AssertionError if snapshot_state is ever called (for RA2)."""
 
-    async def snapshot_state(self, model_id: str) -> str:
+    async def snapshot_state(self, model_id: str, *, tenant_id: object = None) -> str:
         raise AssertionError(
             f"snapshot_state must NOT be called when gate is None; called with {model_id!r}"
         )

@@ -6,7 +6,12 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from gateway.core.db import get_session
-from gateway.core.error_catalog import AUTH_FORBIDDEN, AUTH_TOKEN_INVALID, AUTH_TOKEN_MISSING
+from gateway.core.error_catalog import (
+    AUTH_FORBIDDEN,
+    AUTH_TOKEN_INVALID,
+    AUTH_TOKEN_MISSING,
+    AUTH_UNAVAILABLE,
+)
 from gateway.keys.application.use_cases import (
     AuthzUseCase,
     CreateKeyUseCase,
@@ -23,11 +28,13 @@ from gateway.tenants.domain.authz import (
     ROLE_PERMISSIONS,
     Permission,
     ensure_impersonation_session_live,
+    ensure_session_not_revoked,
 )
 from gateway.tenants.domain.entities import Identity
-from gateway.tenants.domain.errors import InvalidTokenError
+from gateway.tenants.domain.errors import InvalidTokenError, SessionRevocationUnavailableError
 from gateway.tenants.domain.ports import TokenService
 from gateway.tenants.infrastructure.impersonation_session_guard import DbImpersonationSessionGuard
+from gateway.tenants.infrastructure.session_revocation import DbSessionRevocationGuard
 
 # Singleton hasher — stateless, safe to share
 _hasher = Sha256SecretHasher()
@@ -66,7 +73,24 @@ async def get_identity(
                 timeout_seconds=request.app.state.settings.impersonation_live_check_timeout_seconds,
             ),
         )
+        # auth-hardening-login-sessions TASK.md §3 M5 — revocation call site 2/5.
+        await ensure_session_not_revoked(
+            identity,
+            DbSessionRevocationGuard(
+                session=session,
+                timeout_seconds=(
+                    request.app.state.settings.session_revocation_check_timeout_seconds
+                ),
+            ),
+        )
+        # catalog-sync-session-autobegin TASK.md §3 M4 — NO rollback here, deliberately.
+        # See catalog/api/deps.py's twin comment: a per-dependency close does not compose,
+        # and keeping one as "defence in depth" MASKS the runtime seam sweep. The guards
+        # above each restore the state they found, conditionally (M3).
         return identity
+    except SessionRevocationUnavailableError:
+        # M6: store failure is a 503, never a 401 that lies about a live token.
+        raise AUTH_UNAVAILABLE.exc() from None
     except InvalidTokenError:
         raise AUTH_TOKEN_INVALID.exc() from None
 

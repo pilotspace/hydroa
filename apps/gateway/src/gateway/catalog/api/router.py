@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.catalog.api.deps import (
     get_admin_models_session,
     get_current_identity,
@@ -315,6 +316,7 @@ async def get_admin_models(
 
 @admin_models_router.put("/{model_id:path}", response_model=AdminModelItem)
 async def put_admin_model(
+    request: Request,
     model_id: str,
     body: PutModelRequest,
     identity: Annotated[Identity, Depends(require_owner_or_admin)],
@@ -367,6 +369,21 @@ async def put_admin_model(
     await session.execute(stmt)
     await session.commit()
 
+    # M8/A24: a JWT-authed /admin surface — the HUMAN is the actor. A model override
+    # changes what a whole tenant may route to, so "who flipped this model, and when"
+    # must be answerable from the audit trail. Fail-open, inline (A26).
+    audit_event = build_audit_event(
+        action="catalog.model_upsert",
+        target_type="model",
+        target_id=model_id,
+        tenant_id=identity.tenant_id,
+        actor_user_id=identity.user_id,
+        actor_email=identity.email,
+        metadata={"enabled": body.enabled},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
+
     return AdminModelItem(
         id=model_row.id,
         name=model_row.name,
@@ -417,5 +434,19 @@ async def admin_sync_catalog(
             await _r.refresh()
     except Exception:  # noqa: S110 — intentional; refresh is fail-safe, never alters sync response
         pass
+
+    # M8/A24: the operator-triggered catalog re-sync is attributed to the human who
+    # triggered it. Its /internal twin stays exempt (A27) — it carries no principal.
+    audit_event = build_audit_event(
+        action="catalog.sync",
+        target_type="catalog",
+        target_id="catalog",
+        tenant_id=identity.tenant_id,
+        actor_user_id=identity.user_id,
+        actor_email=identity.email,
+        metadata={"synced": synced, "synced_at": synced_at},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
 
     return CatalogSyncResponse(synced=synced, synced_at=synced_at)

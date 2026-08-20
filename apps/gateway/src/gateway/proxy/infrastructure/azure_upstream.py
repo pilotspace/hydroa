@@ -44,7 +44,7 @@ from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
 from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG
 from gateway.proxy.infrastructure.azure_config import AzureConfig
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ _NON_STREAM_TIMEOUT = 120.0
 _STREAM_READ_TIMEOUT = 300.0
 
 
-class AzureCompletionUpstream:
+class AzureCompletionUpstream(TenantScopedBreakerMixin):
     """Forward chat completions to Azure OpenAI deployments (OpenAI-shaped passthrough).
 
     A single instance is shared for the app lifetime (wired in main.py onto
@@ -80,7 +80,7 @@ class AzureCompletionUpstream:
     ) -> None:
         # Credentials resolved per-request from the contextvar (task-3 BYOK).
         self._token_provider_cache = token_provider_cache
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 connect=_CONNECT_TIMEOUT,
@@ -158,6 +158,7 @@ class AzureCompletionUpstream:
         Credential is read from the request contextvar (AzureCredential); raises
         ProviderKeyMissing("azure") before any HTTP if unset or wrong type (fail-closed).
         """
+        breaker = self._breaker_for()
         cfg, cred = self._resolve_config_and_cred()
         model = str(payload.get("model", ""))
         deployment = cfg.resolve_deployment(model)
@@ -180,7 +181,7 @@ class AzureCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
-            breaker=self._breaker,
+            breaker=breaker,
             provider="azure",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -202,11 +203,12 @@ class AzureCompletionUpstream:
         ProviderKeyMissing("azure") before any HTTP if unset or wrong type (fail-closed).
         """
         # Fail-closed: read & validate credential BEFORE yielding the generator object.
+        breaker = self._breaker_for()
         cfg, cred = self._resolve_config_and_cred()
         model = str(payload.get("model", ""))
         deployment = cfg.resolve_deployment(model)
         url = cfg.build_url(deployment, "chat/completions")
-        self._breaker.guard()
+        breaker.guard()
         # Azure is a non-grounding provider: strip web_search flag before it reaches upstream.
         outbound = {k: v for k, v in payload.items() if k != WEB_SEARCH_FLAG}
 
@@ -235,11 +237,11 @@ class AzureCompletionUpstream:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
             # RemoteProtocolError = graceful mid-stream peer-close (Finding C, v35):
@@ -250,7 +252,7 @@ class AzureCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

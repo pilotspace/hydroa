@@ -119,6 +119,28 @@ class FakeRedis:
         self._maybe_raise()
         return self._get_live(key)
 
+    async def scan(
+        self, cursor: int = 0, match: str | None = None, count: int | None = None
+    ) -> tuple[int, list[str]]:
+        """Single-shot SCAN over live keys (the cursor always returns to 0).
+
+        tenant-scoped-breaker-cooldown (R9 P0 #3): `snapshot_state(tenant_id=None)`
+        — the superadmin routing board's cross-partition aggregate — walks the
+        keyspace with SCAN. `match` is only ever the fixed key prefix plus "*"
+        (the gate never puts caller-supplied data in the pattern), so a prefix
+        compare is a faithful stand-in for Redis glob here. Mirrors the same
+        method on tests/routing_admin/conftest.py's fake so there is one
+        behaviour, not two.
+        """
+        self._log("SCAN")
+        del count
+        self._maybe_raise()
+        keys = [k for k in list(self._store) if self._get_live(k) is not None]
+        if match is not None:
+            prefix = match[:-1] if match.endswith("*") else match
+            keys = [k for k in keys if k.startswith(prefix)]
+        return 0, keys
+
     async def incr(self, key: str) -> int:
         self._log("INCR")
         self._maybe_raise()

@@ -5,6 +5,7 @@ from typing import Protocol
 from gateway.tenants.domain.entities import (
     Identity,
     ImpersonationContext,
+    PasswordResetToken,
     PendingPersonalSignup,
     Role,
     User,
@@ -39,6 +40,36 @@ class IdentityRepository(Protocol):
         ...
 
     async def get_user_by_email(self, email: str) -> User | None: ...
+
+    async def create_password_reset_token(
+        self, *, user_id: uuid.UUID, token_hash: str, expires_at: datetime
+    ) -> None:
+        """ADDITIVE (auth-hardening-login-sessions TASK.md §3 M3 — FROZEN @ v1,
+        SECURITY): persist one hashed-at-rest, TTL-bounded reset token row. The raw
+        token never reaches this method."""
+        ...
+
+    async def get_password_reset_token(self, *, token_hash: str) -> PasswordResetToken | None:
+        """Read one reset-token row (joined with its user) by hash; None if absent."""
+        ...
+
+    async def consume_password_reset_token(
+        self, *, token_hash: str, password_hash: str, not_before: datetime
+    ) -> bool:
+        """ADDITIVE (auth-hardening-login-sessions TASK.md §3 M3/M4 — FROZEN @ v1,
+        SECURITY): in ONE transaction, mark the token used (guarded WHERE used_at IS
+        NULL — single-use under concurrency, the consume_pending_signup idiom), set the
+        user's password_hash, and advance users.sessions_not_before to not_before (M4:
+        every pre-reset session dies at the identity seam). False iff the guarded
+        UPDATE matched no row (already consumed concurrently) — nothing else persists."""
+        ...
+
+    async def revoke_session(self, *, jti: str, user_id: uuid.UUID, expires_at: datetime) -> None:
+        """ADDITIVE (auth-hardening-login-sessions TASK.md §3 M5 — FROZEN @ v1,
+        SECURITY): denylist one session jti until expires_at (the token's own ceiling
+        bounds row lifetime). Idempotent (double-logout is a no-op, never an error);
+        opportunistically GCs already-expired rows."""
+        ...
 
     async def issue_or_reissue_pending_signup(
         self,
@@ -187,6 +218,24 @@ class UserLivenessGuard(Protocol):
         guard — every other identity check in this codebase is role/tenant-claims-only and
         never validates user_id resolves to a real row). No-op (returns None) iff the user
         is active or the row does not exist."""
+        ...
+
+
+class SessionRevocationGuard(Protocol):
+    """Per-request revocation check for the presented session JWT itself
+    (auth-hardening-login-sessions TASK.md §3 M5/M6, FROZEN @ v1). Modeled on
+    ImpersonationSessionGuard above, but answers a QUESTION instead of raising: the
+    caller (ensure_session_not_revoked, tenants/domain/authz.py) owns the mapping of
+    True -> the same 401 as any invalid token, so a revoked session is
+    indistinguishable from a never-valid one at the edge (no revocation oracle)."""
+
+    async def is_revoked(self, identity: Identity) -> bool:
+        """True iff the token must be refused: its jti is denylisted
+        (POST /admin/auth/logout) or its iat strictly predates the user's
+        sessions_not_before watermark (password-reset confirm). Raise
+        SessionRevocationUnavailableError (tenants/domain/errors.py) iff the answer
+        cannot be produced within the adapter's own bounded timeout — fail-CLOSED via
+        the 503 path (M6), never a silent allow and never a lying 401."""
         ...
 
 

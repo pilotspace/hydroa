@@ -249,7 +249,7 @@ async def test_bedrock_midstream_network_error_after_partial() -> None:
     finally:
         reset_provider_credential(token)
     assert delivered and b"assistant" in delivered[0]
-    assert adapter._breaker._failure_count > 0  # type: ignore[attr-defined]
+    assert adapter._breaker_for()._failure_count > 0  # type: ignore[attr-defined]
 
 
 def test_bedrock_stepper_finish_idempotent() -> None:

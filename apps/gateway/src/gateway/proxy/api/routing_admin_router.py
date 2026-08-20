@@ -141,7 +141,15 @@ async def _routing_response(request: Request, effective: Settings) -> dict[str, 
                 state = "closed"
             else:
                 try:
-                    state = await gate.snapshot_state(model_id)
+                    # M7/A3/A18: this is a require_superadmin route with NO tenant in
+                    # scope, and after partitioning a model's circuit state no longer
+                    # has one answer. tenant_id=None asks for the honest CROSS-partition
+                    # aggregate — a model open for ANY tenant is never reported as
+                    # plainly "closed", and a partition the gate could not inspect
+                    # reports "unknown". Deliberately NOT re-scoped to a single tenant:
+                    # an operator reading a green board over a live open circuit is the
+                    # exact failure this board exists to prevent.
+                    state = await gate.snapshot_state(model_id, tenant_id=None)
                 except Exception as exc:
                     structlog.get_logger().warning(
                         "cooldown_gate_redis_error",

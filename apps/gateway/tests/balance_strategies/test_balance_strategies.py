@@ -85,13 +85,13 @@ class _Upstream:
 class _Gate:
     """Always-available health gate — zero cooldown interaction."""
 
-    async def is_available(self, model_id: str) -> bool:
+    async def is_available(self, model_id: str, *, tenant_id: object) -> bool:
         return True
 
-    async def record_failure(self, model_id: str) -> None:
+    async def record_failure(self, model_id: str, *, tenant_id: object) -> None:
         pass
 
-    async def record_success(self, model_id: str) -> None:
+    async def record_success(self, model_id: str, *, tenant_id: object) -> None:
         pass
 
 

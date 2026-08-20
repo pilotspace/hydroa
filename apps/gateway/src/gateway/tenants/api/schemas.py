@@ -63,3 +63,23 @@ class MeResponse(BaseModel):
     # workspace from session context. Empty string if the tenant row is somehow absent
     # (a valid session always has one; /me must never 500 on this).
     tenant_name: str = ""
+
+
+class PasswordResetRequest(BaseModel):
+    """auth-hardening-login-sessions TASK.md §3 M2 (FROZEN @ v1, SECURITY)."""
+
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """auth-hardening-login-sessions TASK.md §3 M3 (FROZEN @ v1, SECURITY)."""
+
+    token: str
+    new_password: str
+
+
+class OkResponse(BaseModel):
+    """Uniform acknowledgement body — byte-identical for every caller
+    (R:ENUMERATION_ORACLE: the reset-request 202 must not vary by account existence)."""
+
+    ok: bool = True

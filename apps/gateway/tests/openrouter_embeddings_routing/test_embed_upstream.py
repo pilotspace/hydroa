@@ -114,4 +114,4 @@ async def test_embed_raises_upstream_unavailable_on_network_failure() -> None:
             await adapter.embed({"model": "x", "input": "hi"})
     finally:
         reset_provider_credential(token)
-    assert adapter._breaker._failure_count == 1  # type: ignore[attr-defined]
+    assert adapter._breaker_for()._failure_count == 1  # type: ignore[attr-defined]

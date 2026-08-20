@@ -18,6 +18,10 @@ from gateway.proxy.domain.credential_context import reset_provider_credential, s
 from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.anthropic_upstream import AnthropicCompletionUpstream
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerRegistry,
+    breaker_tenant_key,
+)
 from gateway.proxy.infrastructure.gemini_upstream import GeminiCompletionUpstream
 from gateway.proxy.infrastructure.openrouter_upstream import OpenRouterCompletionUpstream
 
@@ -28,6 +32,7 @@ COMPLETION_PATH = "/chat/completions"
 
 
 @pytest.fixture(autouse=True)
+
 def _inject_test_credential() -> AsyncIterator[None]:
     """Credential-resolution-seam BUILD: inject a Bearer credential via contextvar
     for the duration of every retry_policy test so adapter._auth_headers() succeeds.
@@ -162,7 +167,7 @@ def make_upstream(
     Sets every attribute complete() reads — including the v19 retry-seam additions.
     """
     upstream = OpenRouterCompletionUpstream.__new__(OpenRouterCompletionUpstream)
-    upstream._breaker = breaker if breaker is not None else CountingCircuitBreaker()
+    _bind_breaker(upstream, breaker if breaker is not None else CountingCircuitBreaker())
     upstream._client = httpx.AsyncClient(
         base_url="https://openrouter.ai/api/v1",
         transport=transport,
@@ -199,7 +204,7 @@ def make_anthropic_upstream(
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
     if breaker is not None:
-        upstream._breaker = breaker
+        _bind_breaker(upstream, breaker)
     upstream._max_retries = max_retries
     upstream._backoff_base = backoff_base
     upstream._retry_deadline_s = retry_deadline_s
@@ -229,8 +234,22 @@ def make_gemini_upstream(
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
     if breaker is not None:
-        upstream._breaker = breaker
+        _bind_breaker(upstream, breaker)
     upstream._max_retries = max_retries
     upstream._backoff_base = backoff_base
     upstream._retry_deadline_s = retry_deadline_s
     return upstream
+
+
+def _bind_breaker(upstream: object, breaker: object) -> None:
+    """Pin `breaker` as the breaker this upstream resolves for the current tenant.
+
+    tenant-scoped-breaker-cooldown (R9 P0 #3): adapters no longer hold one
+    process-wide `self._breaker`; they resolve a breaker PER TENANT from their own
+    bounded registry. These tests run with no credential tenant in context, so the
+    key they resolve is the unattributed sentinel — seeding that slot pins the
+    counting double for the whole call exactly as the old attribute did.
+    """
+    upstream._tenant_breakers = TenantScopedBreakerRegistry(  # noqa: SLF001
+        store={breaker_tenant_key(): breaker}  # type: ignore[dict-item]
+    )

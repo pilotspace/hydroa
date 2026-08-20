@@ -8,17 +8,23 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from gateway.audit.application.audit_writer import record_audit
 from gateway.audit.domain.audit_event import AuditEvent
 from gateway.email.application.email_dispatch import send_email
+from gateway.email.application.password_reset_email_template import render_password_reset_email
 from gateway.email.application.signup_confirm_email_template import render_signup_confirm_email
 from gateway.email.application.signup_conflict_notice_email_template import (
     render_signup_conflict_notice_email,
 )
 from gateway.email.domain.ports import EmailSender
 from gateway.keys.infrastructure.sha256_hasher import Sha256SecretHasher
-from gateway.tenants.domain.authz import ensure_impersonation_session_live
+from gateway.tenants.domain.authz import (
+    ensure_impersonation_session_live,
+    ensure_session_not_revoked,
+)
 from gateway.tenants.domain.entities import MIN_PASSWORD_LENGTH, Identity, Role
 from gateway.tenants.domain.errors import (
     IndividualPlanMissingError,
     InvalidCredentialsError,
+    PasswordResetExpiredError,
+    PasswordResetInvalidError,
     PendingSignupExpiredError,
     PendingSignupNotFoundError,
     WeakPasswordError,
@@ -28,6 +34,7 @@ from gateway.tenants.domain.ports import (
     IdentityRepository,
     ImpersonationSessionGuard,
     PasswordHasher,
+    SessionRevocationGuard,
     TokenService,
 )
 
@@ -155,14 +162,25 @@ class GetIdentityUseCase:
     """
 
     def __init__(
-        self, tokens: TokenService, guard_factory: Callable[[], ImpersonationSessionGuard]
+        self,
+        tokens: TokenService,
+        guard_factory: Callable[[], ImpersonationSessionGuard],
+        *,
+        revocation_guard_factory: Callable[[], SessionRevocationGuard],
     ) -> None:
+        # revocation_guard_factory is REQUIRED and keyword-only (auth-hardening-login-
+        # sessions TASK.md §3 M5): a construction site cannot silently opt out of the
+        # revocation check — the same no-silent-skip posture as LoginUseCase's
+        # keyword-only hasher wiring.
         self._tokens = tokens
         self._guard_factory = guard_factory
+        self._revocation_guard_factory = revocation_guard_factory
 
     async def execute(self, token: str) -> Identity:
         identity = self._tokens.decode(token)
         await ensure_impersonation_session_live(identity, self._guard_factory())
+        # auth-hardening-login-sessions TASK.md §3 M5 — revocation call site 5/5.
+        await ensure_session_not_revoked(identity, self._revocation_guard_factory())
         return identity
 
 
@@ -278,4 +296,161 @@ class ConfirmPendingSignupUseCase:
             password_hash=pending.password_hash,
             account_type="personal",
             plan_id=plan_id,
+        )
+
+
+class RequestPasswordResetUseCase:
+    """auth-hardening-login-sessions TASK.md §3 (FROZEN @ v1, SECURITY) — M2/M3.
+
+    ENUMERATION-UNIFORM (R:ENUMERATION_ORACLE): known and unknown emails take the SAME
+    202 with the SAME body; the only divergence (mint token + row + email) is scheduled
+    fire-and-forget via asyncio.ensure_future — never awaited inline — mirroring
+    IssuePendingSignupUseCase's own M7 uniform-timing posture. A3 (Tin, freeze): reset is
+    allowed for ALL users, including SSO/SCIM-provisioned ones — possession of the inbox
+    is the credential.
+    """
+
+    def __init__(
+        self,
+        repository: IdentityRepository,
+        email_sender: EmailSender,
+        *,
+        reset_ttl_seconds: int,
+        origin: str,
+    ) -> None:
+        self._repository = repository
+        self._email_sender = email_sender
+        self._reset_ttl_seconds = reset_ttl_seconds
+        self._origin = origin
+
+    async def execute(self, *, email: str) -> None:
+        normalized_email = email.lower()
+        user = await self._repository.get_user_by_email(normalized_email)
+        if user is None:
+            # Uniform silent path — no row, no email, no observable difference (M2).
+            return
+        token = generate_confirm_token()  # 256-bit CSPRNG, same class as signup-confirm
+        token_hash = _token_hasher.hash(token)
+        expires_at = datetime.now(UTC) + timedelta(seconds=self._reset_ttl_seconds)
+        await self._repository.create_password_reset_token(
+            user_id=user.id, token_hash=token_hash, expires_at=expires_at
+        )
+        message = render_password_reset_email(to=normalized_email, token=token, origin=self._origin)
+        asyncio.ensure_future(send_email(self._email_sender, message))  # noqa: RUF006
+
+
+class ConfirmPasswordResetUseCase:
+    """auth-hardening-login-sessions TASK.md §3 (FROZEN @ v1, SECURITY) — M3/M4.
+
+    Check ORDER is contractual (A16): validity (absent/used) -> expiry -> weak-password
+    LAST — and a weak-password reject NEVER consumes the token (the user retries with the
+    same emailed link). The consume itself is one atomic repository transaction: token
+    used_at + new password_hash + sessions_not_before watermark (M4 — every pre-reset
+    session dies at the identity seam on its next request). Audit 'auth.password_reset'
+    is fire-and-forget with NO token/password material in metadata (M7).
+    """
+
+    def __init__(
+        self,
+        repository: IdentityRepository,
+        hasher: PasswordHasher,
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        self._repository = repository
+        self._hasher = hasher
+        self._session_factory = session_factory
+
+    async def execute(self, *, token: str, new_password: str) -> None:
+        token_hash = _token_hasher.hash(token)
+        row = await self._repository.get_password_reset_token(token_hash=token_hash)
+        if row is None or row.used_at is not None:
+            raise PasswordResetInvalidError
+        if datetime.now(UTC) >= row.expires_at:
+            raise PasswordResetExpiredError
+        if len(new_password) < MIN_PASSWORD_LENGTH:
+            # A16: weak-last, token deliberately NOT consumed — retry with the same link.
+            raise WeakPasswordError
+        password_hash = self._hasher.hash(new_password)
+        consumed = await self._repository.consume_password_reset_token(
+            token_hash=token_hash,
+            password_hash=password_hash,
+            not_before=datetime.now(UTC),
+        )
+        if not consumed:
+            # Lost a concurrent double-confirm race — the guarded UPDATE matched nothing.
+            raise PasswordResetInvalidError
+        # Awaited INLINE (not ensure_future): record_audit is fail-open + bounded, and
+        # this surface is authenticated — no login-style timing mask to preserve. Inline
+        # makes the M6 audit visible-when-the-response-lands instead of racing it.
+        await record_audit(
+            self._session_factory,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=row.tenant_id,
+                actor_user_id=row.user_id,
+                actor_email=row.email,
+                action="auth.password_reset",
+                target_type="user",
+                target_id=str(row.user_id),
+                result="success",
+                metadata={"method": "email_token"},
+                created_at=datetime.now(UTC),
+            ),
+        )
+
+
+class LogoutUseCase:
+    """auth-hardening-login-sessions TASK.md §3 (FROZEN @ v1, SECURITY) — M5.
+
+    Denylists the presented (already-decoded) session's jti until the token's own TTL
+    ceiling; the identity seams (ensure_session_not_revoked, 5 call sites) refuse it
+    from the next request on. A legacy token WITHOUT a jti (A7) logs out as a no-op row
+    (nothing to denylist — it stays revocable only via the sessions_not_before
+    watermark); still 204, still audited. Audit 'auth.logout' is fire-and-forget with
+    no token material in metadata (M7).
+    """
+
+    def __init__(
+        self,
+        repository: IdentityRepository,
+        *,
+        jwt_ttl_seconds: int,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        self._repository = repository
+        self._jwt_ttl_seconds = jwt_ttl_seconds
+        self._session_factory = session_factory
+
+    async def execute(self, *, identity: Identity) -> None:
+        if identity.jti is not None:
+            # expires_at: iat + ttl when iat is known (the token's exact ceiling),
+            # else now + ttl (a safe upper bound — never shorter than the real exp).
+            base = (
+                datetime.fromtimestamp(identity.iat, tz=UTC)
+                if identity.iat is not None
+                else datetime.now(UTC)
+            )
+            await self._repository.revoke_session(
+                jti=identity.jti,
+                user_id=identity.user_id,
+                expires_at=base + timedelta(seconds=self._jwt_ttl_seconds),
+            )
+        # Awaited INLINE (not ensure_future): record_audit is fail-open + bounded, and
+        # this surface is authenticated — no login-style timing mask to preserve. Inline
+        # makes the M6 audit visible-when-the-response-lands instead of racing it.
+        await record_audit(
+            self._session_factory,
+            AuditEvent(
+                id=uuid.uuid4(),
+                tenant_id=identity.tenant_id,
+                actor_user_id=identity.user_id,
+                actor_email=identity.email,
+                action="auth.logout",
+                target_type="user",
+                target_id=str(identity.user_id),
+                result="success",
+                metadata={"had_jti": identity.jti is not None},
+                created_at=datetime.now(UTC),
+            ),
         )

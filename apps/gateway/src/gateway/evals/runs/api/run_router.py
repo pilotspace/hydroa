@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import EVAL_RUN_INVALID, EVAL_RUN_NOT_FOUND, EVAL_SET_NOT_FOUND
 from gateway.core.errors import ProblemError
@@ -140,6 +141,21 @@ async def launch_eval_run(
         tenant_id=run.tenant_id, eval_set_id=run.eval_set_id, created_at_max=run.created_at
     )
     case_count = len(snapshot)
+
+    audit_event = build_audit_event(
+        action="evals.run_launch",
+        target_type="eval_run",
+        target_id=to_run_wire_id(run.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={
+            "eval_set_id": to_set_wire_id(resolved_set),
+            "model": model,
+            "case_count": case_count,
+        },
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
 
     await _enqueue_or_drive(request, executor, run_id=run.id, raw_key=raw_key)
 

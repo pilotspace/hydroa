@@ -42,6 +42,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from gateway.audit.application.audit_writer import build_audit_event, record_audit
 from gateway.core.db import get_session
 from gateway.core.error_catalog import (
     AUTH_KEY_EXPIRED,
@@ -233,6 +234,7 @@ def _vector_store_file_object(row: VectorStoreFileRow) -> dict[str, Any]:
 @vector_stores_router.post("/v1/vector_stores", status_code=200, response_model=None)
 async def create_vector_store(
     body: dict[str, Any],
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[VectorStoreRepository, Depends(_get_repo)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -258,6 +260,15 @@ async def create_vector_store(
         metadata=metadata,
     )
     await session.commit()
+    audit_event = build_audit_event(
+        action="vector_store.create",
+        target_type="vector_store",
+        target_id=to_wire_id(row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return _vector_store_object(row)
 
 
@@ -332,6 +343,7 @@ async def retrieve_vector_store(
 )
 async def delete_vector_store(
     vector_store_id: str,
+    request: Request,
     authz: Annotated[AuthzResult, Depends(_authenticate)],
     repo: Annotated[VectorStoreRepository, Depends(_get_repo)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -347,6 +359,15 @@ async def delete_vector_store(
     if not deleted:
         return _not_found()
     await session.commit()
+    audit_event = build_audit_event(
+        action="vector_store.delete",
+        target_type="vector_store",
+        target_id=to_wire_id(resolved),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
     return {"id": to_wire_id(resolved), "object": "vector_store.deleted", "deleted": True}
 
 
@@ -491,6 +512,16 @@ async def attach_vector_store_file(
     # status == "completed": returned as-is, never re-run.
 
     await session.commit()
+    audit_event = build_audit_event(
+        action="vector_store.file_attach",
+        target_type="vector_store_file",
+        target_id=to_file_wire_id(file_row.id),
+        tenant_id=authz.tenant_id,
+        actor_key_id=authz.key_id,
+        metadata={"vector_store_id": to_wire_id(resolved_store), "status": row.status},
+    )
+    if audit_event is not None:
+        await record_audit(request.app.state.sessionmaker, audit_event)
 
     if should_enqueue:
         await _enqueue_or_fallback(request, row.id)

@@ -20,6 +20,10 @@ from gateway.proxy.domain.credential_context import (
 )
 from gateway.proxy.domain.provider_credentials import BearerCredential
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerRegistry,
+    breaker_tenant_key,
+)
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
 from tests import _redis_env
 
@@ -61,7 +65,9 @@ def make_openai_upstream(
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
     if breaker is not None:
-        upstream._breaker = breaker
+        upstream._tenant_breakers = TenantScopedBreakerRegistry(  # type: ignore[attr-defined]
+            store={breaker_tenant_key(): breaker}  # type: ignore[dict-item]
+        )
     upstream._max_retries = max_retries
     upstream._backoff_base = backoff_base
     upstream._retry_deadline_s = retry_deadline_s

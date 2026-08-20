@@ -215,6 +215,41 @@ class Settings(BaseSettings):
     # — the 256-bit token space is already brute-force-infeasible).
     personal_signup_confirm_rpm: int = 30  # GATEWAY_PERSONAL_SIGNUP_CONFIRM_RPM
 
+    # --- auth-hardening-login-sessions TASK.md §3 (SECURITY) -----------------------
+    # Per-client-IP / per-normalized-email fixed-window limits on POST /admin/auth/login
+    # (M1) — reuses the EXISTING InvitePublicRateLimiter with 2 new `action` labels.
+    # The per-email cap is also the lockout (A4): decays with the window, no persistent
+    # lock state, so an anonymous attacker can never permanently lock a victim out.
+    login_ip_rpm: int = 20  # GATEWAY_LOGIN_IP_RPM
+    login_email_rpm: int = 10  # GATEWAY_LOGIN_EMAIL_RPM
+    # POST /admin/auth/password-reset request limits (per-IP / per-email) + token TTL.
+    password_reset_ip_rpm: int = 10  # GATEWAY_PASSWORD_RESET_IP_RPM
+    password_reset_email_rpm: int = 3  # GATEWAY_PASSWORD_RESET_EMAIL_RPM
+    password_reset_ttl_seconds: int = 1800  # GATEWAY_PASSWORD_RESET_TTL_SECONDS
+    # Bounded revocation/watermark read at the identity seam (M6) — mirrors
+    # impersonation_live_check_timeout_seconds's exact style; fail-CLOSED on breach.
+    session_revocation_check_timeout_seconds: float = Field(default=2.0, gt=0)
+
+    @field_validator(
+        "login_ip_rpm",
+        "login_email_rpm",
+        "password_reset_ip_rpm",
+        "password_reset_email_rpm",
+        "password_reset_ttl_seconds",
+    )
+    @classmethod
+    def _validate_auth_hardening_positive_knobs(cls, v: int) -> int:
+        """Fail loud on a non-positive auth-hardening knob — mirrors
+        _validate_personal_signup_positive_knobs exactly (a zero or negative value is a
+        misconfiguration, not a disable signal)."""
+        if v <= 0:
+            raise ValueError(
+                "INVALID_AUTH_HARDENING_KNOB: login_ip_rpm, login_email_rpm, "
+                "password_reset_ip_rpm, password_reset_email_rpm, and "
+                f"password_reset_ttl_seconds must each be a positive integer (> 0); got {v!r}"
+            )
+        return v
+
     @field_validator(
         "personal_signup_ip_rpm", "personal_signup_email_rpm", "personal_signup_confirm_rpm"
     )

@@ -34,6 +34,7 @@ from gateway.artifacts.infrastructure.orm import (  # noqa: F401 — registers A
     ArtifactRow as _ArtifactRow,  # pyright: ignore[reportUnusedImport]  — side-effect import; registers ORM table on Base.metadata
 )
 from gateway.audit.api.router import audit_export_router
+from gateway.audit.application.audit_writer import bind_audit_metrics
 from gateway.auth.api.oidc_admin_router import oidc_admin_router
 from gateway.auth.api.oidc_router import oidc_router
 from gateway.auth.api.saml_admin_router import saml_admin_router
@@ -505,6 +506,25 @@ def _files_route_cap(files_max_bytes: int) -> int:
     if files_max_bytes <= 0:
         return _FILES_UNLIMITED_ROUTE_CAP
     return files_max_bytes + _FILES_MULTIPART_HEADROOM_BYTES
+
+
+# upload-bounds-audio TASK.md §3 M3/A4 — the same headroom idea for /v1/audio/ multipart
+# STT: the body (file part + `model` field + MIME framing) is at most a few hundred bytes
+# larger than the raw file, so 1 MiB keeps TranscriptionUseCase's per-file
+# ERR_PAYLOAD_AUDIO_TOO_LARGE check the sole decider for any raw file up to
+# max_audio_upload_bytes (without it, a file of EXACTLY the cap is wrongly refused by the
+# coarse edge guard — R:BOUNDARY_THEATER).
+_AUDIO_MULTIPART_HEADROOM_BYTES = 1024 * 1024
+
+
+def _audio_route_cap(max_audio_upload_bytes: int) -> int:
+    """The BodySizeLimitMiddleware cap for /v1/audio/: max_audio_upload_bytes + multipart
+    headroom (so the use case owns the exact ERR_PAYLOAD_AUDIO_TOO_LARGE boundary), or a
+    large FINITE ceiling when the per-file cap is disabled (0) — never unlimited (A4), and
+    never 0, which would block every audio request at the edge."""
+    if max_audio_upload_bytes <= 0:
+        return _FILES_UNLIMITED_ROUTE_CAP
+    return max_audio_upload_bytes + _AUDIO_MULTIPART_HEADROOM_BYTES
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -1171,6 +1191,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.email_sender = build_email_sender(settings)
     app.state.engine = engine
     app.state.sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
+    # M9 (audit-coverage-structural-guard): park THIS app's metrics registry on THIS
+    # app's sessionmaker so record_audit's fail-open except branch can count a swallowed
+    # audit write without a module-level global (which would be last-app-wins).
+    bind_audit_metrics(app.state.sessionmaker, app.state.metrics_registry)
     # residency-policy TASK.md §3 (FROZEN @ v2): ONE shared ResidencyLookup instance,
     # wired into BOTH enforcement tiers (Tier 1 governance checks via *_deps.py/
     # realtime_*.py/memory/api/router.py, Tier 2 router dial-constraint filter via
@@ -1909,7 +1933,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # raw file, so a raw file of exactly files_max_bytes must still pass the outer
             # guard and reach the router, which owns ERR_FILE_TOO_LARGE.
             "/v1/files": _files_route_cap(settings.files_max_bytes),
-            "/v1/audio/": settings.max_audio_upload_bytes,
+            # upload-bounds-audio §3 M3: same headroom shape as /v1/files above — the
+            # coarse edge cap sits 1 MiB above max_audio_upload_bytes so a raw audio file
+            # of EXACTLY the cap still reaches the handler and TranscriptionUseCase owns
+            # the precise 413 ERR_PAYLOAD_AUDIO_TOO_LARGE boundary. Beyond
+            # cap+headroom (or with a lying/absent Content-Length) this guard is still
+            # authoritative with ERR_REQUEST_BODY_TOO_LARGE (M4).
+            "/v1/audio/": _audio_route_cap(settings.max_audio_upload_bytes),
             "/v1/": settings.max_json_body_bytes,
             "/admin/": settings.max_json_body_bytes,
         },

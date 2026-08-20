@@ -141,6 +141,34 @@ AUTH_PASSWORD_WEAK = ErrorSpec(
     400, "ERR_AUTH_PASSWORD_WEAK", "Password must be at least 10 characters"
 )
 
+#: POST /admin/auth/password-reset/confirm — token unknown or already consumed
+#: (auth-hardening-login-sessions TASK.md §3 M3/E5, SECURITY). Safe to disclose here
+#: (R-sec-6, the pending-signup precedent): only whoever possesses the emailed token
+#: ever observes this — the initial /password-reset endpoint stays a uniform 202.
+AUTH_RESET_INVALID = ErrorSpec(
+    400,
+    "ERR_AUTH_RESET_INVALID",
+    "This password-reset link is invalid or has already been used",
+)
+
+#: POST /admin/auth/password-reset/confirm — a matching token row existed but its TTL
+#: has passed (auth-hardening-login-sessions TASK.md §3 A5/E6 — the expiry instant is
+#: already expired, fail closed at the boundary).
+AUTH_RESET_EXPIRED = ErrorSpec(
+    400,
+    "ERR_AUTH_RESET_EXPIRED",
+    "This password-reset link has expired; request a new one",
+)
+
+#: The session-revocation store could not answer within its bound
+#: (auth-hardening-login-sessions TASK.md §3 M6/E11, SECURITY — fail CLOSED). 503, not
+#: 401: the caller's token is not known-bad, the server just cannot prove it live.
+AUTH_UNAVAILABLE = ErrorSpec(
+    503,
+    "ERR_AUTH_UNAVAILABLE",
+    "Authentication is temporarily unavailable; retry shortly",
+)
+
 #: Public signup rejected because it is disabled (invite-only). Checked FIRST,
 #: before any body validation or DB IO — see signup-and-routing-authz S1.
 SIGNUP_INVITE_ONLY = ErrorSpec(
@@ -1451,6 +1479,16 @@ PAYLOAD_IMAGE_REQUIRED = ErrorSpec(422, "ERR_PAYLOAD_INVALID", "Field 'image' is
 #: idiom.
 PAYLOAD_IMAGE_TOO_LARGE = ErrorSpec(
     413, "ERR_PAYLOAD_IMAGE_TOO_LARGE", "Uploaded image exceeds the maximum allowed size"
+)
+
+#: POST /v1/audio/transcriptions | /v1/audio/translations — the uploaded `file` exceeds
+#: `Settings.max_audio_upload_bytes`. Raised BEFORE upstream/bill (no partial charge) —
+#: the per-FILE sibling of PAYLOAD_IMAGE_TOO_LARGE (upload-bounds-audio TASK.md §3 M1/M2).
+#: Distinct from the coarse edge ERR_REQUEST_BODY_TOO_LARGE so an SDK can tell "shrink the
+#: file" from "the whole request body was too big" (A6); the /v1/audio/ route cap carries
+#: multipart headroom (main._audio_route_cap) so THIS check owns the exact boundary.
+PAYLOAD_AUDIO_TOO_LARGE = ErrorSpec(
+    413, "ERR_PAYLOAD_AUDIO_TOO_LARGE", "Uploaded audio file exceeds the maximum allowed size"
 )
 
 #: POST /v1/images/edits | /v1/images/variations — model unknown/inactive in the

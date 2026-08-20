@@ -42,13 +42,13 @@ from gateway.proxy.domain.provider_credentials import (
     GoogleServiceAccountCredential,
     ProviderKeyMissing,
 )
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.gemini_upstream import (
     _gemini_error_to_openai,
     _gemini_to_openai,
     _GeminiSSEStepper,
     _openai_to_gemini_request,
 )
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.proxy.infrastructure.vertex_ad import VertexTokenProvider, VertexTokenProviderCache
 
@@ -142,7 +142,7 @@ def _map_translation_error(exc: ValueError) -> None:
     raise  # re-raise — e.g. tool_call_id_required, ERR_UNSUPPORTED_RESPONSE_FORMAT
 
 
-class VertexCompletionUpstream:
+class VertexCompletionUpstream(TenantScopedBreakerMixin):
     """Forwards chat completions to Google Vertex AI's Gemini-publisher API.
 
     Implements the CompletionUpstream Protocol (complete + stream). Translation REUSES
@@ -177,7 +177,7 @@ class VertexCompletionUpstream:
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 connect=_CONNECT_TIMEOUT,
@@ -231,6 +231,7 @@ class VertexCompletionUpstream:
           2. credential resolution (M12/R2) — no unauthenticated request.
           3. request translation (ValueErrors mapped to 4xx ProblemError).
         """
+        breaker = self._breaker_for()
         model: str = str(payload.get("model", ""))
         location, bare_model = _parse_vertex_model(model)
         cred = self._get_credential()
@@ -256,7 +257,7 @@ class VertexCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             _render,
-            breaker=self._breaker,
+            breaker=breaker,
             provider="vertex",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -277,7 +278,8 @@ class VertexCompletionUpstream:
         resolution (R4/M9), credential resolution (M12/R2), and translation ValueErrors
         (mapped to 4xx ProblemError) all happen synchronously here, not inside _gen().
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         model: str = str(payload.get("model", ""))
         location, bare_model = _parse_vertex_model(model)
@@ -311,11 +313,11 @@ class VertexCompletionUpstream:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
 
                     stepper = _GeminiSSEStepper()
                     async for line in response.aiter_lines():
@@ -339,7 +341,7 @@ class VertexCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

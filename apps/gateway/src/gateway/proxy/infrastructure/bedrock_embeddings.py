@@ -44,9 +44,9 @@ from gateway.proxy.infrastructure.bedrock_upstream import (
     _bedrock_error_to_openai,  # pyright: ignore[reportPrivateUsage]
 )
 from gateway.proxy.infrastructure.circuit_breaker import (
-    CircuitBreaker,
     status_counts_as_upstream_failure,
 )
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -91,7 +91,7 @@ def _titan_to_openai_embeddings(
 # ---------------------------------------------------------------------------
 
 
-class BedrockEmbeddingsProvider:
+class BedrockEmbeddingsProvider(TenantScopedBreakerMixin):
     """Direct HTTP adapter for AWS Bedrock Titan embedding endpoints.
 
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
@@ -117,7 +117,7 @@ class BedrockEmbeddingsProvider:
         self._endpoint_url_override = endpoint_url  # None = derive from credential region
         self._metrics_registry = metrics_registry
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         # NOTE: No base_url set — the signer needs the full absolute URL to compute
         # the canonical host header and canonical URI correctly.
         self._client = httpx.AsyncClient(
@@ -174,6 +174,7 @@ class BedrockEmbeddingsProvider:
             (4xx, error_body) on the FIRST failed invoke call (fail-fast).
         """
         # Fail-closed: read & validate credential BEFORE any network activity.
+        breaker = self._breaker_for()
         aws = self._get_credentials()
 
         model_id: str = payload["model"]
@@ -203,7 +204,7 @@ class BedrockEmbeddingsProvider:
 
             body_bytes = json.dumps(body, separators=(",", ":")).encode("utf-8")
 
-            self._breaker.guard()
+            breaker.guard()
             try:
                 sig = sign_request(
                     method="POST",
@@ -226,7 +227,7 @@ class BedrockEmbeddingsProvider:
                     },
                 )
             except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
             if resp.status_code >= 400:
@@ -237,12 +238,12 @@ class BedrockEmbeddingsProvider:
                 # not an outage, and this breaker is per-INSTANCE — counting it would take
                 # Titan embeddings down for every other caller on this replica.
                 if status_counts_as_upstream_failure(resp.status_code):
-                    self._breaker.on_upstream_error()
+                    breaker.on_upstream_error()
                 else:
-                    self._breaker.record_success()
+                    breaker.record_success()
                 return resp.status_code, _bedrock_error_to_openai(resp.json(), resp.status_code)
 
-            self._breaker.record_success()
+            breaker.record_success()
             j = resp.json()
             vectors.append(j["embedding"])
             total_tokens += int(j.get("inputTextTokenCount", 0))

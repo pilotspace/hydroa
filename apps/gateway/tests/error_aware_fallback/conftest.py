@@ -134,13 +134,13 @@ class SequencedFakeUpstream:
 class AlwaysAvailableGate:
     """All candidates available; full ModelHealthGate protocol."""
 
-    async def is_available(self, model_id: str) -> bool:
+    async def is_available(self, model_id: str, *, tenant_id: object) -> bool:
         return True
 
-    async def record_failure(self, model_id: str) -> None:
+    async def record_failure(self, model_id: str, *, tenant_id: object) -> None:
         pass
 
-    async def record_success(self, model_id: str) -> None:
+    async def record_success(self, model_id: str, *, tenant_id: object) -> None:
         pass
 
 
@@ -152,13 +152,13 @@ class RecordingFakeGate:
         self.failure_calls: list[str] = []
         self.success_calls: list[str] = []
 
-    async def is_available(self, model_id: str) -> bool:
+    async def is_available(self, model_id: str, *, tenant_id: object) -> bool:
         return model_id not in self._unavailable
 
-    async def record_failure(self, model_id: str) -> None:
+    async def record_failure(self, model_id: str, *, tenant_id: object) -> None:
         self.failure_calls.append(model_id)
 
-    async def record_success(self, model_id: str) -> None:
+    async def record_success(self, model_id: str, *, tenant_id: object) -> None:
         self.success_calls.append(model_id)
 
 

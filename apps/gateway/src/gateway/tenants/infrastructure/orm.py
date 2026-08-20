@@ -358,6 +358,14 @@ class UserRow(Base):
     deactivated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # sessions_not_before — additive column (auth-hardening-login-sessions M4/M5).
+    # NULL = no user-wide revocation ever issued (default, all existing rows unaffected).
+    # A session JWT whose iat predates this watermark is refused at the identity seam;
+    # set to now() by password-reset confirm so a stolen session never survives the
+    # victim's reset. Mirrors deactivated_at's nullable-TIMESTAMPTZ shape exactly.
+    sessions_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
 
 class InviteRow(Base):
@@ -610,3 +618,40 @@ class PendingPersonalSignupRow(Base):
     confirm_token_hash: Mapped[str] = mapped_column(Text, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PasswordResetTokenRow(Base):
+    """password_reset_tokens — hashed-at-rest, single-use, TTL-bounded reset tokens
+    (auth-hardening-login-sessions TASK.md §3 M3, FROZEN @ v1, SECURITY). Purely
+    additive. Mirrors pending_personal_signups' hashed-token convention: the raw
+    256-bit token exists only in the emailed link; this row stores sha256(token).
+    used_at NULL = live; set atomically with the password write (single-use, E5)."""
+
+    __tablename__ = "password_reset_tokens"
+
+    token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RevokedAuthSessionRow(Base):
+    """revoked_auth_sessions — server-side jti denylist for session JWTs
+    (auth-hardening-login-sessions TASK.md §3 M5, FROZEN @ v1, SECURITY). Purely
+    additive. A row's presence refuses that jti at the identity seam; expires_at (the
+    token's own ceiling) bounds growth — rows past it are opportunistically deleted at
+    insert time, so the table never outlives the tokens it denies."""
+
+    __tablename__ = "revoked_auth_sessions"
+
+    jti: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

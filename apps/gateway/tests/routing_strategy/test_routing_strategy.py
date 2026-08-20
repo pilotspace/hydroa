@@ -61,13 +61,13 @@ class _Upstream:
 
 
 class _Gate:
-    async def is_available(self, model_id: str) -> bool:
+    async def is_available(self, model_id: str, *, tenant_id: object) -> bool:
         return True
 
-    async def record_failure(self, model_id: str) -> None:  # noqa: D401
+    async def record_failure(self, model_id: str, *, tenant_id: object) -> None:  # noqa: D401
         pass
 
-    async def record_success(self, model_id: str) -> None:
+    async def record_success(self, model_id: str, *, tenant_id: object) -> None:
         pass
 
 

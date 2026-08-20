@@ -165,7 +165,11 @@ class OpenRouterCostRecoveryService:
                 cred = await self._credential_resolver.resolve(tenant_id, "openrouter")
                 if cred is None:
                     return RecoveryOutcome("deferred:no_credential")
-                cred_token = set_provider_credential(cred)
+                # M11: tag the credential with the tenant it belongs to. Untagged, this
+                # BACKGROUND poll reached `guard()` on the SAME adapter instance the live
+                # chat path uses, so its failures accumulated in the unattributed bucket
+                # and could open a breaker that also serves real tenant traffic.
+                cred_token = set_provider_credential(cred, tenant_id)
             try:
                 cost = await self._poll_generation(gid)
             finally:

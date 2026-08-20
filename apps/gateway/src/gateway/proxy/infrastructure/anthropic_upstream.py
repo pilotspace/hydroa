@@ -49,7 +49,7 @@ from gateway.proxy.domain.web_search import (
     native_web_search_tool,
 )
 from gateway.proxy.infrastructure.anthropic_passthrough_headers import get_passthrough_headers
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
 
@@ -833,7 +833,7 @@ def _translate_anthropic_sse(  # pyright: ignore[reportUnusedFunction]  # kept a
 # ---------------------------------------------------------------------------
 
 
-class AnthropicCompletionUpstream:
+class AnthropicCompletionUpstream(TenantScopedBreakerMixin):
     """Forwards chat completions to the Anthropic Messages API.
 
     Implements the CompletionUpstream Protocol (complete + stream).
@@ -869,7 +869,7 @@ class AnthropicCompletionUpstream:
         # client has not supplied any cache_control markers.
         self._auto_cache = auto_cache
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
@@ -924,6 +924,7 @@ class AnthropicCompletionUpstream:
 
         Request translation is pure and runs ONCE, outside the retry loop.
         """
+        breaker = self._breaker_for()
         anthropic_body = _openai_to_anthropic_request(
             payload,
             default_max_tokens=self._default_max_tokens,
@@ -945,7 +946,7 @@ class AnthropicCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             _render,
-            breaker=self._breaker,
+            breaker=breaker,
             provider="anthropic",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -962,7 +963,8 @@ class AnthropicCompletionUpstream:
         (incremental delivery — TTFB ≈ first token). finish() emits the terminal usage
         frame + [DONE] after the last event.
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
             anthropic_body = {
@@ -988,11 +990,11 @@ class AnthropicCompletionUpstream:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
 
                     # Drive the stepper LIVE: translate + yield each OpenAI frame the
                     # instant its source Anthropic event arrives on the wire (incremental
@@ -1031,7 +1033,7 @@ class AnthropicCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
