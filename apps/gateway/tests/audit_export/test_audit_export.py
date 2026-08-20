@@ -758,7 +758,19 @@ async def test_export_empty_result_set(client: Any, db_session: AsyncSession, ap
     assert resp.text == ""
     assert resp.headers["x-audit-export-has-more"] == "false"
 
-    resp_json = await client.get(EXPORT, params={"format": "json"}, headers=auth(token))
+    # A SECOND tenant, deliberately: the export endpoint AUDITS ITSELF
+    # (router.py action="audit.export"), so the GET above leaves an `audit.export` row
+    # behind for THIS tenant. Re-exporting the same tenant therefore no longer sees an
+    # empty set — it sees that self-audit — and asserting `items == []` on it only ever
+    # passed because the fire-and-forget audit write lost the read-race. The R9 audit
+    # retrofit routes emissions through the shared writer so the row now lands reliably,
+    # which turned a latent flake into a deterministic failure under CI load. A call's
+    # own self-audit is never in its own response, so a virgin tenant makes the
+    # empty-set assertion mean what it says instead of depending on losing a race.
+    _owner2, tid2 = await signup_tenant(client, tenant_name="Empty Set JSON", email="esj@audit.io")
+    token2 = mint_role_token(app, tenant_id=tid2, role=Role.OWNER, email="esj-sub@audit.io")
+
+    resp_json = await client.get(EXPORT, params={"format": "json"}, headers=auth(token2))
     assert resp_json.status_code == 200, resp_json.text
     assert resp_json.json() == {"items": [], "next_cursor": None, "has_more": False}
 

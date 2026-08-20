@@ -813,6 +813,12 @@ async def test_realtime_ws_real_stt_resolves_via_transcription_delegation(
         # preset-capability-validation (v56 §3): _real_stt now reads this flag to wire
         # TranscriptionUseCase's input-modality guard, mirroring audio_deps.py.
         input_modality_guard_enabled = False
+        # upload-bounds-realtime-stt (R9, 318ab5c3): _real_stt now passes
+        # max_file_bytes=settings.max_audio_upload_bytes into TranscriptionUseCase, so
+        # this double must carry it or the WS-STT path raises AttributeError. Mirrors the
+        # production default (core/config.py:1496, 25 MiB) rather than inventing a value —
+        # a different number here would silently test a bound production never uses.
+        max_audio_upload_bytes = 26_214_400
 
     class _FakeAppState:
         def __init__(self) -> None:
