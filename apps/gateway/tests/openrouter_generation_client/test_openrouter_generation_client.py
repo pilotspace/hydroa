@@ -183,7 +183,7 @@ async def test_transient_5xx_retried_then_success() -> None:
     assert isinstance(result, GenerationCost)
     assert result.total_cost == Decimal("0.0123")
     assert counter[0] == 2  # one retry happened
-    assert adapter._breaker._failure_count == 0  # type: ignore[attr-defined]  # success reset it
+    assert adapter._breaker_for()._failure_count == 0  # type: ignore[attr-defined]  # success reset it
 
 
 async def test_retries_exhausted_raises() -> None:

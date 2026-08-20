@@ -233,11 +233,25 @@ async def test_cr1_moderation_breaker_still_isolated_from_completion_breaker() -
     finally:
         reset_provider_credential(cred_token)
 
-    assert completion_provider._breaker.is_open() is False, (  # noqa: SLF001
-        "a per-tenant moderation breaker trip must never touch a different "
-        "provider instance's own breaker"
-    )
-    assert moderation_provider._breaker.is_open() is False, (  # noqa: SLF001
-        "moderation_provider (unused, separate instance/client from ml_client's "
-        "own dedicated provider) must be completely unaffected"
-    )
+    # tenant-scoped-breaker-cooldown (R9 P0 #3): `provider._breaker` — one process-wide
+    # CircuitBreaker per adapter instance — is GONE; a breaker is now resolved per tenant
+    # through `_breaker_for()`. The assertions below are the SAME invariant re-expressed
+    # against the new accessor, and are STRENGTHENED, never weakened: each provider is
+    # now checked BOTH in the ambient (unattributed) context AND under the very tenant
+    # whose moderation breaker was just tripped — the bucket a cross-instance leak would
+    # actually land in. The original single-breaker check could not distinguish those.
+    for label, provider in (
+        ("completion_provider", completion_provider),
+        ("moderation_provider", moderation_provider),
+    ):
+        assert provider._breaker_for().is_open() is False, (  # noqa: SLF001
+            f"a per-tenant moderation breaker trip must never touch {label}'s own breaker"
+        )
+        gtid = set_guardrail_tenant_id(tenant)
+        try:
+            assert provider._breaker_for().is_open() is False, (  # noqa: SLF001
+                f"{label} must be unaffected even in the TRIPPED tenant's own partition — "
+                "the moderation trip belongs to ml_client's dedicated provider instance alone"
+            )
+        finally:
+            reset_guardrail_tenant_id(gtid)

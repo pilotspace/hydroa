@@ -20,17 +20,27 @@ from typing import Any
 
 from gateway.proxy.domain.errors import CircuitOpenError, UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerMixin,
+    TenantScopedBreakerRegistry,
+)
 
 
-class BoundCircuitBreakerUpstream:
-    """Per-request view: stable CircuitBreaker + per-request delegate.
+class BoundCircuitBreakerUpstream(TenantScopedBreakerMixin):
+    """Per-request view: a stable PER-TENANT breaker registry + per-request delegate.
 
     Implements CompletionUpstream Protocol so the use case needs no changes.
+
+    This wrapper CONSTRUCTS no breaker — it is handed a registry — so a
+    construction-site census is structurally blind to it. That blindness is
+    exactly why it kept its process-wide breaker through three previous passes at
+    this defect class while every construction site around it was being fixed. It
+    now takes a ``TenantScopedBreakerRegistry`` (never a bare ``CircuitBreaker``)
+    so there is no signature by which a caller can hand it one shared breaker.
     """
 
-    def __init__(self, breaker: CircuitBreaker, delegate: CompletionUpstream) -> None:
-        self._breaker = breaker
+    def __init__(self, breakers: TenantScopedBreakerRegistry, delegate: CompletionUpstream) -> None:
+        self._init_tenant_breakers(breakers)
         self._delegate = delegate
 
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -39,20 +49,21 @@ class BoundCircuitBreakerUpstream:
         Raises CircuitOpenError if breaker is open (no upstream call).
         Raises UpstreamUnavailableError on 5xx (increments failure count).
         """
-        if not self._breaker.call_allowed():
+        breaker = self._breaker_for()
+        if not breaker.call_allowed():
             raise CircuitOpenError("Circuit breaker is open")
 
         try:
             status, body = await self._delegate.complete(payload)
         except (UpstreamUnavailableError, CircuitOpenError):
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise
 
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
-        self._breaker.record_success()
+        breaker.record_success()
         return status, body
 
     def stream(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
@@ -61,8 +72,10 @@ class BoundCircuitBreakerUpstream:
         Raises CircuitOpenError immediately if breaker is open.
         On streaming, success is recorded at stream-start (usage reconciled later).
         """
-        if not self._breaker.call_allowed():
+        # A10: resolved eagerly here, never inside the returned iterator.
+        breaker = self._breaker_for()
+        if not breaker.call_allowed():
             raise CircuitOpenError("Circuit breaker is open")
 
-        self._breaker.record_success()
+        breaker.record_success()
         return self._delegate.stream(payload)

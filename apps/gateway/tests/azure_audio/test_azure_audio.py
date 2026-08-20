@@ -27,6 +27,10 @@ from gateway.proxy.domain.credential_context import (
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerRegistry,
+    breaker_tenant_key,
+)
 
 # PRIMARY IMPORT: will be RED ("unsupported modality" / wrong class name) until built.
 from gateway.proxy.infrastructure.azure_embeddings import (
@@ -97,7 +101,9 @@ def _make_adapter(
     # ERR_UPSTREAM_EGRESS_DENIED in a test that never intended to exercise egress at all.
     adapter = AzureOpenAIProvider(token_provider_cache=None, egress_policy=AllowAllEgressPolicy())
     if breaker is not None:
-        adapter._breaker = breaker  # type: ignore[attr-defined]
+        adapter._tenant_breakers = TenantScopedBreakerRegistry(  # type: ignore[attr-defined]
+            store={breaker_tenant_key(): breaker}  # type: ignore[dict-item]
+        )
     adapter._client = httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
     )

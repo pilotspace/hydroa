@@ -50,7 +50,7 @@ from gateway.proxy.domain.credential_context import (
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import AzureCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.azure_config import AzureConfig
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 
 if TYPE_CHECKING:
     from gateway.observability.metrics import MetricsRegistry
@@ -61,7 +61,7 @@ _NON_STREAM_TIMEOUT = 120.0
 _STREAM_READ_TIMEOUT = 300.0
 
 
-class AzureOpenAIProvider:
+class AzureOpenAIProvider(TenantScopedBreakerMixin):
     """Azure OpenAI provider — embeddings + audio (STT/TTS).
 
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
@@ -85,7 +85,7 @@ class AzureOpenAIProvider:
         # Credentials resolved per-request from the contextvar (task-3 BYOK).
         self._token_provider_cache = token_provider_cache
         self._metrics_registry = metrics_registry
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         # No base_url — build_url emits an absolute deployment-routed URL per call.
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -175,6 +175,7 @@ class AzureOpenAIProvider:
             unchanged (incl. Azure content_filter, which is OpenAI-shaped).
         """
         # Fail-closed: read & validate credential BEFORE any network activity.
+        breaker = self._breaker_for()
         cfg, cred = self._resolve_config_and_cred()
 
         deployment = cfg.resolve_deployment(payload["model"])
@@ -191,7 +192,7 @@ class AzureOpenAIProvider:
         auth = await self._auth_headers_for_credential(cred)
         headers = {**auth, "content-type": "application/json"}
 
-        self._breaker.guard()
+        breaker.guard()
         try:
             resp = await self._client.post(url, json=payload, headers=headers)
         except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
@@ -199,16 +200,16 @@ class AzureOpenAIProvider:
             # carries the request object whose HEADERS hold the api-key (or AAD bearer);
             # `from None` keeps that secret out of any crash-reporter / chained-traceback
             # inspection (mirrors azure_ad.py). str(exc) is the clean transport message.
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
         # success/4xx: not an upstream outage — record success, pass the body through.
-        self._breaker.record_success()
+        breaker.record_success()
         return status, resp.json()
 
     async def post_multipart(
@@ -236,6 +237,7 @@ class AzureOpenAIProvider:
         """
         # Fail-closed: missing credential → UpstreamUnavailableError (not ProviderKeyMissing)
         # so callers always see the canonical upstream-error type regardless of auth state.
+        breaker = self._breaker_for()
         try:
             cfg, cred = self._resolve_config_and_cred()
         except ProviderKeyMissing as exc:
@@ -250,19 +252,19 @@ class AzureOpenAIProvider:
             raise UPSTREAM_EGRESS_DENIED.exc() from None
         auth = await self._auth_headers_for_credential(cred)
 
-        self._breaker.guard()
+        breaker.guard()
         try:
             resp = await self._client.post(url, files=files, data=data, headers=auth)
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
-        self._breaker.record_success()
+        breaker.record_success()
         return status, resp.json()
 
     def stream_bytes(
@@ -288,7 +290,8 @@ class AzureOpenAIProvider:
         Raises:
             UpstreamUnavailableError: on 5xx, Timeout/Network, or AAD token failure (inside gen).
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
             # Fail-closed: missing credential → UpstreamUnavailableError (canonical error type).
@@ -320,15 +323,15 @@ class AzureOpenAIProvider:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

@@ -43,9 +43,9 @@ from gateway.proxy.domain.tool_translation import (
 from gateway.proxy.infrastructure.bedrock_eventstream import aiter_event_stream
 from gateway.proxy.infrastructure.bedrock_sigv4 import AwsCredentials, sign_request
 from gateway.proxy.infrastructure.circuit_breaker import (
-    CircuitBreaker,
     status_counts_as_upstream_failure,
 )
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
 
@@ -555,7 +555,7 @@ def _bedrock_error_to_openai(resp_json: dict[str, Any], status: int) -> dict[str
 # ---------------------------------------------------------------------------
 
 
-class BedrockCompletionUpstream:
+class BedrockCompletionUpstream(TenantScopedBreakerMixin):
     """Forwards chat completions to the AWS Bedrock Converse API.
 
     Implements the CompletionUpstream Protocol (complete + stream).
@@ -587,7 +587,7 @@ class BedrockCompletionUpstream:
         self._retry_deadline_s = retry_deadline_s
         self._metrics_registry = metrics_registry
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         # NOTE: No base_url set — the signer needs the full absolute URL to compute
         # the canonical host header and canonical URI correctly.
         self._client = httpx.AsyncClient(
@@ -639,6 +639,7 @@ class BedrockCompletionUpstream:
              raises ERR_BEDROCK_REGION_MISMATCH before _build_endpoint or any dial.
         """
         # Fail-closed: read & validate credential BEFORE any network activity.
+        breaker = self._breaker_for()
         aws = self._get_credentials()
 
         model_id, converse_body = _openai_to_converse_request(
@@ -686,7 +687,7 @@ class BedrockCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             _render,
-            breaker=self._breaker,
+            breaker=breaker,
             provider="bedrock",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -721,6 +722,7 @@ class BedrockCompletionUpstream:
         # Fail-closed: read & validate credential BEFORE yielding the generator object.
         # This raises ProviderKeyMissing("bedrock") synchronously if unset/wrong-type,
         # before the circuit-breaker guard and before the first byte.
+        breaker = self._breaker_for()
         aws = self._get_credentials()
 
         model_id, converse_body = _openai_to_converse_request(
@@ -732,7 +734,7 @@ class BedrockCompletionUpstream:
         _assert_region_consistent(model_id, aws.region)
 
         endpoint = self._build_endpoint(aws)
-        self._breaker.guard()
+        breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
             # Raw model_id in the path — same URL handed to sign_request AND
@@ -762,13 +764,13 @@ class BedrockCompletionUpstream:
                         # via git log -L, 2026-08-07). The RESPONSE is unchanged; only the
                         # breaker accounting is corrected.
                         if status_counts_as_upstream_failure(resp.status_code):
-                            self._breaker.on_upstream_error()
+                            breaker.on_upstream_error()
                         else:
-                            self._breaker.record_success()
+                            breaker.record_success()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {resp.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
 
                     # Drive both layers LIVE: aiter_event_stream decodes each binary
                     # EventStream frame as it completes on the wire; the stepper
@@ -792,7 +794,7 @@ class BedrockCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

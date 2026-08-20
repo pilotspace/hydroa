@@ -314,17 +314,24 @@ class ModelHealthGate(Protocol):
     The cooldown-circuit task implements the Redis-backed gate.
 
     Gate calls MUST never raise out of the router (gate is fail-open by contract).
+
+    `tenant_id` (tenant-scoped-breaker-cooldown, R9 P0 #3) partitions the gate: one
+    tenant's recorded failures must never cool a model for a DIFFERENT tenant. It is
+    KEYWORD-ONLY and REQUIRED on purpose (A23) — a defaulted parameter would let an
+    existing fake silently keep testing the old, unpartitioned shape while appearing
+    to conform. `None` selects the reserved sentinel partition, never a bare
+    unprefixed key (A17); the router already holds the value it passes.
     """
 
-    async def is_available(self, model_id: str) -> bool:
+    async def is_available(self, model_id: str, *, tenant_id: Any) -> bool:
         """Return True iff the model should be attempted. False = skip (cooled)."""
         ...
 
-    async def record_failure(self, model_id: str) -> None:
+    async def record_failure(self, model_id: str, *, tenant_id: Any) -> None:
         """Record that this candidate raised UpstreamUnavailableError."""
         ...
 
-    async def record_success(self, model_id: str) -> None:
+    async def record_success(self, model_id: str, *, tenant_id: Any) -> None:
         """Record that this candidate returned any (status, body) — including 4xx."""
         ...
 

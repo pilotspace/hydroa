@@ -28,6 +28,7 @@ from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG, native_web_search_tool
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ _STREAM_READ_TIMEOUT = 300.0
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 
-class OpenAIDirectProvider:
+class OpenAIDirectProvider(TenantScopedBreakerMixin):
     """Direct HTTP adapter for OpenAI-compatible endpoints.
 
     A single instance is created per create_app() call when openai_api_key is set
@@ -82,7 +83,7 @@ class OpenAIDirectProvider:
         # tighter timeout budget than the chat-completion default. Both default to the
         # existing module constants, so every pre-existing caller (chat/embeddings/
         # images/audio adapters) is byte-identical.
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
@@ -151,6 +152,7 @@ class OpenAIDirectProvider:
         UpstreamUnavailableError and are NOT retried. With _max_retries=0 (default)
         this is exactly one attempt — byte-identical to the pre-retry behavior.
         """
+        breaker = self._breaker_for()
         outbound = self._maybe_inject_web_search(payload)
 
         async def _do_request() -> httpx.Response:
@@ -163,7 +165,7 @@ class OpenAIDirectProvider:
         return await execute_with_retry(
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
-            breaker=self._breaker,
+            breaker=breaker,
             provider=self._provider_name,
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -178,7 +180,8 @@ class OpenAIDirectProvider:
         before the first byte; a >=500 status raises UpstreamUnavailableError
         BEFORE any byte is yielded (clean 502, never a leaked partial body).
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
         outbound = self._maybe_inject_web_search(payload)
 
         async def _gen() -> AsyncIterator[bytes]:
@@ -196,15 +199,15 @@ class OpenAIDirectProvider:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
@@ -220,7 +223,8 @@ class OpenAIDirectProvider:
         Circuit breaker guards every call.
         5xx → breaker.on_upstream_error(); success/4xx → breaker.record_success().
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
         try:
             resp = await self._client.post(
                 path,
@@ -228,15 +232,15 @@ class OpenAIDirectProvider:
                 headers=self._auth_headers(),
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
-        self._breaker.record_success()
+        breaker.record_success()
         return status, resp.json()
 
     async def post_json_with_retry(
@@ -273,7 +277,10 @@ class OpenAIDirectProvider:
         byte-identical to the pre-CR-1 behavior — every other caller of this method,
         and every call made without the keyword, is unaffected.
         """
-        effective_breaker = breaker if breaker is not None else self._breaker
+        # `breaker` here is the CALLER'S explicit override (the CR-1 parameter above),
+        # never a local of ours — do not shadow it. The default is now this instance's
+        # PER-TENANT breaker rather than one process-wide instance.
+        effective_breaker = breaker if breaker is not None else self._breaker_for()
 
         async def _do_request() -> httpx.Response:
             return await self._client.post(path, json=payload, headers=self._auth_headers())
@@ -300,7 +307,8 @@ class OpenAIDirectProvider:
         Used by: audio STT (POST /audio/transcriptions).
         Circuit breaker guards every call.
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
         try:
             resp = await self._client.post(
                 path,
@@ -309,15 +317,15 @@ class OpenAIDirectProvider:
                 headers=self._auth_headers(),
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
-        self._breaker.record_success()
+        breaker.record_success()
         return status, resp.json()
 
     def stream_bytes(
@@ -331,7 +339,8 @@ class OpenAIDirectProvider:
         Circuit breaker is checked before the first byte (same as CompletionUpstream.stream).
         Zero retry machinery.
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         async def _gen() -> AsyncIterator[bytes]:
             try:
@@ -348,15 +357,15 @@ class OpenAIDirectProvider:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

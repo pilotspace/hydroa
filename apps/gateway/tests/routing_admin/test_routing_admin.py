@@ -215,9 +215,14 @@ async def test_ra3_state_derivation_open_and_half_open() -> None:
 
     fake_redis = LocalFakeRedis()
     # Seed open key for model-open
-    fake_redis.seed("gateway:cooldown:open:model-open", "1", ex=3600)
+    # SUPERSESSION — tenant-scoped-breaker-cooldown (R9 P0 #3) S8: cooldown keys are
+    # tenant-partitioned. Seeded under two DIFFERENT tenants on purpose: the board is a
+    # superadmin surface with no tenant of its own, so this now also proves the honest
+    # CROSS-partition aggregate (M7/A18) — a model open in ANY tenant's partition must
+    # never be reported as plainly "closed".
+    fake_redis.seed("gateway:cooldown:open:tenant-one:model-open", "1", ex=3600)
     # Seed half marker (no open key) for model-half
-    fake_redis.seed("gateway:cooldown:half:model-half", "1", ex=7200)
+    fake_redis.seed("gateway:cooldown:half:tenant-two:model-half", "1", ex=7200)
     # model-closed: no keys at all
 
     # Build a real gate over the fake redis

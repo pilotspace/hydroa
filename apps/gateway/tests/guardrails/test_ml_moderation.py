@@ -564,8 +564,8 @@ async def test_ml_moderation_breaker_open_short_circuits() -> None:
         base_url="https://api.openai.com/v1", transport=httpx.MockTransport(handler)
     )
     for _ in range(5):  # trip the dedicated breaker (threshold=5) — no HTTP call involved
-        provider._breaker.record_failure()  # noqa: SLF001
-    assert provider._breaker.is_open() is True  # noqa: SLF001
+        provider._breaker_for().record_failure()  # noqa: SLF001
+    assert provider._breaker_for().is_open() is True  # noqa: SLF001
 
     ml_client = OpenAiModerationClient(provider)
     token = set_provider_credential(BearerCredential(secret="sk-test"))  # noqa: S106
@@ -587,20 +587,20 @@ async def test_ml_moderation_breaker_isolated_from_completion_breaker() -> None:
     moderation_provider = OpenAIDirectProvider(base_url="https://api.openai.com/v1")
     completion_provider = OpenAIDirectProvider(base_url="https://api.openai.com/v1")
 
-    assert moderation_provider._breaker is not completion_provider._breaker  # noqa: SLF001
+    assert moderation_provider._breaker_for() is not completion_provider._breaker_for()  # noqa: SLF001
     assert moderation_provider._client is not completion_provider._client  # noqa: SLF001
 
     for _ in range(5):
-        moderation_provider._breaker.record_failure()  # noqa: SLF001
-    assert moderation_provider._breaker.is_open() is True  # noqa: SLF001
-    assert completion_provider._breaker.is_open() is False, (  # noqa: SLF001
+        moderation_provider._breaker_for().record_failure()  # noqa: SLF001
+    assert moderation_provider._breaker_for().is_open() is True  # noqa: SLF001
+    assert completion_provider._breaker_for().is_open() is False, (  # noqa: SLF001
         "a moderation-provider outage must never trip the real completion provider's breaker"
     )
 
     for _ in range(5):
-        completion_provider._breaker.record_failure()  # noqa: SLF001
-    assert completion_provider._breaker.is_open() is True  # noqa: SLF001
-    assert moderation_provider._breaker.is_open() is True, (  # noqa: SLF001
+        completion_provider._breaker_for().record_failure()  # noqa: SLF001
+    assert completion_provider._breaker_for().is_open() is True  # noqa: SLF001
+    assert moderation_provider._breaker_for().is_open() is True, (  # noqa: SLF001
         "the moderation breaker's own OPEN state must be unaffected by the completion breaker"
     )
 

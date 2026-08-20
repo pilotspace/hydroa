@@ -37,6 +37,10 @@ from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.ports import CompletionUpstream, UpstreamProvider
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerRegistry,
+    breaker_tenant_key,
+)
 from tests.provider_seam.conftest import (
     CHAT_PAYLOAD,
     CHAT_RESPONSE_BODY,
@@ -94,7 +98,14 @@ def _make_provider(transport: SequencedMockTransport, breaker: SpyBreaker) -> Op
         transport=transport,
         timeout=httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0),
     )
-    provider._breaker = breaker  # type: ignore[attr-defined,assignment]
+    # tenant-scoped-breaker-cooldown §3 M4: the adapter no longer owns ONE `_breaker`;
+    # it resolves a per-tenant breaker out of a registry. Seed the registry under the
+    # key this call context resolves to, so the spy is the breaker the adapter reaches —
+    # same injection, one indirection later. Meaning is preserved: still exactly one
+    # breaker for the whole test, still the spy.
+    provider._init_tenant_breakers(  # type: ignore[attr-defined]
+        TenantScopedBreakerRegistry(store={breaker_tenant_key(): breaker})  # type: ignore[dict-item]
+    )
     provider._metrics_registry = None  # type: ignore[attr-defined]
     return provider
 

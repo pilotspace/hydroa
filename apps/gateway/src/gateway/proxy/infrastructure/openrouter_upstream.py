@@ -32,7 +32,7 @@ from gateway.proxy.domain.credential_context import get_provider_credential
 from gateway.proxy.domain.errors import UpstreamUnavailableError
 from gateway.proxy.domain.provider_credentials import BearerCredential, ProviderKeyMissing
 from gateway.proxy.domain.web_search import WEB_SEARCH_FLAG, native_web_search_tool
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 
 if TYPE_CHECKING:
@@ -98,7 +98,7 @@ def _parse_generation(body: dict[str, Any]) -> GenerationCost | None:
     )
 
 
-class OpenRouterCompletionUpstream:
+class OpenRouterCompletionUpstream(TenantScopedBreakerMixin):
     """Forwards completions to OpenRouter with circuit breaker protection.
 
     A single instance is shared for the lifetime of the application
@@ -130,7 +130,7 @@ class OpenRouterCompletionUpstream:
         usage_accounting: bool = False,
     ) -> None:
         self._base_url = base_url
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
@@ -220,7 +220,7 @@ class OpenRouterCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
-            breaker=self._breaker,
+            breaker=self._breaker_for(),
             provider="openrouter",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -250,7 +250,7 @@ class OpenRouterCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             lambda resp: (resp.status_code, resp.json()),
-            breaker=self._breaker,
+            breaker=self._breaker_for(),
             provider="openrouter",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -291,7 +291,7 @@ class OpenRouterCompletionUpstream:
         status, body = await execute_with_retry(
             _do_request,
             _render,
-            breaker=self._breaker,
+            breaker=self._breaker_for(),
             provider="openrouter",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -314,7 +314,14 @@ class OpenRouterCompletionUpstream:
         Raises CircuitOpenError immediately if the breaker is open.
         Zero retry machinery — stream() is unchanged by the retry-policy task.
         """
-        self._breaker.guard()
+        # A10: resolve the tenant's breaker EAGERLY, here, and close over it. The
+        # generator body below runs LATER — after the credential contextvar has been
+        # reset by the use-case's own `finally` — so re-reading the tenant inside
+        # _gen() would record this request's outcome against whichever tenant happened
+        # to be current at consume time, splitting ONE request across two failure
+        # domains (guarded as A, recorded against B).
+        breaker = self._breaker_for()
+        breaker.guard()
         outbound = self._maybe_inject_usage_accounting(self._maybe_inject_web_search(payload))
 
         async def _gen() -> AsyncIterator[bytes]:
@@ -332,11 +339,11 @@ class OpenRouterCompletionUpstream:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
                     async for chunk in response.aiter_bytes():
                         yield chunk
             # RemoteProtocolError = graceful mid-stream peer-close (Finding C, v35):
@@ -347,7 +354,7 @@ class OpenRouterCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()

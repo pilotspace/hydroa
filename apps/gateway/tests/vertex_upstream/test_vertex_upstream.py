@@ -431,7 +431,7 @@ async def test_R7_4xx_passthrough_verbatim_regional_404() -> None:
         reset_provider_credential(tok)
     assert status == 404
     assert body["error"]["type"] == "not_found"
-    assert not adapter._breaker.is_open(), "a 4xx must NOT trip the circuit breaker"
+    assert not adapter._breaker_for().is_open(), "a 4xx must NOT trip the circuit breaker"
 
 
 # ===========================================================================

@@ -18,7 +18,7 @@ fallback here when the per-provider registry isn't wired on app.state.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -51,6 +51,12 @@ from gateway.proxy.infrastructure.ml_moderation_evaluator import (
 from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
 from gateway.proxy.infrastructure.provider_registry import select_provider
 from gateway.proxy.infrastructure.response_cache import RedisResponseCache
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    TenantScopedBreakerMixin,
+    TenantScopedBreakerRegistry,
+    breaker_tenant_key,
+    registry_for_state,
+)
 from gateway.proxy.infrastructure.tier_capacity_guard import PassthroughTierCapacityGuard
 from gateway.proxy.infrastructure.vector_cache import RedisVectorCache
 from gateway.vector_stores.application.file_search import FileSearchGrounder
@@ -97,7 +103,7 @@ def build_embedding_adapter(
     return _embed
 
 
-class ProviderScopedCircuitBreakerUpstream:
+class ProviderScopedCircuitBreakerUpstream(TenantScopedBreakerMixin):
     """Per-request view: a per-provider CircuitBreaker registry + delegate.
 
     audit-remediation package C1 (MED proxy global breaker): the prior
@@ -124,21 +130,45 @@ class ProviderScopedCircuitBreakerUpstream:
     def __init__(
         self,
         *,
-        breakers: dict[str, CircuitBreaker],
+        breakers: MutableMapping[Any, CircuitBreaker],
         resolver: ProviderResolver,
         delegate: CompletionUpstream,
     ) -> None:
-        self._breakers = breakers
+        # M3/M5: `breakers` (app.state.provider_circuit_breakers) stays the STORE, so
+        # breaker state survives across requests exactly as before — but it is now
+        # driven through a bounded LRU registry and keyed per (tenant, provider)
+        # instead of per provider alone. Keying an unbounded dict by tenant would
+        # trade a cross-tenant DoS for a memory-exhaustion DoS (R:UNBOUNDED), since
+        # tenant count is attacker-influenceable through self-serve signup.
+        self._init_tenant_breakers(TenantScopedBreakerRegistry(store=breakers))
         self._resolver = resolver
         self._delegate = delegate
 
-    async def _breaker_for(self, payload: dict[str, Any]) -> CircuitBreaker:
-        model = str(payload.get("model", ""))
+    async def _breaker_for(  # pyright: ignore[reportIncompatibleMethodOverride]
+        self, payload: dict[str, Any] | None = None
+    ) -> CircuitBreaker:
+        """Resolve the breaker for (this request's tenant, this payload's provider).
+
+        NOTE the pyright suppression above: the frozen contract specifies BOTH
+        `TenantScopedBreakerMixin._breaker_for()` (sync, no argument — S4) and
+        `ProviderScopedCircuitBreakerUpstream._breaker_for(payload)` (S3), and this
+        one must be async because resolving the provider awaits the ProviderResolver
+        port. Those two frozen signatures are mutually incompatible as an override
+        pair; narrowing either is a change-request against a frozen `gives:`, not a
+        build-time edit. The suppression is therefore deliberate and scoped to this
+        one method — see the build report's change-request note.
+
+        Both layers must be partitioned because they are independent failure
+        domains in series (A21): partitioning only this outer wrapper would leave
+        the adapter breaker underneath it shared, AND would MASK that fact in any
+        test that only drives the outer layer.
+        """
+        model = str((payload or {}).get("model", ""))
         try:
             provider = await self._resolver.provider_for(model)
         except Exception:
             provider = "openrouter"
-        return self._breakers.setdefault(provider, CircuitBreaker())
+        return self._breaker_registry().get_or_create((breaker_tenant_key(), provider))
 
     async def complete(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Guard → delegate.complete → count outcome against the resolved provider's breaker.
@@ -198,12 +228,16 @@ def get_completion_upstream(request: Request) -> CompletionUpstream:
     """
     delegate: CompletionUpstream = request.app.state.completion_upstream
     resolver = getattr(request.app.state, "provider_resolver", None)
-    breakers: dict[str, CircuitBreaker] | None = getattr(
+    breakers: MutableMapping[Any, CircuitBreaker] | None = getattr(
         request.app.state, "provider_circuit_breakers", None
     )
     if resolver is None or breakers is None:
-        legacy_breaker: CircuitBreaker = request.app.state.circuit_breaker
-        return BoundCircuitBreakerUpstream(legacy_breaker, delegate)
+        # A29: the fail-safe must ALSO be tenant-scoped. It used to fall back to
+        # `app.state.circuit_breaker`, the single legacy process-wide breaker — so any
+        # deployment or test double that reached this branch silently restored exactly
+        # the cross-tenant DoS this task removes. It now shares the per-app tenant
+        # registry, so a stripped app.state degrades in capability, never in isolation.
+        return BoundCircuitBreakerUpstream(registry_for_state(request.app.state), delegate)
     return ProviderScopedCircuitBreakerUpstream(
         breakers=breakers, resolver=resolver, delegate=delegate
     )

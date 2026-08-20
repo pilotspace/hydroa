@@ -47,7 +47,6 @@ Isolation (M8, §0 R3): ``OpenAiModerationClient`` wraps a DEDICATED
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from typing import Any, Protocol, TypedDict
 
 from gateway.proxy.domain.credential_context import (
@@ -61,6 +60,10 @@ from gateway.proxy.domain.ports import GuardrailEvaluator, TenantCredentialResol
 from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
 from gateway.proxy.infrastructure.guardrail_evaluator import mask_pii_in_messages
 from gateway.proxy.infrastructure.openai_provider import OpenAIDirectProvider
+from gateway.proxy.infrastructure.tenant_breaker_registry import (
+    MAX_TENANT_BREAKERS,
+    TenantScopedBreakerRegistry,
+)
 
 # ---------------------------------------------------------------------------
 # OpenAI /v1/moderations wire constants (live-verified 2026-07-10 — free endpoint)
@@ -100,62 +103,18 @@ MODERATION_RETRY_DEADLINE_S = 4.0
 # that pass no tenant identity.
 # ---------------------------------------------------------------------------
 
-#: Bounded registry size. 4096 is comfortably above any realistic concurrent-
-#: active-tenant count for a single gateway replica, and each entry is a tiny
-#: CircuitBreaker (a handful of ints/enum/None fields) — the whole registry at
-#: capacity is a trivial memory footprint. Not a hard business limit — purely a
-#: "never grow unbounded" safety cap.
-_MAX_TENANT_BREAKERS = 4096
-
-
-class _TenantBreakerRegistry:
-    """Bounded LRU registry of per-tenant CircuitBreaker instances (CR-1).
-
-    Design choice — LRU (OrderedDict, move-to-end on every access) over a plain
-    size-capped dict with arbitrary/FIFO eviction: LRU's eviction victim is
-    ALWAYS the least-recently-used entry, so a "hot" tenant — one that keeps
-    driving requests through this seam — is, by construction, touched on every
-    call and therefore never becomes the least-recently-used entry. It cannot
-    be evicted while it stays active. Only a genuinely idle/cold tenant's entry
-    is ever reclaimed. This directly satisfies CR-1's invariant ("eviction must
-    not reset an OPEN breaker into effective CLOSED for a hot tenant") as a
-    structural property of the eviction policy, not an incidental side effect —
-    a FIFO or random-eviction cap could not make the same guarantee (a hot
-    tenant could be evicted purely by insertion-order bad luck).
-    Trade-off accepted: a COLD tenant whose breaker happened to be OPEN loses
-    that state on eviction — its next call starts a fresh CLOSED breaker. This
-    is an honest, bounded degrade (a stale circuit re-probing after being idle
-    long enough to fall out of a 4096-entry LRU is reasonable), never a
-    fabricated result and never observable for the tenant CR-1 is protecting.
-
-    Concurrency: every method here is synchronous (no `await`) — asyncio's
-    cooperative scheduling means a get-or-create is atomic within one event
-    loop tick, so two concurrent coroutines resolving the SAME new tenant's
-    first call can never race into creating two different breaker objects.
-    """
-
-    def __init__(self, max_size: int = _MAX_TENANT_BREAKERS) -> None:
-        self._max_size = max_size
-        self._breakers: OrderedDict[Any, CircuitBreaker] = OrderedDict()
-
-    def get_or_create(self, tenant_key: Any) -> CircuitBreaker:
-        """Return the breaker for `tenant_key`, creating one on first use.
-
-        Every call — hit or miss — moves the entry to the MRU end, so a tenant
-        making back-to-back calls (a "hot" tenant) never ages toward eviction.
-        """
-        existing = self._breakers.get(tenant_key)
-        if existing is not None:
-            self._breakers.move_to_end(tenant_key)
-            return existing
-        breaker = CircuitBreaker()
-        self._breakers[tenant_key] = breaker
-        if len(self._breakers) > self._max_size:
-            self._breakers.popitem(last=False)  # evict the LRU entry
-        return breaker
-
-    def __len__(self) -> int:
-        return len(self._breakers)
+# M4 — ONE registry implementation in the tree. This module's private
+# `_TenantBreakerRegistry` was the FIRST place the per-tenant fix shipped (CR-1,
+# under a Tin HARD-STOP). It has been PROMOTED verbatim — LRU rationale, bounded
+# cap and all — into `tenant_breaker_registry.py` and is now imported, never
+# forked and never kept alongside: a second copy is how the two halves drift
+# apart, and a redundant duplicate would MASK the structural guard that keeps this
+# defect class closed.
+#
+# The two aliases below are backward-compatible re-exports (the SAME objects, not
+# copies) so callers and the shipped CR-1 regression suite keep their imports.
+_TenantBreakerRegistry = TenantScopedBreakerRegistry
+_MAX_TENANT_BREAKERS = MAX_TENANT_BREAKERS
 
 
 class ModerationVerdict(TypedDict):
@@ -399,7 +358,11 @@ class MlModerationGuardrailEvaluator:
                 # reads, exactly mirroring resolve_provider_credential's own set step —
                 # and reset in `finally` below so it never leaks to the routed call.
                 cred = await self._resolver.resolve(tenant_id, "openai")
-                _cred_token = set_provider_credential(cred)
+                # M11: tag the credential with the tenant. This seam deliberately set it
+                # UNTAGGED, which was safe only because the breaker keyed off the guardrail
+                # contextvar instead; tagging it makes the credential tenant and the breaker
+                # tenant the SAME value by construction rather than by coincidence.
+                _cred_token = set_provider_credential(cred, tenant_id)
             # M7 hardening: `messages` here may be the RAW request — the caller
             # (CompositeGuardrailEvaluator) only substitutes r1.masked_messages when
             # the tenant's OWN pii_mask guardrail is enabled AND mode=="mask"; when

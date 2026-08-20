@@ -239,7 +239,7 @@ async def test_bedrock_embeddings_400_does_not_open_the_breaker() -> None:
         reset_provider_credential(tok)
         await provider._client.aclose()  # noqa: SLF001
 
-    assert provider._breaker.call_allowed(), (  # noqa: SLF001
+    assert provider._breaker_for().call_allowed(), (  # noqa: SLF001
         f"{CALLS} consecutive 400s opened the Bedrock embeddings breaker. A caller sending a "
         "bad request would take the provider down for every other caller on this instance."
     )

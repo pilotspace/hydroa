@@ -258,6 +258,7 @@ async def _real_chat(
             SqlAlchemyKeyAuthenticator as _Auth,
         )
         from gateway.proxy.infrastructure.model_checker import SqlAlchemyModelChecker
+        from gateway.proxy.infrastructure.tenant_breaker_registry import registry_for_state
 
         _repo = _KeyRepo(session)
         _authz_uc = _AuthzUseCase(_repo, _Hasher())
@@ -326,11 +327,21 @@ async def _real_chat(
             file_search_grounder=_file_search_grounder,
         )
 
-        _circuit_breaker = app.state.circuit_breaker
+        # M8: the realtime chat turn used to read the ONE legacy process-wide breaker
+        # off app.state that every tenant on this path shared. main.py openly declared
+        # that deferred; this is the third time it would have been inherited.
+        # It now shares the per-app TENANT registry, so the turn resolves a breaker for
+        # the tenant that owns THIS turn's credential.
+        #
+        # A14: the tenant is resolved per CALL inside the wrapper, not captured here.
+        # That is deliberate and is the correct seam: CompletionUseCase.complete()
+        # authenticates `raw_key` and sets the credential contextvar (with its tenant)
+        # BEFORE it reaches this upstream, so the tenant is in context exactly when the
+        # breaker is resolved — whereas here, before authentication, it is not yet known.
         _base_upstream = app.state.completion_upstream
         _upstream = BoundCircuitBreakerUpstream(
             delegate=_base_upstream,
-            breaker=_circuit_breaker,
+            breakers=registry_for_state(app.state),
         )
         _recorder = app.state.usage_recorder
         _model_router = getattr(app.state, "model_router", None)

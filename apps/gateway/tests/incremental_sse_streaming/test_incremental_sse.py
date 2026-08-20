@@ -302,7 +302,7 @@ async def test_anthropic_midstream_network_error_raises_after_partial() -> None:
     # The role frame was delivered incrementally before the drop surfaced.
     assert delivered and b"assistant" in delivered[0]
     # The breaker recorded the upstream failure.
-    assert adapter._breaker._failure_count > 0  # type: ignore[attr-defined]
+    assert adapter._breaker_for()._failure_count > 0  # type: ignore[attr-defined]
 
 
 async def test_gemini_midstream_network_error_raises_after_partial() -> None:
@@ -318,4 +318,4 @@ async def test_gemini_midstream_network_error_raises_after_partial() -> None:
     finally:
         reset_provider_credential(token)
     assert delivered and b"assistant" in delivered[0]
-    assert adapter._breaker._failure_count > 0  # type: ignore[attr-defined]
+    assert adapter._breaker_for()._failure_count > 0  # type: ignore[attr-defined]

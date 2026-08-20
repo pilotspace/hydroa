@@ -56,7 +56,7 @@ from gateway.proxy.domain.web_search import (
     _normalize_gemini_grounding,
     native_web_search_tool,
 )
-from gateway.proxy.infrastructure.circuit_breaker import CircuitBreaker
+from gateway.proxy.infrastructure.tenant_breaker_registry import TenantScopedBreakerMixin
 from gateway.proxy.infrastructure.upstream_retry import execute_with_retry
 from gateway.usage.domain.partial_usage import publish_partial_usage
 
@@ -787,7 +787,7 @@ def _gemini_embed_to_openai(
 # ---------------------------------------------------------------------------
 
 
-class GeminiCompletionUpstream:
+class GeminiCompletionUpstream(TenantScopedBreakerMixin):
     """Forwards chat completions to the Google Gemini generateContent API.
 
     Implements the CompletionUpstream Protocol (complete + stream).
@@ -819,7 +819,7 @@ class GeminiCompletionUpstream:
         self._metrics_registry = metrics_registry
         self._max_inline_bytes = max_inline_bytes
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
@@ -885,6 +885,7 @@ class GeminiCompletionUpstream:
         Translation ValueErrors (inline_too_large, only_data_url_supported, …) are
         converted to ProblemError 4xx BEFORE any upstream contact.
         """
+        breaker = self._breaker_for()
         model: str = payload["model"]
         try:
             gemini_body = _openai_to_gemini_request(
@@ -911,7 +912,7 @@ class GeminiCompletionUpstream:
         return await execute_with_retry(
             _do_request,
             _render,
-            breaker=self._breaker,
+            breaker=breaker,
             provider="gemini",
             max_retries=self._max_retries,
             backoff_base=self._backoff_base,
@@ -928,7 +929,8 @@ class GeminiCompletionUpstream:
         finish() emits the terminal usage frame + [DONE].
         Translation ValueErrors are converted to ProblemError 4xx before any bytes yield.
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         # Translate BEFORE entering the async generator so errors surface as
         # ProblemError (caught by the use-case pre-generator path → clean 4xx),
@@ -961,11 +963,11 @@ class GeminiCompletionUpstream:
                     ),
                 ) as response:
                     if response.status_code >= 500:
-                        self._breaker.on_upstream_error()
+                        breaker.on_upstream_error()
                         raise UpstreamUnavailableError(
                             f"Upstream returned {response.status_code} on stream"
                         )
-                    self._breaker.record_success()
+                    breaker.record_success()
 
                     # Drive the stepper LIVE: translate + yield each OpenAI frame the
                     # instant its source Gemini SSE chunk arrives (incremental delivery
@@ -995,7 +997,7 @@ class GeminiCompletionUpstream:
                 httpx.NetworkError,
                 httpx.RemoteProtocolError,
             ) as exc:
-                self._breaker.on_upstream_error()
+                breaker.on_upstream_error()
                 raise UpstreamUnavailableError(str(exc)) from None
 
         return _gen()
@@ -1006,7 +1008,7 @@ class GeminiCompletionUpstream:
 # ---------------------------------------------------------------------------
 
 
-class GoogleEmbeddingsProvider:
+class GoogleEmbeddingsProvider(TenantScopedBreakerMixin):
     """Direct HTTP adapter for Google Gemini embedding endpoints.
 
     Implements the UpstreamProvider Protocol (post_json / post_multipart / stream_bytes).
@@ -1027,7 +1029,7 @@ class GoogleEmbeddingsProvider:
     ) -> None:
         self._metrics_registry = metrics_registry
 
-        self._breaker = CircuitBreaker()
+        self._init_tenant_breakers()
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(
@@ -1092,7 +1094,8 @@ class GoogleEmbeddingsProvider:
         list input → POST /models/{model}:batchEmbedContents
         Returns (status_code, openai_shaped_body).
         """
-        self._breaker.guard()
+        breaker = self._breaker_for()
+        breaker.guard()
 
         model: str = payload["model"]
         inp: str | list[str] = payload["input"]
@@ -1119,15 +1122,15 @@ class GoogleEmbeddingsProvider:
                 headers=self._auth_headers(),
             )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(str(exc)) from None
 
         status = resp.status_code
         if status >= 500:
-            self._breaker.on_upstream_error()
+            breaker.on_upstream_error()
             raise UpstreamUnavailableError(f"Upstream returned {status}")
 
-        self._breaker.record_success()
+        breaker.record_success()
 
         if status >= 400:
             return status, _gemini_error_to_openai(resp.json())
